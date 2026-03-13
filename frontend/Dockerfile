@@ -1,23 +1,23 @@
-FROM node:18-alpine AS builder
+# FROM node:18-alpine AS builder
 
-WORKDIR /app
+# WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci
+# COPY package*.json ./
+# RUN npm ci
 
-COPY . .
-RUN npm run build
+# COPY . .
+# RUN npm run build
 
-FROM node:18-alpine
+# FROM node:18-alpine
 
-WORKDIR /app
+# WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci --only=production
+# COPY package*.json ./
+# RUN npm ci --only=production
 
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
+# COPY --from=builder /app/.next ./.next
+# COPY --from=builder /app/public ./public
 
-EXPOSE 3000
+# EXPOSE 3000
 
-CMD ["npm", "start"]
+# CMD ["npm", "start"]
