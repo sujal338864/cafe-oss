@@ -82,14 +82,14 @@ router.post(
       });
 
       // Create welcome notification
-      await tx.notification.create({
-        data: {
-          shopId: newShop.id,
-          type: 'SYSTEM',
-          title: 'Welcome to Shop OS',
-          message: 'Your shop has been successfully created. Start by adding products to your inventory.',
-        }
-      });
+      // await tx.notification.create({
+      //   data: {
+      //     shopId: newShop.id,
+      //     type: 'SYSTEM',
+      //     title: 'Welcome to Shop OS',
+      //     message: 'Your shop has been successfully created. Start by adding products to your inventory.',
+      //   }
+      // });
 
       return newShop;
     });
