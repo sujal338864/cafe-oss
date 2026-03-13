@@ -8,8 +8,11 @@ COPY package*.json ./
 # Install dependencies
 RUN npm ci
 
-# Copy source code
+# Copy project files
 COPY . .
+
+# Generate Prisma Client (IMPORTANT)
+RUN npx prisma generate
 
 # Build TypeScript
 RUN npm run build
@@ -18,4 +21,4 @@ RUN npm run build
 EXPOSE 4000
 
 # Start application
-CMD ["npm", "start"]
+CMD ["node", "dist/index.js"]
