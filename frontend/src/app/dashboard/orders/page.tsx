@@ -1,146 +1,240 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import api from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
 
 const fmt = (n: any) => 'Rs.' + Number(n || 0).toLocaleString('en-IN');
 
-const STATUS_COLORS: any = {
-  COMPLETED: { bg: 'rgba(16,185,129,0.15)', color: '#10b981' },
-  PENDING:   { bg: 'rgba(245,158,11,0.15)', color: '#f59e0b' },
-  CANCELLED: { bg: 'rgba(239,68,68,0.15)',  color: '#ef4444' },
-  REFUNDED:  { bg: 'rgba(100,116,139,0.15)', color: '#64748b' },
+const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
+  PAID:    { bg: 'rgba(16,185,129,.14)',  color: '#10b981' },
+  PARTIAL: { bg: 'rgba(245,158,11,.14)', color: '#f59e0b' },
+  UNPAID:  { bg: 'rgba(239,68,68,.14)',  color: '#ef4444' },
 };
+const METHOD_COLORS: Record<string, string> = {
+  CASH: '#10b981', UPI: '#3b82f6', CARD: '#a78bfa', BANK_TRANSFER: '#f59e0b', CREDIT: '#ef4444',
+};
+
+function exportCSV(orders: any[]) {
+  const rows = [
+    ['Invoice', 'Customer', 'Phone', 'Items', 'Subtotal', 'Tax', 'Discount', 'Total', 'Method', 'Status', 'Date'],
+    ...orders.map(o => [
+      o.invoiceNumber,
+      o.customer?.name || 'Walk-in',
+      o.customer?.phone || '',
+      o.items?.length ?? '',
+      o.subtotal ?? '',
+      o.taxAmount ?? '',
+      o.discountAmount ?? '',
+      o.totalAmount,
+      o.paymentMethod,
+      o.paymentStatus,
+      new Date(o.createdAt).toLocaleDateString('en-IN'),
+    ])
+  ];
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a'); a.href = url;
+  a.download = `orders-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+}
 
 export default function OrdersPage() {
   const { theme } = useTheme();
-  const [orders,   setOrders]   = useState<any[]>([]);
-  const [loading,  setLoading]  = useState(true);
-  const [selected, setSelected] = useState<any>(null);
-  const [filter,   setFilter]   = useState('ALL');
+  const [orders,  setOrders]  = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search,  setSearch]  = useState('');
+  const [status,  setStatus]  = useState('ALL');
+  const [method,  setMethod]  = useState('ALL');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo,   setDateTo]   = useState('');
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => { load(); }, []);
 
   const load = async () => {
+    setLoading(true);
     try {
-      const { data } = await api.get('/api/orders');
-      setOrders(data.orders || data || []);
+      const { data } = await api.get('/api/orders?limit=200');
+      setOrders(data.orders || data.data || (Array.isArray(data) ? data : []));
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
 
-  const updateStatus = async (id: string, status: string) => {
-    try {
-      await api.patch(`/api/orders/${id}/status`, { status });
-      load();
-      if (selected?.id === id) setSelected((o: any) => ({ ...o, status }));
-    } catch (e: any) { alert(e.response?.data?.error || 'Failed'); }
-  };
+  const filtered = useMemo(() => {
+    return orders.filter(o => {
+      if (status !== 'ALL' && o.paymentStatus !== status) return false;
+      if (method !== 'ALL' && o.paymentMethod !== method) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        if (!o.invoiceNumber?.toLowerCase().includes(q) &&
+            !o.customer?.name?.toLowerCase().includes(q) &&
+            !o.customer?.phone?.includes(q)) return false;
+      }
+      if (dateFrom) {
+        const from = new Date(dateFrom); from.setHours(0,0,0,0);
+        if (new Date(o.createdAt) < from) return false;
+      }
+      if (dateTo) {
+        const to = new Date(dateTo); to.setHours(23,59,59,999);
+        if (new Date(o.createdAt) > to) return false;
+      }
+      return true;
+    });
+  }, [orders, status, method, search, dateFrom, dateTo]);
 
-  const filtered = filter === 'ALL' ? orders : orders.filter(o => o.status === filter);
+  const totalRevenue  = filtered.reduce((s, o) => s + Number(o.totalAmount || 0), 0);
+  const totalPaid     = filtered.filter(o => o.paymentStatus === 'PAID').reduce((s, o) => s + Number(o.totalAmount || 0), 0);
+  const totalPending  = filtered.filter(o => o.paymentStatus !== 'PAID').reduce((s, o) => s + Number(o.totalAmount || 0), 0);
+
+  const card: React.CSSProperties = { background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14 };
+  const inp: React.CSSProperties  = { background: theme.input, border: `1px solid ${theme.border}`, color: theme.text, borderRadius: 9, padding: '8px 12px', fontSize: 12, outline: 'none' };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h2 style={{ fontSize: 20, fontWeight: 800, color: theme.text }}>Orders</h2>
-          <p style={{ fontSize: 13, color: theme.textFaint, marginTop: 3 }}>{orders.length} total orders</p>
+          <p style={{ fontSize: 13, color: theme.textFaint, marginTop: 3 }}>
+            {filtered.length} orders{filtered.length !== orders.length ? ` (of ${orders.length})` : ''}
+          </p>
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {['ALL', 'PENDING', 'COMPLETED', 'CANCELLED'].map(s => (
-            <button key={s} onClick={() => setFilter(s)} style={{
-              padding: '7px 14px', borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: `1px solid ${theme.border}`,
-              background: filter === s ? '#7c3aed' : theme.hover,
-              color: filter === s ? 'white' : theme.textMuted,
-            }}>{s}</button>
-          ))}
-        </div>
+        <button onClick={() => exportCSV(filtered)}
+          style={{ background: theme.hover, border: `1px solid ${theme.border}`, color: theme.textMuted, padding: '9px 18px', borderRadius: 10, fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+          ⬇️ Export CSV
+        </button>
       </div>
 
-      <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, overflow: 'hidden' }}>
+      {/* Stat cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
+        {[
+          { label: 'Total Orders',  val: filtered.length,    color: '#3b82f6' },
+          { label: 'Revenue',       val: fmt(totalRevenue),  color: '#10b981' },
+          { label: 'Collected',     val: fmt(totalPaid),     color: '#a78bfa' },
+          { label: 'Pending',       val: fmt(totalPending),  color: '#f59e0b' },
+        ].map(({ label, val, color }) => (
+          <div key={label} style={{ ...card, padding: '14px 18px' }}>
+            <div style={{ fontSize: 11, color: theme.textFaint, fontWeight: 700, textTransform: 'uppercase', marginBottom: 6 }}>{label}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color }}>{val}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Invoice, customer, phone..."
+          style={{ ...inp, width: 220 }} />
+        <select value={status} onChange={e => setStatus(e.target.value)} style={inp}>
+          <option value="ALL">All Status</option>
+          <option value="PAID">Paid</option>
+          <option value="PARTIAL">Partial</option>
+          <option value="UNPAID">Unpaid</option>
+        </select>
+        <select value={method} onChange={e => setMethod(e.target.value)} style={inp}>
+          <option value="ALL">All Methods</option>
+          <option value="CASH">Cash</option>
+          <option value="UPI">UPI</option>
+          <option value="CARD">Card</option>
+          <option value="BANK_TRANSFER">Bank Transfer</option>
+          <option value="CREDIT">Credit</option>
+        </select>
+        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={inp} title="From date" />
+        <span style={{ color: theme.textFaint, fontSize: 12 }}>to</span>
+        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={inp} title="To date" />
+        {(search || status !== 'ALL' || method !== 'ALL' || dateFrom || dateTo) && (
+          <button onClick={() => { setSearch(''); setStatus('ALL'); setMethod('ALL'); setDateFrom(''); setDateTo(''); }}
+            style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444', padding: '8px 14px', borderRadius: 9, fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
+            ✕ Clear
+          </button>
+        )}
+      </div>
+
+      {/* Orders table */}
+      <div style={{ ...card, overflow: 'hidden' }}>
         {loading ? (
-          <div style={{ padding: 40, textAlign: 'center', color: theme.textFaint }}>Loading...</div>
+          <div style={{ padding: 40, textAlign: 'center', color: theme.textFaint }}>Loading orders...</div>
+        ) : filtered.length === 0 ? (
+          <div style={{ padding: 40, textAlign: 'center', color: theme.textFaint }}>No orders match your filters.</div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${theme.border}` }}>
-                {['Order #', 'Customer', 'Items', 'Total', 'Payment', 'Status', 'Date', ''].map(h => (
+                {['Invoice', 'Customer', 'Items', 'Amount', 'Method', 'Status', 'Date', ''].map(h => (
                   <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, color: theme.textFaint, fontWeight: 700, textTransform: 'uppercase' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filtered.map((o: any) => {
-                const sc = STATUS_COLORS[o.status] || STATUS_COLORS.PENDING;
+                const sc = STATUS_COLORS[o.paymentStatus] || STATUS_COLORS.UNPAID;
+                const mc = METHOD_COLORS[o.paymentMethod] || '#94a3b8';
+                const isOpen = expanded === o.id;
                 return (
-                  <tr key={o.id} style={{ borderBottom: `1px solid ${theme.border}` }}>
-                    <td style={{ padding: '11px 14px', fontSize: 13, color: '#7c3aed', fontWeight: 700 }}>#{o.orderNumber || o.id?.slice(0, 8)}</td>
-                    <td style={{ padding: '11px 14px', fontSize: 13, color: theme.text }}>{o.customer?.name || 'Walk-in'}</td>
-                    <td style={{ padding: '11px 14px', fontSize: 13, color: theme.textMuted }}>{o.items?.length || o._count?.items || 0}</td>
-                    <td style={{ padding: '11px 14px', fontWeight: 700, color: theme.text }}>{fmt(o.total)}</td>
-                    <td style={{ padding: '11px 14px', fontSize: 12, color: theme.textMuted }}>{o.paymentMethod || 'CASH'}</td>
-                    <td style={{ padding: '11px 14px' }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 99, background: sc.bg, color: sc.color }}>{o.status}</span>
-                    </td>
-                    <td style={{ padding: '11px 14px', fontSize: 12, color: theme.textFaint }}>{new Date(o.createdAt).toLocaleDateString()}</td>
-                    <td style={{ padding: '11px 14px' }}>
-                      <button onClick={() => setSelected(o)} style={{ background: theme.hover, border: `1px solid ${theme.border}`, color: theme.textMuted, padding: '5px 11px', borderRadius: 7, fontSize: 12, cursor: 'pointer' }}>View</button>
-                    </td>
-                  </tr>
+                  <>
+                    <tr key={o.id} style={{ borderBottom: `1px solid ${theme.border}`, background: isOpen ? theme.hover : 'transparent' }}>
+                      <td style={{ padding: '11px 14px', fontFamily: 'monospace', fontSize: 12, color: '#a78bfa', fontWeight: 600 }}>
+                        #{o.invoiceNumber}
+                      </td>
+                      <td style={{ padding: '11px 14px' }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: theme.text }}>{o.customer?.name || 'Walk-in'}</div>
+                        {o.customer?.phone && <div style={{ fontSize: 11, color: theme.textFaint }}>{o.customer.phone}</div>}
+                      </td>
+                      <td style={{ padding: '11px 14px', fontSize: 13, color: theme.textMuted }}>{o.items?.length ?? '—'}</td>
+                      <td style={{ padding: '11px 14px', fontWeight: 700, color: theme.text }}>{fmt(o.totalAmount)}</td>
+                      <td style={{ padding: '11px 14px' }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 20, background: mc + '18', color: mc }}>{o.paymentMethod}</span>
+                      </td>
+                      <td style={{ padding: '11px 14px' }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 20, ...sc }}>{o.paymentStatus}</span>
+                      </td>
+                      <td style={{ padding: '11px 14px', fontSize: 12, color: theme.textFaint }}>
+                        {new Date(o.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                        <div style={{ fontSize: 10, color: theme.textFaint }}>{new Date(o.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</div>
+                      </td>
+                      <td style={{ padding: '11px 14px' }}>
+                        {o.items?.length > 0 && (
+                          <button onClick={() => setExpanded(isOpen ? null : o.id)}
+                            style={{ background: 'none', border: `1px solid ${theme.border}`, color: theme.textMuted, padding: '4px 10px', borderRadius: 7, fontSize: 11, cursor: 'pointer' }}>
+                            {isOpen ? '▲' : '▼'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                    {/* Expanded items row */}
+                    {isOpen && o.items?.length > 0 && (
+                      <tr key={`${o.id}-items`} style={{ borderBottom: `1px solid ${theme.border}` }}>
+                        <td colSpan={8} style={{ padding: '0 14px 12px 40px' }}>
+                          <div style={{ background: theme.hover, borderRadius: 10, padding: '10px 14px' }}>
+                            <div style={{ fontSize: 11, color: theme.textFaint, fontWeight: 700, textTransform: 'uppercase', marginBottom: 8 }}>Order Items</div>
+                            {o.items.map((item: any, i: number) => (
+                              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: i < o.items.length - 1 ? `1px solid ${theme.border}` : 'none' }}>
+                                <span style={{ fontSize: 12, color: theme.text }}>{item.name}</span>
+                                <span style={{ fontSize: 12, color: theme.textFaint }}>
+                                  {item.quantity} × {fmt(item.unitPrice)} = <strong style={{ color: theme.text }}>{fmt(item.total || item.unitPrice * item.quantity)}</strong>
+                                  {item.taxRate > 0 && <span style={{ color: '#f59e0b', marginLeft: 6 }}>+{item.taxRate}% GST</span>}
+                                </span>
+                              </div>
+                            ))}
+                            {/* Order totals */}
+                            <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${theme.border}`, display: 'flex', gap: 20, fontSize: 12, color: theme.textFaint }}>
+                              {o.subtotal != null    && <span>Subtotal: <b style={{ color: theme.text }}>{fmt(o.subtotal)}</b></span>}
+                              {o.taxAmount > 0       && <span>Tax: <b style={{ color: '#f59e0b' }}>{fmt(o.taxAmount)}</b></span>}
+                              {o.discountAmount > 0  && <span>Discount: <b style={{ color: '#10b981' }}>- {fmt(o.discountAmount)}</b></span>}
+                              {o.notes               && <span>Note: <i>{o.notes}</i></span>}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 );
               })}
             </tbody>
           </table>
         )}
-        {!loading && filtered.length === 0 && (
-          <div style={{ padding: 40, textAlign: 'center', color: theme.textFaint }}>No orders found.</div>
-        )}
       </div>
-
-      {/* Order Detail Modal */}
-      {selected && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={e => e.target === e.currentTarget && setSelected(null)}>
-          <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 18, padding: 28, width: '90%', maxWidth: 500, maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
-              <div style={{ fontWeight: 800, fontSize: 16, color: theme.text }}>Order #{selected.orderNumber || selected.id?.slice(0, 8)}</div>
-              <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', color: theme.textMuted, cursor: 'pointer', fontSize: 22, lineHeight: 1 }}>×</button>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
-              {[
-                { l: 'Customer', v: selected.customer?.name || 'Walk-in' },
-                { l: 'Payment', v: selected.paymentMethod || 'CASH' },
-                { l: 'Total', v: fmt(selected.total) },
-                { l: 'Date', v: new Date(selected.createdAt).toLocaleString() },
-              ].map(({ l, v }) => (
-                <div key={l} style={{ background: theme.hover, borderRadius: 10, padding: '12px 14px' }}>
-                  <div style={{ fontSize: 11, color: theme.textFaint, fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>{l}</div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: theme.text }}>{v}</div>
-                </div>
-              ))}
-            </div>
-
-            {selected.items?.length > 0 && (
-              <div style={{ marginBottom: 20 }}>
-                <div style={{ fontSize: 12, color: theme.textFaint, fontWeight: 700, textTransform: 'uppercase', marginBottom: 10 }}>Items</div>
-                {selected.items.map((item: any, i: number) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${theme.border}` }}>
-                    <span style={{ fontSize: 13, color: theme.text }}>{item.product?.name || item.name} × {item.quantity}</span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{fmt(item.total || item.price * item.quantity)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {selected.status === 'PENDING' && (
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={() => updateStatus(selected.id, 'COMPLETED')} style={{ flex: 1, background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', color: '#10b981', padding: 11, borderRadius: 10, fontWeight: 700, cursor: 'pointer' }}>Mark Completed</button>
-                <button onClick={() => updateStatus(selected.id, 'CANCELLED')} style={{ flex: 1, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444', padding: 11, borderRadius: 10, fontWeight: 700, cursor: 'pointer' }}>Cancel Order</button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

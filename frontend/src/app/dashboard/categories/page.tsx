@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
-import { useTheme, ThemeTokens } from '@/context/ThemeContext';
+import { useTheme } from '@/context/ThemeContext';
 
 const PRESET_COLORS = [
   '#7c3aed','#3b82f6','#10b981','#f59e0b','#ef4444',
@@ -9,9 +9,7 @@ const PRESET_COLORS = [
 ];
 
 export default function CategoriesPage() {
-
-  const { theme } = useTheme() as { theme: ThemeTokens };
-
+  const { theme } = useTheme();
   const [categories, setCategories] = useState<any[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [showModal,  setShowModal]  = useState(false);

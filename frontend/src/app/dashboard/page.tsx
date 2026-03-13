@@ -1,123 +1,144 @@
 'use client';
 import { useEffect, useState } from 'react';
-import api from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import api from '@/lib/api';
 
 const fmt = (n: any) => 'Rs.' + Number(n || 0).toLocaleString('en-IN');
 
-const StatCard = ({ label, value, sub, color, icon }: any) => {
-  const { theme } = useTheme();
-  return (
-    <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: 12, color: theme.textMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</span>
-        <div style={{ width: 34, height: 34, borderRadius: 9, background: color + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>{icon}</div>
-      </div>
-      <div style={{ fontSize: 26, fontWeight: 800, color: theme.text }}>{value}</div>
-      {sub && <div style={{ fontSize: 12, color: theme.textFaint }}>{sub}</div>}
-    </div>
-  );
-};
-
 export default function DashboardPage() {
+  const { user } = useAuth();
   const { theme } = useTheme();
-  const [stats,    setStats]    = useState<any>(null);
-  const [loading,  setLoading]  = useState(true);
-  const [recentOrders, setRecentOrders] = useState<any[]>([]);
+  const [stats,  setStats]  = useState<any>(null);
+  const [orders, setOrders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => { load(); }, []);
 
   const load = async () => {
+    setLoading(true);
     try {
-      const [statsRes, ordersRes] = await Promise.all([
-        api.get('/api/analytics/dashboard').catch(() => ({ data: {} })),
-        api.get('/api/orders?limit=5').catch(() => ({ data: { orders: [] } })),
+      const [statsRes, ordersRes] = await Promise.allSettled([
+        api.get('/api/analytics/dashboard'),
+        api.get('/api/orders?limit=10'),
       ]);
-      setStats(statsRes.data);
-      setRecentOrders(ordersRes.data.orders || []);
+      if (statsRes.status === 'fulfilled')  setStats(statsRes.value.data);
+      if (ordersRes.status === 'fulfilled') {
+        const d = ordersRes.value.data;
+        setOrders(d.orders || d.data || (Array.isArray(d) ? d : []));
+      }
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
 
-  const chartData = stats?.salesChart || [
-    { name: 'Mon', sales: 0 }, { name: 'Tue', sales: 0 }, { name: 'Wed', sales: 0 },
-    { name: 'Thu', sales: 0 }, { name: 'Fri', sales: 0 }, { name: 'Sat', sales: 0 }, { name: 'Sun', sales: 0 },
-  ];
+  // ── EXACT fields the backend returns ──────────────────────────
+  // analytics/dashboard returns: totalRevenue, totalOrders, avgOrderValue,
+  //   totalCustomers, totalProducts, lowStockItems, monthlySales, topProducts, categoryBreakdown
+  // It does NOT return todayRevenue or recentOrders - we fetch orders separately
+  const totalRevenue   = Number(stats?.totalRevenue   ?? 0);
+  const totalOrders    = Number(stats?.totalOrders    ?? 0);
+  const totalCustomers = Number(stats?.totalCustomers ?? 0);
+  const totalProducts  = Number(stats?.totalProducts  ?? 0);
+  const lowStockItems  = Number(stats?.lowStockItems  ?? 0);
+  const avgOrderValue  = Number(stats?.avgOrderValue  ?? 0);
+
+  // Today's revenue: calculate from orders fetched (createdAt = today)
+  const todayStr = new Date().toDateString();
+  const todayOrders  = orders.filter(o => new Date(o.createdAt).toDateString() === todayStr);
+  const todayRevenue = todayOrders.reduce((s, o) => s + Number(o.totalAmount ?? 0), 0);
+
+  const h = new Date().getHours();
+  const greeting = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+
+  const card: React.CSSProperties = {
+    background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '18px 20px',
+  };
 
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300, color: theme.textMuted, fontSize: 14 }}>
-      Loading dashboard...
-    </div>
+    <div style={{ color: theme.textMuted, padding: 40, textAlign: 'center' }}>Loading dashboard...</div>
   );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Stats Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 14 }}>
-        <StatCard label="Today's Sales"    value={fmt(stats?.todaySales)}    sub={`${stats?.todayOrders || 0} orders`}      color="#3b82f6" icon="💰" />
-        <StatCard label="Monthly Revenue"  value={fmt(stats?.monthRevenue)}  sub="This month"                               color="#10b981" icon="📈" />
-        <StatCard label="Total Products"   value={stats?.totalProducts || 0} sub={`${stats?.lowStock || 0} low stock`}      color="#a78bfa" icon="📦" />
-        <StatCard label="Total Customers"  value={stats?.totalCustomers || 0} sub="Registered"                             color="#06b6d4" icon="👥" />
-        <StatCard label="Pending Orders"   value={stats?.pendingOrders || 0} sub="Awaiting fulfillment"                    color="#f59e0b" icon="🕐" />
-        <StatCard label="Total Expenses"   value={fmt(stats?.monthExpenses)} sub="This month"                              color="#ef4444" icon="💸" />
+
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: theme.text }}>
+            {greeting}, {user?.name?.split(' ')[0]} 👋
+          </h1>
+          <p style={{ color: theme.textFaint, fontSize: 13, marginTop: 3 }}>
+            {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          </p>
+        </div>
+        <a href="/dashboard/pos" style={{ background: 'linear-gradient(135deg,#7c3aed,#3b82f6)', color: 'white', padding: '10px 20px', borderRadius: 10, fontWeight: 700, fontSize: 13, textDecoration: 'none' }}>
+          + New Sale
+        </a>
       </div>
 
-      {/* Chart */}
-      <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '20px 22px' }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: theme.text, marginBottom: 18 }}>Sales This Week</div>
-        <ResponsiveContainer width="100%" height={200}>
-          <AreaChart data={chartData}>
-            <defs>
-              <linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%"  stopColor="#7c3aed" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="#7c3aed" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <XAxis dataKey="name" tick={{ fontSize: 11, fill: theme.textFaint }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 11, fill: theme.textFaint }} axisLine={false} tickLine={false} tickFormatter={v => `Rs.${v}`} />
-            <Tooltip
-              contentStyle={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 10, fontSize: 12 }}
-              formatter={(v: any) => [fmt(v), 'Sales']}
-            />
-            <Area type="monotone" dataKey="sales" stroke="#7c3aed" strokeWidth={2} fill="url(#salesGrad)" />
-          </AreaChart>
-        </ResponsiveContainer>
+      {/* Stat Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14 }}>
+        <div style={card}>
+          <div style={{ fontSize: 12, color: theme.textFaint, fontWeight: 600, marginBottom: 8, textTransform: 'uppercase' }}>Revenue Today</div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: theme.text, marginBottom: 4 }}>{fmt(todayRevenue)}</div>
+          <div style={{ fontSize: 12, color: '#10b981', fontWeight: 600 }}>{todayOrders.length} orders today</div>
+        </div>
+        <div style={card}>
+          <div style={{ fontSize: 12, color: theme.textFaint, fontWeight: 600, marginBottom: 8, textTransform: 'uppercase' }}>Total Revenue</div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: theme.text, marginBottom: 4 }}>{fmt(totalRevenue)}</div>
+          <div style={{ fontSize: 12, color: '#3b82f6', fontWeight: 600 }}>{totalOrders} orders total</div>
+        </div>
+        <div style={card}>
+          <div style={{ fontSize: 12, color: theme.textFaint, fontWeight: 600, marginBottom: 8, textTransform: 'uppercase' }}>Total Products</div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: theme.text, marginBottom: 4 }}>{totalProducts}</div>
+          <div style={{ fontSize: 12, color: '#a78bfa', fontWeight: 600 }}>{lowStockItems} low stock</div>
+        </div>
+        <div style={card}>
+          <div style={{ fontSize: 12, color: theme.textFaint, fontWeight: 600, marginBottom: 8, textTransform: 'uppercase' }}>Customers</div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: theme.text, marginBottom: 4 }}>{totalCustomers}</div>
+          <div style={{ fontSize: 12, color: '#f59e0b', fontWeight: 600 }}>Avg order {fmt(avgOrderValue)}</div>
+        </div>
       </div>
 
       {/* Recent Orders */}
-      <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, overflow: 'hidden' }}>
-        <div style={{ padding: '16px 20px', borderBottom: `1px solid ${theme.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: theme.text }}>Recent Orders</span>
-          <a href="/dashboard/orders" style={{ fontSize: 12, color: '#7c3aed', fontWeight: 600 }}>View all →</a>
+      <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '14px 20px', borderBottom: `1px solid ${theme.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: theme.text }}>Recent Orders</div>
+          <a href="/dashboard/orders" style={{ fontSize: 12, color: '#a78bfa', textDecoration: 'none', fontWeight: 600 }}>View all →</a>
         </div>
-        {recentOrders.length === 0 ? (
-          <div style={{ padding: 32, textAlign: 'center', color: theme.textFaint, fontSize: 13 }}>No orders yet</div>
+        {orders.length === 0 ? (
+          <div style={{ padding: 36, textAlign: 'center', color: theme.textFaint }}>
+            No orders yet. <a href="/dashboard/pos" style={{ color: '#a78bfa' }}>Create first sale</a>
+          </div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr>
-                {['Order #', 'Customer', 'Amount', 'Status', 'Date'].map(h => (
-                  <th key={h} style={{ padding: '9px 16px', textAlign: 'left', fontSize: 11, color: theme.textFaint, fontWeight: 700, textTransform: 'uppercase', borderBottom: `1px solid ${theme.border}` }}>{h}</th>
-                ))}
-              </tr>
+              <tr>{['Invoice', 'Customer', 'Amount', 'Method', 'Status', 'Date'].map(col => (
+                <th key={col} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, color: theme.textFaint, fontWeight: 700, textTransform: 'uppercase', borderBottom: `1px solid ${theme.border}` }}>{col}</th>
+              ))}</tr>
             </thead>
             <tbody>
-              {recentOrders.map((o: any) => (
-                <tr key={o.id} style={{ borderBottom: `1px solid ${theme.border}` }}>
-                  <td style={{ padding: '11px 16px', fontSize: 13, color: '#7c3aed', fontWeight: 700 }}>#{o.orderNumber || o.id?.slice(0,8)}</td>
-                  <td style={{ padding: '11px 16px', fontSize: 13, color: theme.text }}>{o.customer?.name || 'Walk-in'}</td>
-                  <td style={{ padding: '11px 16px', fontSize: 13, fontWeight: 700, color: theme.text }}>{fmt(o.total)}</td>
-                  <td style={{ padding: '11px 16px' }}>
-                    <span style={{
-                      fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 99,
-                      background: o.status === 'COMPLETED' ? 'rgba(16,185,129,0.15)' : o.status === 'PENDING' ? 'rgba(245,158,11,0.15)' : 'rgba(100,116,139,0.15)',
-                      color: o.status === 'COMPLETED' ? '#10b981' : o.status === 'PENDING' ? '#f59e0b' : '#64748b',
-                    }}>{o.status}</span>
-                  </td>
-                  <td style={{ padding: '11px 16px', fontSize: 12, color: theme.textFaint }}>{new Date(o.createdAt).toLocaleDateString()}</td>
-                </tr>
-              ))}
+              {orders.map((o: any, i: number) => {
+                const paid = o.paymentStatus === 'PAID';
+                return (
+                  <tr key={o.id || i} style={{ borderBottom: `1px solid ${theme.border}` }}>
+                    <td style={{ padding: '12px 16px', fontFamily: 'monospace', fontSize: 12, color: '#a78bfa' }}>#{o.invoiceNumber}</td>
+                    <td style={{ padding: '12px 16px', fontSize: 13, color: theme.text }}>{o.customer?.name || 'Walk-in'}</td>
+                    <td style={{ padding: '12px 16px', fontWeight: 700, color: theme.text }}>{fmt(o.totalAmount)}</td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <span style={{ background: 'rgba(59,130,246,.14)', color: '#3b82f6', padding: '2px 9px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>{o.paymentMethod}</span>
+                    </td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <span style={{ background: paid ? 'rgba(16,185,129,.14)' : 'rgba(245,158,11,.14)', color: paid ? '#10b981' : '#f59e0b', padding: '2px 9px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>
+                        {o.paymentStatus}
+                      </span>
+                    </td>
+                    <td style={{ padding: '12px 16px', fontSize: 12, color: theme.textFaint }}>
+                      {new Date(o.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

@@ -1,151 +1,214 @@
 'use client';
-import { useEffect, useState } from 'react';
-import api from '@/lib/api';
-import { useTheme } from '@/context/ThemeContext';
+import { useState, useEffect } from 'react';
+import { useTheme, THEMES, ThemeName } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
+import api from '@/lib/api';
 
 export default function SettingsPage() {
-  const { theme, isDark, toggle } = useTheme();
-  const { user, shop } = useAuth();
-  const [shopForm, setShopForm] = useState({ name: '', address: '', phone: '', email: '', currency: 'PKR', taxRate: '' });
-  const [passForm, setPassForm] = useState({ current: '', newPass: '', confirm: '' });
-  const [saving,   setSaving]   = useState(false);
-  const [msg,      setMsg]      = useState('');
-  const [err,      setErr]      = useState('');
-  const [tab,      setTab]      = useState<'shop' | 'account' | 'appearance'>('shop');
+  const { theme, themeName, setTheme } = useTheme();
+  const { user } = useAuth();
 
-  useEffect(() => {
-    if (shop) setShopForm(f => ({ ...f, name: shop.name || '', ...(shop as any) }));
-  }, [shop]);
+  // Shop profile
+  const [shop,       setShop]       = useState<any>(null);
+  const [shopForm,   setShopForm]   = useState({ name: '', phone: '', email: '', address: '', upiId: '', currency: 'Rs.' });
+  const [shopSaving, setShopSaving] = useState(false);
+  const [shopMsg,    setShopMsg]    = useState('');
+
+  // Password
+  const [pwForm,   setPwForm]   = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [pwSaving, setPwSaving] = useState(false);
+  const [pwMsg,    setPwMsg]    = useState('');
+  const [pwErr,    setPwErr]    = useState('');
+
+  useEffect(() => { loadShop(); }, []);
+
+  const loadShop = async () => {
+    try {
+      const { data } = await api.get('/api/shop/profile');
+      setShop(data);
+      setShopForm({
+        name:     data.name     || '',
+        phone:    data.phone    || '',
+        email:    data.email    || '',
+        address:  data.address  || '',
+        upiId:    data.upiId    || '',
+        currency: data.currency || 'Rs.',
+      });
+    } catch (e) { console.error(e); }
+  };
 
   const saveShop = async () => {
-    setSaving(true); setMsg(''); setErr('');
+    setShopSaving(true); setShopMsg('');
     try {
-      await api.put('/api/shop', shopForm);
-      setMsg('Shop settings saved!');
+      await api.put('/api/shop/profile', shopForm);
+      setShopMsg('✓ Shop profile saved!');
+      setTimeout(() => setShopMsg(''), 3000);
     } catch (e: any) {
-      setErr(e.response?.data?.error || 'Failed to save');
-    } finally { setSaving(false); }
+      setShopMsg('✗ ' + (e.response?.data?.error || 'Failed to save'));
+    } finally { setShopSaving(false); }
   };
 
-  const savePass = async () => {
-    if (!passForm.current || !passForm.newPass) { setErr('Fill all fields'); return; }
-    if (passForm.newPass !== passForm.confirm) { setErr('Passwords do not match'); return; }
-    setSaving(true); setMsg(''); setErr('');
+  const savePassword = async () => {
+    setPwErr(''); setPwMsg('');
+    if (!pwForm.currentPassword)     { setPwErr('Enter current password'); return; }
+    if (pwForm.newPassword.length < 6) { setPwErr('New password must be at least 6 characters'); return; }
+    if (pwForm.newPassword !== pwForm.confirmPassword) { setPwErr('Passwords do not match'); return; }
+    setPwSaving(true);
     try {
-      await api.put('/api/auth/password', { current: passForm.current, newPassword: passForm.newPass });
-      setMsg('Password changed!');
-      setPassForm({ current: '', newPass: '', confirm: '' });
+      await api.put('/api/auth/password', { currentPassword: pwForm.currentPassword, newPassword: pwForm.newPassword });
+      setPwMsg('✓ Password changed successfully!');
+      setPwForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setTimeout(() => setPwMsg(''), 3000);
     } catch (e: any) {
-      setErr(e.response?.data?.error || 'Failed');
-    } finally { setSaving(false); }
+      setPwErr(e.response?.data?.error || 'Failed to change password');
+    } finally { setPwSaving(false); }
   };
 
-  const inp: React.CSSProperties = { background: theme.input, border: `1px solid ${theme.border}`, color: theme.text, borderRadius: 9, padding: '10px 13px', fontSize: 13, width: '100%', outline: 'none' };
+  const card: React.CSSProperties  = { background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, marginBottom: 16 };
+  const cardHead: React.CSSProperties = { padding: '16px 20px', borderBottom: `1px solid ${theme.border}` };
+  const cardBody: React.CSSProperties = { padding: '20px' };
+  const inp: React.CSSProperties = { background: theme.inputBg, border: `1px solid ${theme.border}`, color: theme.text, borderRadius: 9, padding: '10px 13px', fontSize: 13, width: '100%', outline: 'none', boxSizing: 'border-box' as const };
+  const lbl: React.CSSProperties = { display: 'block', fontSize: 11, color: theme.textFaint, fontWeight: 700, textTransform: 'uppercase' as const, marginBottom: 5 };
 
-  const TABS = [
-    { k: 'shop', l: 'Shop Settings' },
-    { k: 'account', l: 'Account' },
-    { k: 'appearance', l: 'Appearance' },
-  ] as const;
+  const themeOptions: { name: ThemeName; label: string; preview: string[]; desc: string }[] = [
+    { name: 'dark',   label: 'Dark',   preview: ['#0f0f12','#15151d','#a78bfa'], desc: 'Classic dark mode'  },
+    { name: 'light',  label: 'Light',  preview: ['#f1f5f9','#ffffff','#7c3aed'], desc: 'Clean light mode'   },
+    { name: 'purple', label: 'Purple', preview: ['#13111a','#1a1625','#c084fc'], desc: 'Deep purple night'  },
+    { name: 'ocean',  label: 'Ocean',  preview: ['#0a1628','#0f1e35','#38bdf8'], desc: 'Deep ocean blue'    },
+  ];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0, maxWidth: 720 }}>
+      <div style={{ marginBottom: 20 }}>
         <h2 style={{ fontSize: 20, fontWeight: 800, color: theme.text }}>Settings</h2>
-        <p style={{ fontSize: 13, color: theme.textFaint, marginTop: 3 }}>Manage your shop preferences</p>
+        <p style={{ fontSize: 13, color: theme.textMuted, marginTop: 3 }}>Manage your shop profile and preferences</p>
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 6, borderBottom: `1px solid ${theme.border}`, paddingBottom: 0 }}>
-        {TABS.map(({ k, l }) => (
-          <button key={k} onClick={() => { setTab(k); setMsg(''); setErr(''); }} style={{
-            padding: '9px 18px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600,
-            color: tab === k ? theme.text : theme.textMuted,
-            borderBottom: `2px solid ${tab === k ? '#7c3aed' : 'transparent'}`,
-            marginBottom: -1,
-          }}>{l}</button>
-        ))}
-      </div>
-
-      {msg && <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 10, padding: '11px 14px', color: '#10b981', fontSize: 13 }}>{msg}</div>}
-      {err && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, padding: '11px 14px', color: '#ef4444', fontSize: 13 }}>{err}</div>}
-
-      {/* Shop Settings */}
-      {tab === 'shop' && (
-        <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, padding: 24 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: theme.text, marginBottom: 20 }}>Shop Information</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      {/* ── Shop Profile ─────────────────────────────────────────────── */}
+      <div style={card}>
+        <div style={cardHead}>
+          <div style={{ fontWeight: 700, fontSize: 15, color: theme.text }}>Shop Profile</div>
+          <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 2 }}>Basic information about your shop</div>
+        </div>
+        <div style={cardBody}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             {[
-              { l: 'Shop Name', k: 'name', full: true },
-              { l: 'Phone', k: 'phone' },
-              { l: 'Email', k: 'email', type: 'email' },
-              { l: 'Address', k: 'address', full: true },
-              { l: 'Currency', k: 'currency' },
-              { l: 'Tax Rate (%)', k: 'taxRate', type: 'number' },
-            ].map(({ l, k, type, full }: any) => (
-              <div key={k} style={full ? { gridColumn: '1 / -1' } : {}}>
-                <label style={{ display: 'block', fontSize: 11, color: theme.textFaint, fontWeight: 700, textTransform: 'uppercase', marginBottom: 5 }}>{l}</label>
-                <input type={type || 'text'} value={(shopForm as any)[k] || ''} onChange={e => setShopForm(v => ({ ...v, [k]: e.target.value }))} style={inp} />
+              { l: 'Shop Name',    k: 'name',    ph: 'e.g. Kirana King' },
+              { l: 'Phone',        k: 'phone',   ph: '03xx-xxxxxxx' },
+              { l: 'Email',        k: 'email',   ph: 'shop@email.com', type: 'email' },
+              { l: 'Currency',     k: 'currency',ph: 'Rs.' },
+            ].map(({ l, k, ph, type }) => (
+              <div key={k}>
+                <label style={lbl}>{l}</label>
+                <input type={type || 'text'} value={(shopForm as any)[k]} placeholder={ph}
+                  onChange={e => setShopForm(v => ({ ...v, [k]: e.target.value }))} style={inp} />
+              </div>
+            ))}
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label style={lbl}>Address</label>
+              <input value={shopForm.address} placeholder="Full shop address"
+                onChange={e => setShopForm(v => ({ ...v, address: e.target.value }))} style={inp} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── UPI Payment ──────────────────────────────────────────────── */}
+      <div style={card}>
+        <div style={cardHead}>
+          <div style={{ fontWeight: 700, fontSize: 15, color: theme.text }}>💳 UPI Payment</div>
+          <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 2 }}>
+            Your UPI ID is shown on the QR code in POS when customer pays by UPI
+          </div>
+        </div>
+        <div style={cardBody}>
+          <label style={lbl}>UPI ID</label>
+          <input value={shopForm.upiId} placeholder="e.g. shopname@gpay or 03001234567@easypaisa"
+            onChange={e => setShopForm(v => ({ ...v, upiId: e.target.value }))} style={inp} />
+          {shopForm.upiId && (
+            <div style={{ marginTop: 10, background: theme.hover, borderRadius: 9, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 18 }}>✅</span>
+              <div>
+                <div style={{ fontSize: 12, color: theme.text, fontWeight: 600 }}>UPI ID set: <span style={{ fontFamily: 'monospace', color: theme.accent }}>{shopForm.upiId}</span></div>
+                <div style={{ fontSize: 11, color: theme.textFaint, marginTop: 2 }}>This will appear on QR codes and payment requests in POS</div>
+              </div>
+            </div>
+          )}
+          {shopMsg && (
+            <div style={{ marginTop: 14, padding: '10px 14px', borderRadius: 9, background: shopMsg.startsWith('✓') ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', color: shopMsg.startsWith('✓') ? '#10b981' : '#ef4444', fontSize: 13, fontWeight: 600 }}>
+              {shopMsg}
+            </div>
+          )}
+          <button onClick={saveShop} disabled={shopSaving}
+            style={{ marginTop: 16, background: 'linear-gradient(135deg,#7c3aed,#3b82f6)', border: 'none', color: 'white', padding: '11px 28px', borderRadius: 10, fontWeight: 700, cursor: shopSaving ? 'not-allowed' : 'pointer', opacity: shopSaving ? 0.7 : 1 }}>
+            {shopSaving ? 'Saving...' : 'Save Shop Profile'}
+          </button>
+        </div>
+      </div>
+
+      {/* ── Appearance ───────────────────────────────────────────────── */}
+      <div style={card}>
+        <div style={cardHead}>
+          <div style={{ fontWeight: 700, fontSize: 15, color: theme.text }}>Appearance</div>
+          <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 2 }}>Choose your interface theme</div>
+        </div>
+        <div style={{ padding: '20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          {themeOptions.map(t => (
+            <div key={t.name} onClick={() => setTheme(t.name)}
+              style={{ border: `2px solid ${themeName === t.name ? theme.accent : theme.border}`, borderRadius: 12, padding: 16, cursor: 'pointer', background: themeName === t.name ? theme.accentBg : 'transparent', transition: 'all .15s' }}>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+                {t.preview.map((c, i) => (
+                  <div key={i} style={{ width: i === 0 ? 40 : i === 1 ? 28 : 18, height: 26, borderRadius: 6, background: c, border: '1px solid rgba(128,128,128,.2)' }} />
+                ))}
+              </div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: theme.text }}>{t.label}</div>
+              <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 2 }}>{t.desc}</div>
+              {themeName === t.name && <div style={{ fontSize: 11, color: theme.accent, fontWeight: 700, marginTop: 6 }}>● Active</div>}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Account ──────────────────────────────────────────────────── */}
+      <div style={card}>
+        <div style={cardHead}>
+          <div style={{ fontWeight: 700, fontSize: 15, color: theme.text }}>Account</div>
+          <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 2 }}>Logged in as {user?.name} ({user?.email})</div>
+        </div>
+        <div style={cardBody}>
+          <div style={{ fontWeight: 600, fontSize: 13, color: theme.text, marginBottom: 14 }}>Change Password</div>
+          {pwErr && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '10px 14px', color: '#ef4444', fontSize: 13, marginBottom: 14 }}>{pwErr}</div>}
+          {pwMsg && <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 8, padding: '10px 14px', color: '#10b981', fontSize: 13, marginBottom: 14 }}>{pwMsg}</div>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {[
+              { l: 'Current Password',  k: 'currentPassword' },
+              { l: 'New Password',      k: 'newPassword' },
+              { l: 'Confirm Password',  k: 'confirmPassword' },
+            ].map(({ l, k }) => (
+              <div key={k}>
+                <label style={lbl}>{l}</label>
+                <input type="password" value={(pwForm as any)[k]}
+                  onChange={e => setPwForm(v => ({ ...v, [k]: e.target.value }))} style={inp} />
               </div>
             ))}
           </div>
-          <button onClick={saveShop} disabled={saving} style={{ marginTop: 20, background: 'linear-gradient(135deg,#7c3aed,#3b82f6)', border: 'none', color: 'white', padding: '11px 28px', borderRadius: 10, fontWeight: 700, cursor: 'pointer', opacity: saving ? 0.7 : 1 }}>
-            {saving ? 'Saving...' : 'Save Settings'}
+          <button onClick={savePassword} disabled={pwSaving}
+            style={{ marginTop: 16, background: 'linear-gradient(135deg,#7c3aed,#3b82f6)', border: 'none', color: 'white', padding: '11px 28px', borderRadius: 10, fontWeight: 700, cursor: pwSaving ? 'not-allowed' : 'pointer', opacity: pwSaving ? 0.7 : 1 }}>
+            {pwSaving ? 'Saving...' : 'Change Password'}
           </button>
         </div>
-      )}
+      </div>
 
-      {/* Account */}
-      {tab === 'account' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, padding: 24 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: theme.text, marginBottom: 16 }}>Account Info</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <div style={{ width: 52, height: 52, borderRadius: 14, background: 'linear-gradient(135deg,#7c3aed,#3b82f6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 22, color: 'white' }}>{user?.name?.[0]?.toUpperCase() || 'A'}</div>
-              <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: theme.text }}>{user?.name}</div>
-                <div style={{ fontSize: 13, color: theme.textMuted }}>{user?.email}</div>
-                <div style={{ fontSize: 11, color: '#7c3aed', marginTop: 3, fontWeight: 600 }}>{user?.role}</div>
-              </div>
-            </div>
+      {/* ── About ────────────────────────────────────────────────────── */}
+      <div style={{ ...card, marginBottom: 0 }}>
+        <div style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: theme.text }}>Shop OS</div>
+            <div style={{ fontSize: 12, color: theme.textFaint, marginTop: 2 }}>Version 1.0 · Built with Next.js 14 + Express</div>
           </div>
-
-          <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, padding: 24 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: theme.text, marginBottom: 20 }}>Change Password</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 380 }}>
-              {[{ l: 'Current Password', k: 'current' }, { l: 'New Password', k: 'newPass' }, { l: 'Confirm Password', k: 'confirm' }].map(({ l, k }) => (
-                <div key={k}>
-                  <label style={{ display: 'block', fontSize: 11, color: theme.textFaint, fontWeight: 700, textTransform: 'uppercase', marginBottom: 5 }}>{l}</label>
-                  <input type="password" value={(passForm as any)[k]} onChange={e => setPassForm(v => ({ ...v, [k]: e.target.value }))} style={inp} />
-                </div>
-              ))}
-            </div>
-            <button onClick={savePass} disabled={saving} style={{ marginTop: 20, background: 'linear-gradient(135deg,#7c3aed,#3b82f6)', border: 'none', color: 'white', padding: '11px 28px', borderRadius: 10, fontWeight: 700, cursor: 'pointer', opacity: saving ? 0.7 : 1 }}>
-              {saving ? 'Saving...' : 'Change Password'}
-            </button>
-          </div>
+          <span style={{ background: 'linear-gradient(135deg,#7c3aed,#3b82f6)', color: 'white', borderRadius: 8, padding: '4px 12px', fontSize: 11, fontWeight: 800 }}>STARTER</span>
         </div>
-      )}
-
-      {/* Appearance */}
-      {tab === 'appearance' && (
-        <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, padding: 24 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: theme.text, marginBottom: 20 }}>Appearance</div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 18px', background: theme.hover, borderRadius: 12, border: `1px solid ${theme.border}` }}>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: theme.text }}>Dark Mode</div>
-              <div style={{ fontSize: 12, color: theme.textFaint, marginTop: 3 }}>Currently using {isDark ? 'dark' : 'light'} theme</div>
-            </div>
-            <button onClick={toggle} style={{
-              width: 52, height: 28, borderRadius: 99, border: 'none', cursor: 'pointer', position: 'relative',
-              background: isDark ? '#7c3aed' : theme.border, transition: 'background 0.25s',
-            }}>
-              <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'white', position: 'absolute', top: 4, transition: 'left 0.25s', left: isDark ? 28 : 4 }} />
-            </button>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }

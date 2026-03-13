@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
 export type ThemeName = 'dark' | 'light' | 'purple' | 'ocean';
@@ -125,15 +125,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const theme = THEMES[themeName];
 
-  if (!mounted) return (
-    <div style={{ background: THEMES.dark.bg, minHeight: '100vh' }}>{children}</div>
-  );
+  if (!mounted) return <>{children}</>;
 
   return (
     <ThemeContext.Provider value={{ theme, isDark: theme.isDark, themeName, setTheme, toggleTheme }}>
-      <div style={{ background: theme.bg, color: theme.text, minHeight: '100vh' }}>
-        {children}
-      </div>
+      {children}
     </ThemeContext.Provider>
   );
 }
