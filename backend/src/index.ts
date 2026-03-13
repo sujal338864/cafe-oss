@@ -81,10 +81,10 @@ import orderRoutes from './routes/orders';
 import purchaseRoutes from './routes/purchases';
 import expenseRoutes from './routes/expenses';
 import analyticsRoutes from './routes/analytics';
-import aiRoutes from './routes/ai';
+// import aiRoutes from './routes/ai';
 import reportRoutes from './routes/reports';
-import notificationRoutes from './routes/notifications';
-import subscriptionRoutes from './routes/subscriptions';
+// import notificationRoutes from './routes/notifications';
+// import subscriptionRoutes from './routes/subscriptions';
 import userRoutes from './routes/users';
 
 // Health check
@@ -108,10 +108,10 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/purchases', purchaseRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/analytics', analyticsRoutes);
-app.use('/api/ai', aiRoutes);
+// app.use('/api/ai', aiRoutes);
 app.use('/api/reports', reportRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/subscriptions', subscriptionRoutes);
+// app.use('/api/notifications', notificationRoutes);
+// app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/users', userRoutes);
 
 // ─── ERROR HANDLING ─────────────────────────────────────────
