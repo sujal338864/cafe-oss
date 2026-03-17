@@ -37,7 +37,28 @@ export default function MenuPage() {
   const [result, setResult] = useState<{ invoiceNumber: string; tokenNumber?: string; paymentStatus: string; whatsappSent: boolean } | null>(null);
   const [noteFor, setNoteFor] = useState<string|null>(null);
 
+  const [loyaltyPoints, setLoyaltyPoints] = useState(0);
+  const [pointsToRedeem, setPointsToRedeem] = useState(0);
+
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length === 10) {
+      lookupCustomer(digits);
+    } else {
+      setLoyaltyPoints(0);
+      setPointsToRedeem(0);
+    }
+  }, [phone]);
+
+  const lookupCustomer = async (digits: string) => {
+    try {
+      const data = await get(`/api/menu/customer?phone=${digits}`);
+      if (data.loyaltyPoints) setLoyaltyPoints(data.loyaltyPoints);
+      if (data.name && !name.trim()) setName(data.name);
+    } catch (e) { console.warn('Lookup failed'); }
+  };
 
   const load = async () => {
     try {
@@ -58,7 +79,11 @@ export default function MenuPage() {
 
   const subtotal = cart.reduce((s, i) => s + i.sellingPrice * i.qty, 0);
   const tax = cart.reduce((s, i) => s + (i.sellingPrice * i.qty) * (i.taxRate / 100), 0);
+  const REDEEM_RATE = 10;
   const total = subtotal + tax;
+  const pointsDiscount = (pointsToRedeem / REDEEM_RATE) || 0;
+  const finalTotal = Math.max(0, total - pointsDiscount);
+  
   const count = cart.reduce((s, i) => s + i.qty, 0);
   const filtered = products.filter(p => (cat === 'All' || p.category?.name === cat) && p.name.toLowerCase().includes(search.toLowerCase()));
 
@@ -72,6 +97,7 @@ export default function MenuPage() {
         tableNumber: table.trim() || undefined,
         notes: notes.trim() || undefined,
         paymentMethod: pay,
+        redeemPoints: pointsToRedeem,
         items: cart.map(i => ({ productId: i.id, name: i.name, quantity: i.qty, unitPrice: i.sellingPrice, costPrice: 0, taxRate: i.taxRate, discount: 0 }))
       });
       setResult({
@@ -176,9 +202,24 @@ export default function MenuPage() {
           ))}
           <div style={{ borderTop: '1px solid '+B, marginTop: 6, paddingTop: 10 }}>
             {tax > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: M, marginBottom: 3 }}><span>Tax</span><span>{fmt(Math.round(tax))}</span></div>}
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 17, color: T }}><span>Total</span><span style={{ color: A }}>{fmt(total)}</span></div>
+            {pointsDiscount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#f59e0b', marginBottom: 3 }}><span>Points Discount</span><span>-{fmt(pointsDiscount)}</span></div>}
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 17, color: T }}><span>Total</span><span style={{ color: A }}>{fmt(finalTotal)}</span></div>
           </div>
         </div>
+
+        {/* Loyalty Redemption */}
+        {loyaltyPoints >= 100 && (
+          <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 12, padding: 12, marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#f59e0b' }}>⭐ {loyaltyPoints} Points Available</div>
+              <div style={{ fontSize: 11, color: M }}>Use points for instant discount</div>
+            </div>
+            <button onClick={() => setPointsToRedeem(pointsToRedeem > 0 ? 0 : Math.floor(loyaltyPoints / 100) * 100)} 
+              style={{ background: pointsToRedeem > 0 ? '#f59e0b' : 'transparent', border: '1px solid #f59e0b', color: pointsToRedeem > 0 ? '#fff' : '#f59e0b', borderRadius: 20, padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s' }}>
+              {pointsToRedeem > 0 ? 'Applied' : 'Redeem'}
+            </button>
+          </div>
+        )}
 
         {/* Your details */}
         <div style={{ fontSize: 11, fontWeight: 700, color: A, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 8 }}>Your Details</div>
@@ -213,7 +254,7 @@ export default function MenuPage() {
       <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, padding: '12px 18px', background: G, borderTop: '1px solid '+B }}>
         <button onClick={placeOrder} disabled={placing || !name.trim()}
           style={{ width: '100%', background: name.trim() ? 'linear-gradient(135deg,#22c55e,#16a34a)' : B, border: 'none', color: name.trim() ? 'white' : '#4b5563', padding: '14px', borderRadius: 13, fontWeight: 800, fontSize: 15, cursor: name.trim() ? 'pointer' : 'not-allowed' }}>
-          {placing ? 'Placing...' : pay === 'UPI' ? `Pay ${fmt(total)} · UPI` : `Get Token · ${fmt(total)}`}
+          {placing ? 'Placing...' : pay === 'UPI' ? `Pay ${fmt(finalTotal)} · UPI` : `Get Token · ${fmt(finalTotal)}`}
         </button>
       </div>
     </div>
