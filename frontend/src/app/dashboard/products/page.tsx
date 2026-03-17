@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
@@ -269,7 +269,7 @@ export default function ProductsPage() {
                       <td style={{ padding: '10px 12px', fontSize: 13, color: theme.textMuted }}>{fmt(p.costPrice)}</td>
                       <td style={{ padding: '10px 12px', fontWeight: 700, fontSize: 13, color: theme.text }}>{fmt(p.sellingPrice)}</td>
                       <td style={{ padding: '10px 12px', fontSize: 12, color: Number(p.taxRate) > 0 ? '#f59e0b' : theme.textFaint }}>
-                        {Number(p.taxRate) > 0 ? `${p.taxRate}%` : '}
+                        {Number(p.taxRate) > 0 ? `%` : '0%'}
                       </td>
                       <td style={{ padding: '10px 12px', fontWeight: 700, color: '#10b981' }}>{margin}%</td>
                       <td style={{ padding: '10px 12px', fontWeight: 700, color: isOut ? '#ef4444' : isLow ? '#f59e0b' : theme.text }}>
