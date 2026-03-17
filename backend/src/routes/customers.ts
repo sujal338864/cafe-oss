@@ -72,6 +72,45 @@ router.post(
   })
 );
 
+
+/**
+ * GET /api/customers/lookup?phone=9876543210
+ * Phone-first customer lookup for POS
+ */
+router.get(
+  '/lookup',
+  authenticate,
+  asyncHandler(async (req: AuthRequest, res) => {
+    const { phone } = req.query;
+    if (!phone || typeof phone !== 'string') {
+      return res.status(400).json({ error: 'phone query param required' });
+    }
+
+    // Normalize: strip non-digits, handle leading 0 or +91
+    const digits = phone.replace(/\D/g, '').replace(/^91/, '').replace(/^0/, '');
+
+    const customer = await prisma.customer.findFirst({
+      where: {
+        shopId: req.user!.shopId,
+        phone: { contains: digits }
+      },
+      include: {
+        orders: {
+          take: 1,
+          orderBy: { createdAt: 'desc' },
+          select: { createdAt: true, totalAmount: true }
+        }
+      }
+    });
+
+    if (!customer) {
+      return res.status(404).json({ found: false, error: 'Customer not found' });
+    }
+
+    res.json({ found: true, customer });
+  })
+);
+
 /**
  * GET /api/customers/:id
  */

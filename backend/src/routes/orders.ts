@@ -1,7 +1,11 @@
-﻿import { Router } from 'express';
+import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../index';
 import { authenticate, authorize, asyncHandler, validateRequest, AuthRequest } from '../middleware/auth';
+import { sendWhatsAppBill } from '../lib/whatsapp';
+
+const POINTS_PER_RUPEE = parseFloat(process.env.LOYALTY_POINTS_PER_RUPEE || '0.1'); // 1 pt per Rs.10
+const POINTS_REDEEM_RATE = parseFloat(process.env.LOYALTY_REDEEM_RATE || '10');      // 100 pts = Rs.10 off
 
 const router = Router();
 
@@ -17,6 +21,7 @@ const orderSchema = z.object({
     discount: z.number().min(0).default(0)
   })).min(1, 'At least one item is required'),
   discountAmount: z.number().min(0).default(0),
+  redeemPoints: z.number().int().min(0).default(0),
   paymentMethod: z.enum(['CASH', 'UPI', 'CARD', 'BANK_TRANSFER', 'CREDIT']),
   paymentStatus: z.enum(['PAID', 'PARTIAL', 'UNPAID']).default('PAID'),
   notes: z.string().optional()
@@ -27,7 +32,11 @@ router.post(
   authenticate,
   validateRequest(orderSchema),
   asyncHandler(async (req: AuthRequest, res) => {
-    const { customerId, items, discountAmount = 0, paymentMethod, paymentStatus, notes } = req.body;
+    const { customerId, items, discountAmount = 0, redeemPoints = 0, paymentMethod, paymentStatus, notes } = req.body;
+
+    // Points redemption → extra discount (100 pts = Rs.POINTS_REDEEM_RATE)
+    const pointsDiscount = redeemPoints > 0 ? (redeemPoints / 100) * POINTS_REDEEM_RATE : 0;
+    const totalDiscount = discountAmount + pointsDiscount;
 
     let subtotal = 0;
     let taxAmount = 0;
@@ -36,12 +45,11 @@ router.post(
       subtotal += itemSubtotal;
       taxAmount += itemSubtotal * (item.taxRate / 100);
     }
-    const totalAmount = subtotal + taxAmount - discountAmount;
+    const totalAmount = Math.max(0, subtotal + taxAmount - totalDiscount);
 
     const count = await prisma.order.count({ where: { shopId: req.user!.shopId } });
     const invoiceNumber = `INV-${String(count + 1).padStart(6, '0')}`;
 
-    // ✅ Transaction ONLY does the critical DB writes - no extra reads
     const order = await prisma.$transaction(async (tx) => {
       const newOrder = await tx.order.create({
         data: {
@@ -51,7 +59,7 @@ router.post(
           invoiceNumber,
           subtotal,
           taxAmount,
-          discountAmount,
+          discountAmount: totalDiscount,
           totalAmount,
           paidAmount: paymentStatus === 'PAID' ? totalAmount : 0,
           paymentMethod,
@@ -90,41 +98,63 @@ router.post(
         });
       }
 
-      // Update customer
+      // Update customer loyalty points
       if (customerId) {
+        const pointsEarned = Math.floor(totalAmount * POINTS_PER_RUPEE);
         await tx.customer.update({
           where: { id: customerId },
           data: {
             totalPurchases: { increment: totalAmount },
+            loyaltyPoints: { increment: pointsEarned - redeemPoints },
             ...(paymentMethod === 'CREDIT' && { outstandingBalance: { increment: totalAmount } })
-          }
+          } as any
         });
       }
 
       return newOrder;
-    }, { timeout: 15000 }); // ✅ 15 second timeout
+    }, { timeout: 15000 });
 
-    // ✅ Low stock notifications OUTSIDE transaction (non-critical)
+    // Low stock check (non-critical)
     try {
       for (const item of items) {
         const product = await prisma.product.findUnique({ where: { id: item.productId } });
         if (product && product.stock <= product.lowStockAlert) {
-          // await prisma.notification.create({
-          //   data: {
-          //     shopId: req.user!.shopId,
-          //     type: 'LOW_STOCK',
-          //     title: 'Low Stock Alert',
-          //     message: `${product.name} is running low (${product.stock} left)`,
-          //     metadata: { productId: product.id }
-          //   }
-          // });
+          // future: notify
         }
       }
     } catch (e) {
-      console.warn('Low stock notification failed (non-critical):', e);
+      console.warn('Low stock check failed (non-critical):', e);
     }
 
-    res.status(201).json(order);
+    // WhatsApp bill (non-critical)
+    try {
+      if (order.customer?.phone && paymentStatus === 'PAID') {
+        const shop = await prisma.shop.findUnique({ where: { id: req.user!.shopId }, select: { name: true } });
+        const updatedCustomer = (await prisma.customer.findUnique({ where: { id: customerId! } })) as any;
+        const pointsEarned = Math.floor(Number(order.totalAmount) * POINTS_PER_RUPEE);
+        await sendWhatsAppBill(
+          order.customer.phone,
+          {
+            invoiceNumber: order.invoiceNumber,
+            items: order.items.map((i: any) => ({ name: i.name, quantity: i.quantity, unitPrice: Number(i.unitPrice), total: Number(i.total) })),
+            subtotal: Number(order.subtotal),
+            taxAmount: Number(order.taxAmount),
+            discountAmount: Number(order.discountAmount),
+            totalAmount: Number(order.totalAmount),
+            paymentMethod: order.paymentMethod,
+            paymentStatus: order.paymentStatus,
+          },
+          shop?.name || 'Our Shop',
+          pointsEarned,
+          updatedCustomer?.loyaltyPoints
+        );
+      }
+    } catch (e) {
+      console.warn('WhatsApp bill failed (non-critical):', e);
+    }
+
+    const pointsEarned = customerId ? Math.floor(Number(order.totalAmount) * POINTS_PER_RUPEE) : 0;
+    res.status(201).json({ ...order, pointsEarned });
   })
 );
 
@@ -132,7 +162,7 @@ router.get(
   '/',
   authenticate,
   asyncHandler(async (req: AuthRequest, res) => {
-    const { page = '1', limit = '20', startDate, endDate, customerId, status } = req.query;
+    const { page = '1', limit = '20', startDate, endDate, customerId, status, paymentStatus } = req.query;
     const pageNum = Math.max(1, parseInt(page as string) || 1);
     const limitNum = Math.min(100, parseInt(limit as string) || 20);
     const skip = (pageNum - 1) * limitNum;
@@ -141,7 +171,8 @@ router.get(
       shopId: req.user!.shopId,
       ...(startDate && endDate && { createdAt: { gte: new Date(startDate as string), lte: new Date(endDate as string) } }),
       ...(customerId && { customerId: customerId as string }),
-      ...(status && { status: status as string })
+      ...(status && { status: status as string }),
+      ...(paymentStatus && { paymentStatus: paymentStatus as string }),
     };
 
     const [orders, total] = await Promise.all([
@@ -201,6 +232,107 @@ router.put(
     }, { timeout: 15000 });
 
     res.json(updated);
+  })
+);
+
+router.put(
+  '/:id/payment',
+  authenticate,
+  authorize('ADMIN', 'MANAGER'),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const { paymentStatus } = req.body;
+    if (!['PAID', 'PARTIAL', 'UNPAID'].includes(paymentStatus)) {
+      return res.status(400).json({ error: 'Invalid payment status' });
+    }
+    const order = await prisma.order.findFirst({
+      where: { id: req.params.id, shopId: req.user!.shopId },
+      include: { customer: true, items: true }
+    });
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    const updated = await prisma.order.update({
+      where: { id: req.params.id },
+      data: {
+        paymentStatus,
+        paidAmount: paymentStatus === 'PAID' ? order.totalAmount : order.paidAmount
+      },
+      include: { items: true, customer: true }
+    });
+
+    // When marking PAID, award loyalty points + send WhatsApp
+    if (paymentStatus === 'PAID' && order.paymentStatus !== 'PAID') {
+      try {
+        if (order.customerId) {
+          const pointsEarned = Math.floor(Number(order.totalAmount) * POINTS_PER_RUPEE);
+          await prisma.customer.update({
+            where: { id: order.customerId },
+            data: { loyaltyPoints: { increment: pointsEarned } } as any
+          });
+        }
+      } catch (e) { console.warn('Loyalty points update failed:', e); }
+
+      try {
+        if (order.customer?.phone) {
+          const shop = await prisma.shop.findUnique({ where: { id: req.user!.shopId }, select: { name: true } });
+          const customer = order.customerId ? (await prisma.customer.findUnique({ where: { id: order.customerId } })) as any : null;
+          const pointsEarned = Math.floor(Number(order.totalAmount) * POINTS_PER_RUPEE);
+          await sendWhatsAppBill(
+            order.customer.phone,
+            {
+              invoiceNumber: order.invoiceNumber,
+              items: order.items.map((i: any) => ({ name: i.name, quantity: i.quantity, unitPrice: Number(i.unitPrice), total: Number(i.total) })),
+              subtotal: Number(order.subtotal),
+              taxAmount: Number(order.taxAmount),
+              discountAmount: Number(order.discountAmount),
+              totalAmount: Number(order.totalAmount),
+              paymentMethod: order.paymentMethod,
+              paymentStatus: 'PAID',
+            },
+            shop?.name || 'Our Shop',
+            pointsEarned,
+            customer?.loyaltyPoints
+          );
+        }
+      } catch (e) { console.warn('WhatsApp bill on mark-paid failed:', e); }
+    }
+
+    res.json(updated);
+  })
+);
+
+// Manual WhatsApp resend — used by POS "Send on WhatsApp" button
+router.post(
+  '/:id/whatsapp',
+  authenticate,
+  asyncHandler(async (req: AuthRequest, res) => {
+    const order = await prisma.order.findFirst({
+      where: { id: req.params.id, shopId: req.user!.shopId },
+      include: { customer: true, items: true }
+    });
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (!order.customer?.phone) return res.status(400).json({ error: 'Customer has no phone number' });
+
+    const shop = await prisma.shop.findUnique({ where: { id: req.user!.shopId }, select: { name: true } });
+    const customer = order.customerId ? (await prisma.customer.findUnique({ where: { id: order.customerId } })) as any : null;
+
+    const sent = await sendWhatsAppBill(
+      order.customer.phone,
+      {
+        invoiceNumber: order.invoiceNumber,
+        items: order.items.map((i: any) => ({ name: i.name, quantity: i.quantity, unitPrice: Number(i.unitPrice), total: Number(i.total) })),
+        subtotal: Number(order.subtotal),
+        taxAmount: Number(order.taxAmount),
+        discountAmount: Number(order.discountAmount),
+        totalAmount: Number(order.totalAmount),
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
+      },
+      shop?.name || 'Our Shop',
+      undefined,
+      customer?.loyaltyPoints
+    );
+
+    res.json({ sent, phone: order.customer.phone });
   })
 );
 
