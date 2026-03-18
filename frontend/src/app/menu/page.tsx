@@ -27,16 +27,16 @@ export default function MenuPage() {
   const [cat, setCat] = useState('All');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
-  const [step, setStep] = useState<'menu'|'info'|'done'>('menu');
+  const [step, setStep] = useState<'menu' | 'info' | 'done'>('menu');
   const [shopName, setShopName] = useState('Our Menu');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [table, setTable] = useState('');
   const [notes, setNotes] = useState('');
-  const [pay, setPay] = useState<'UPI'|'CASH'>('UPI');
+  const [pay, setPay] = useState<'UPI' | 'CASH'>('UPI');
   const [placing, setPlacing] = useState(false);
   const [result, setResult] = useState<{ id?: string; invoiceNumber: string; tokenNumber?: string; paymentStatus: string; whatsappSent: boolean } | null>(null);
-  const [noteFor, setNoteFor] = useState<string|null>(null);
+  const [noteFor, setNoteFor] = useState<string | null>(null);
 
   const [loyaltyPoints, setLoyaltyPoints] = useState(0);
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
@@ -86,7 +86,7 @@ export default function MenuPage() {
   const total = subtotal + tax;
   const pointsDiscount = (pointsToRedeem / REDEEM_RATE) || 0;
   const finalTotal = Math.max(0, total - pointsDiscount);
-  
+
   const count = cart.reduce((s, i) => s + i.qty, 0);
   const filtered = products.filter(p => (cat === 'All' || p.category?.name === cat) && p.name.toLowerCase().includes(search.toLowerCase()));
 
@@ -117,7 +117,7 @@ export default function MenuPage() {
 
   const G = '#080c08'; const C = '#0f1a0f'; const B = '#1a2e1a'; const T = '#f0fdf4'; const M = '#86efac'; const A = '#22c55e';
   const inp: any = { background: C, border: '1px solid ' + B, borderRadius: 10, padding: '12px 14px', color: T, fontSize: 14, outline: 'none', width: '100%', boxSizing: 'border-box' };
-  const COLS = ['#22c55e','#3b82f6','#f59e0b','#ec4899','#8b5cf6','#06b6d4'];
+  const COLS = ['#22c55e', '#3b82f6', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4'];
 
   // ── Done screen ──────────────────────────────────────────────
   if (step === 'done' && result) {
@@ -154,13 +154,13 @@ export default function MenuPage() {
 
           {/* Order summary */}
           <div style={{ background: C, border: '1px solid ' + B, borderRadius: 14, padding: 16, marginBottom: 20 }}>
-            {cart.map((item, i) => <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: i < cart.length-1 ? '1px solid '+B : 'none', color: T, fontSize: 14 }}><span>{item.name} ×{item.qty}</span><span style={{ color: A, fontWeight: 700 }}>{fmt(item.sellingPrice * item.qty)}</span></div>)}
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: '1px solid '+B, fontWeight: 800, fontSize: 16, color: T }}><span>Total</span><span style={{ color: A }}>{fmt(total)}</span></div>
+            {cart.map((item, i) => <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: i < cart.length - 1 ? '1px solid ' + B : 'none', color: T, fontSize: 14 }}><span>{item.name} ×{item.qty}</span><span style={{ color: A, fontWeight: 700 }}>{fmt(item.sellingPrice * item.qty)}</span></div>)}
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: '1px solid ' + B, fontWeight: 800, fontSize: 16, color: T }}><span>Total</span><span style={{ color: A }}>{fmt(total)}</span></div>
             <div style={{ marginTop: 10, padding: '8px 12px', background: B, borderRadius: 8, color: M, fontSize: 13, textAlign: 'center' }}>
               {isPaid ? '📱 UPI payment confirmed' : '💵 Cash — Show token at counter'}
             </div>
           </div>
-          
+
           {result?.id && (
             <button onClick={() => window.open((process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000') + '/api/menu/order/' + result.id + '/invoice')}
               style={{ width: '100%', background: 'rgba(59,130,246,0.1)', border: '1px solid #3b82f6', color: '#60a5fa', padding: '12px', borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: 'pointer', marginBottom: 12 }}>
@@ -181,13 +181,13 @@ export default function MenuPage() {
   // ── Info / checkout step ───────────────────────────────────────
   if (step === 'info') return (
     <div style={{ minHeight: '100vh', background: G, fontFamily: 'system-ui,sans-serif', paddingBottom: 90, maxWidth: 480, margin: '0 auto', position: 'relative' }}>
-      <div style={{ padding: '14px 18px', borderBottom: '1px solid '+B, display: 'flex', alignItems: 'center', gap: 12, background: '#0a0f0a', position: 'sticky', top: 0, zIndex: 10 }}>
+      <div style={{ padding: '14px 18px', borderBottom: '1px solid ' + B, display: 'flex', alignItems: 'center', gap: 12, background: '#0a0f0a', position: 'sticky', top: 0, zIndex: 10 }}>
         <button onClick={() => setStep('menu')} style={{ background: B, border: 'none', color: M, width: 36, height: 36, borderRadius: '50%', fontSize: 20, cursor: 'pointer' }}>←</button>
         <div style={{ fontWeight: 800, fontSize: 17, color: T }}>Your Order</div>
       </div>
       <div style={{ padding: '18px 18px 0' }}>
         {/* Order summary */}
-        <div style={{ background: C, border: '1px solid '+B, borderRadius: 14, padding: 14, marginBottom: 18 }}>
+        <div style={{ background: C, border: '1px solid ' + B, borderRadius: 14, padding: 14, marginBottom: 18 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: A, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 10 }}>Summary</div>
           {cart.map((item, i) => (
             <div key={i}>
@@ -211,7 +211,7 @@ export default function MenuPage() {
               {noteFor === item.id && <input value={item.note} onChange={e => setNote(item.id, e.target.value)} placeholder="e.g. less sugar, extra hot..." style={{ ...inp, marginBottom: 6, fontSize: 12 }} />}
             </div>
           ))}
-          <div style={{ borderTop: '1px solid '+B, marginTop: 6, paddingTop: 10 }}>
+          <div style={{ borderTop: '1px solid ' + B, marginTop: 6, paddingTop: 10 }}>
             {tax > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: M, marginBottom: 3 }}><span>Tax</span><span>{fmt(Math.round(tax))}</span></div>}
             {pointsDiscount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#f59e0b', marginBottom: 3 }}><span>Points Discount</span><span>-{fmt(pointsDiscount)}</span></div>}
             <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 17, color: T }}><span>Total</span><span style={{ color: A }}>{fmt(finalTotal)}</span></div>
@@ -225,7 +225,7 @@ export default function MenuPage() {
               <div style={{ fontSize: 13, fontWeight: 700, color: '#f59e0b' }}>⭐ {loyaltyPoints} Points Available</div>
               <div style={{ fontSize: 11, color: M }}>Use points for instant discount</div>
             </div>
-            <button onClick={() => setPointsToRedeem(pointsToRedeem > 0 ? 0 : Math.floor(loyaltyPoints / 100) * 100)} 
+            <button onClick={() => setPointsToRedeem(pointsToRedeem > 0 ? 0 : Math.floor(loyaltyPoints / 100) * 100)}
               style={{ background: pointsToRedeem > 0 ? '#f59e0b' : 'transparent', border: '1px solid #f59e0b', color: pointsToRedeem > 0 ? '#fff' : '#f59e0b', borderRadius: 20, padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s' }}>
               {pointsToRedeem > 0 ? 'Applied' : 'Redeem'}
             </button>
@@ -245,7 +245,7 @@ export default function MenuPage() {
         <div style={{ fontSize: 11, fontWeight: 700, color: A, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 8 }}>How do you want to pay?</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9, marginBottom: 16 }}>
           {[
-            { v: 'UPI',  icon: '📱', l: 'Pay with UPI', s: 'GPay · PhonePe · Paytm' },
+            { v: 'UPI', icon: '📱', l: 'Pay with UPI', s: 'GPay · PhonePe · Paytm' },
             { v: 'CASH', icon: '💵', l: 'Pay at Counter', s: 'Cash when you collect' },
           ].map(m => (
             <button key={m.v} onClick={() => setPay(m.v as any)}
@@ -262,7 +262,7 @@ export default function MenuPage() {
           ))}
         </div>
       </div>
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, maxWidth: 480, margin: '0 auto', padding: '12px 18px', background: G, borderTop: '1px solid '+B, boxSizing: 'border-box' }}>
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, maxWidth: 480, margin: '0 auto', padding: '12px 18px', background: G, borderTop: '1px solid ' + B, boxSizing: 'border-box' }}>
         <button onClick={placeOrder} disabled={placing || !name.trim()}
           style={{ width: '100%', background: name.trim() ? 'linear-gradient(135deg,#22c55e,#16a34a)' : B, border: 'none', color: name.trim() ? 'white' : '#4b5563', padding: '14px', borderRadius: 13, fontWeight: 800, fontSize: 15, cursor: name.trim() ? 'pointer' : 'not-allowed' }}>
           {placing ? 'Placing...' : pay === 'UPI' ? `Pay ${fmt(finalTotal)} · UPI` : `Get Token · ${fmt(finalTotal)}`}
@@ -274,7 +274,7 @@ export default function MenuPage() {
   // ── Menu browsing ─────────────────────────────────────────────
   return (
     <div style={{ minHeight: '100vh', background: G, fontFamily: 'system-ui,sans-serif', paddingBottom: count > 0 ? 88 : 20, maxWidth: 480, margin: '0 auto', position: 'relative' }}>
-      <div style={{ background: 'linear-gradient(180deg,#0a1a0a,#080c08)', padding: '24px 18px 14px', textAlign: 'center', borderBottom: '1px solid '+B }}>
+      <div style={{ background: 'linear-gradient(180deg,#0a1a0a,#080c08)', padding: '24px 18px 14px', textAlign: 'center', borderBottom: '1px solid ' + B }}>
         <div style={{ width: 50, height: 50, borderRadius: 13, background: 'linear-gradient(135deg,#22c55e,#16a34a)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px', fontSize: 24 }}>☕</div>
         <h1 style={{ fontSize: 22, fontWeight: 800, color: T, margin: '0 0 3px' }}>{shopName}</h1>
         <p style={{ fontSize: 12, color: M, margin: '0 0 12px' }}>Scan · Order · Enjoy</p>
@@ -290,35 +290,35 @@ export default function MenuPage() {
       )}
       <div style={{ padding: '4px 12px' }}>
         {loading ? <div style={{ textAlign: 'center', padding: 60, color: A }}>Loading menu...</div> :
-         filtered.length === 0 ? <div style={{ textAlign: 'center', padding: 60, color: '#4b5563' }}>No items found</div> : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10 }}>
-            {filtered.map((p, idx) => {
-              const inCart = cart.find(i => i.id === p.id);
-              const col = COLS[idx % COLS.length];
-              return (
-                <div key={p.id} style={{ background: C, border: '1px solid ' + (inCart ? col+'66' : B), borderRadius: 14, overflow: 'hidden' }}>
-                  <div style={{ width: '100%', aspectRatio: '4/3' as any, background: col+'22', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                    {p.imageUrl ? <img src={p.imageUrl} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' as const }} /> : <span style={{ fontSize: 38, fontWeight: 900, color: col }}>{p.name[0].toUpperCase()}</span>}
-                  </div>
-                  <div style={{ padding: '10px 11px 12px' }}>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: T, marginBottom: 7, lineHeight: 1.3 }}>{p.name}</div>
-                    {p.description && <div style={{ fontSize: 11, color: '#4b5563', marginBottom: 7, lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' } as any}>{p.description}</div>}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontWeight: 800, fontSize: 14, color: col }}>{fmt(p.sellingPrice)}</span>
-                      {inCart ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: B, borderRadius: 20, padding: '4px 8px' }}>
-                          <button onClick={() => dec(p.id)} style={{ background: 'none', border: 'none', color: col, fontSize: 16, cursor: 'pointer', lineHeight: 1 }}>−</button>
-                          <span style={{ color: T, fontWeight: 800, fontSize: 13, minWidth: 14, textAlign: 'center' as const }}>{inCart.qty}</span>
-                          <button onClick={() => inc(p.id)} style={{ background: 'none', border: 'none', color: col, fontSize: 16, cursor: 'pointer', lineHeight: 1 }}>+</button>
-                        </div>
-                      ) : <button onClick={() => addToCart(p)} style={{ background: col, border: 'none', color: 'white', width: 28, height: 28, borderRadius: '50%', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>}
+          filtered.length === 0 ? <div style={{ textAlign: 'center', padding: 60, color: '#4b5563' }}>No items found</div> : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10 }}>
+              {filtered.map((p, idx) => {
+                const inCart = cart.find(i => i.id === p.id);
+                const col = COLS[idx % COLS.length];
+                return (
+                  <div key={p.id} style={{ background: C, border: '1px solid ' + (inCart ? col + '66' : B), borderRadius: 14, overflow: 'hidden' }}>
+                    <div style={{ width: '100%', aspectRatio: '4/3' as any, background: col + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                      {p.imageUrl ? <img src={p.imageUrl} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' as const }} /> : <span style={{ fontSize: 38, fontWeight: 900, color: col }}>{p.name[0].toUpperCase()}</span>}
+                    </div>
+                    <div style={{ padding: '10px 11px 12px' }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: T, marginBottom: 7, lineHeight: 1.3 }}>{p.name}</div>
+                      {p.description && <div style={{ fontSize: 11, color: '#4b5563', marginBottom: 7, lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' } as any}>{p.description}</div>}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontWeight: 800, fontSize: 14, color: col }}>{fmt(p.sellingPrice)}</span>
+                        {inCart ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: B, borderRadius: 20, padding: '4px 8px' }}>
+                            <button onClick={() => dec(p.id)} style={{ background: 'none', border: 'none', color: col, fontSize: 16, cursor: 'pointer', lineHeight: 1 }}>−</button>
+                            <span style={{ color: T, fontWeight: 800, fontSize: 13, minWidth: 14, textAlign: 'center' as const }}>{inCart.qty}</span>
+                            <button onClick={() => inc(p.id)} style={{ background: 'none', border: 'none', color: col, fontSize: 16, cursor: 'pointer', lineHeight: 1 }}>+</button>
+                          </div>
+                        ) : <button onClick={() => addToCart(p)} style={{ background: col, border: 'none', color: 'white', width: 28, height: 28, borderRadius: '50%', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>}
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          )}
       </div>
       {count > 0 && (
         <div style={{ position: 'fixed', bottom: 14, left: 0, right: 0, maxWidth: 480, margin: '0 auto', padding: '0 14px', zIndex: 50, boxSizing: 'border-box' }}>
