@@ -199,7 +199,7 @@ export default function OrderPage() {
 
   // ── Info / checkout step ───────────────────────────────────────
   if (step === 'info') return (
-    <div style={{ minHeight: '100vh', background: G, fontFamily: 'system-ui,sans-serif', paddingBottom: 90 }}>
+    <div style={{ minHeight: '100vh', background: G, fontFamily: 'system-ui,sans-serif', paddingBottom: 90, maxWidth: 480, margin: '0 auto', position: 'relative' }}>
       <div style={{ padding: '14px 18px', borderBottom: '1px solid '+B, display: 'flex', alignItems: 'center', gap: 12, background: '#0a0f0a', position: 'sticky', top: 0, zIndex: 10 }}>
         <button onClick={() => setStep('menu')} style={{ background: B, border: 'none', color: M, width: 36, height: 36, borderRadius: '50%', fontSize: 20, cursor: 'pointer' }}>←</button>
         <div style={{ fontWeight: 800, fontSize: 17, color: T }}>Your Order</div>
@@ -281,7 +281,7 @@ export default function OrderPage() {
           ))}
         </div>
       </div>
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, padding: '12px 18px', background: G, borderTop: '1px solid '+B }}>
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, maxWidth: 480, margin: '0 auto', padding: '12px 18px', background: G, borderTop: '1px solid '+B, boxSizing: 'border-box' }}>
         <button onClick={placeOrder} disabled={placing || !name.trim()}
           style={{ width: '100%', background: name.trim() ? 'linear-gradient(135deg,#22c55e,#16a34a)' : B, border: 'none', color: name.trim() ? 'white' : '#4b5563', padding: '14px', borderRadius: 13, fontWeight: 800, fontSize: 15, cursor: name.trim() ? 'pointer' : 'not-allowed' }}>
           {placing ? 'Placing...' : pay === 'UPI' ? `Pay ${fmt(finalTotal)} · UPI` : `Get Token · ${fmt(finalTotal)}`}
@@ -327,7 +327,7 @@ export default function OrderPage() {
 
   // ── Menu browsing ─────────────────────────────────────────────
   return (
-    <div style={{ minHeight: '100vh', background: G, fontFamily: 'system-ui,sans-serif', paddingBottom: count > 0 ? 88 : 20, position: 'relative' }}>
+    <div style={{ minHeight: '100vh', background: G, fontFamily: 'system-ui,sans-serif', paddingBottom: count > 0 ? 88 : 20, maxWidth: 480, margin: '0 auto', position: 'relative' }}>
       
       <button onClick={loadHistory} style={{ position: 'absolute', top: 16, right: 16, background: B, border: '1px solid ' + B, color: M, padding: '6px 12px', borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: 'pointer', zIndex: 10 }}>
         {loadingHistory ? 'Loading...' : '🕰️ My Orders'}
@@ -380,7 +380,7 @@ export default function OrderPage() {
         )}
       </div>
       {count > 0 && (
-        <div style={{ position: 'fixed', bottom: 14, left: 14, right: 14, zIndex: 50 }}>
+        <div style={{ position: 'fixed', bottom: 14, left: 0, right: 0, maxWidth: 480, margin: '0 auto', padding: '0 14px', zIndex: 50, boxSizing: 'border-box' }}>
           <button onClick={() => setStep('info')} style={{ width: '100%', background: 'linear-gradient(135deg,#22c55e,#16a34a)', border: 'none', color: 'white', padding: '14px 18px', borderRadius: 14, fontWeight: 800, fontSize: 14, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 6px 24px rgba(34,197,94,0.4)' }}>
             <span style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 20, padding: '2px 9px', fontSize: 12 }}>{count} items</span>
             <span>View Order</span>
