@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Menu QR Code</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      background: #f4f6f8;
+      color: #1a1a1a;
+    }
+    .card {
+      background: white;
+      padding: 40px;
+      border-radius: 20px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+      text-align: center;
+      max-width: 320px;
+      width: 100%;
+    }
+    h1 {
+      font-size: 20px;
+      font-weight: 800;
+      margin-bottom: 4px;
+      color: #111827;
+    }
+    p {
+      font-size: 13px;
+      color: #6b7280;
+      margin-bottom: 24px;
+    }
+    .qr-container {
+      background: #f9fafb;
+      padding: 16px;
+      border-radius: 16px;
+      display: inline-block;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+      margin-bottom: 20px;
+    }
+    img {
+      display: block;
+      width: 240px;
+      height: 240px;
+    }
+    .url {
+      font-family: monospace;
+      font-size: 11px;
+      color: #9ca3af;
+      word-break: break-all;
+    }
+    .footer {
+      margin-top: 24px;
+      font-size: 12px;
+      color: #10b981;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h1>Our Live Menu</h1>
+    <p>Scan to order directly from your table</p>
+    
+    <div class="qr-container">
+      <!-- Using QR Server API to generate a high-quality QR for the deployed site -->
+      <img src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=https://cafeoss.netlify.app/menu" alt="QR Code">
+    </div>
+
+    <div class="url">https://cafeoss.netlify.app/menu</div>
+    <div class="footer">☕ Welcome to Cafe OSS!</div>
+  </div>
+
+</body>
+</html>

@@ -201,6 +201,17 @@ router.get('/orders', asyncHandler(async (req, res) => {
   res.json({ orders });
 }));
 
+// Public: check order status for scanner client polling
+router.get('/order/:id/status', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const order = await prisma.order.findUnique({
+    where: { id },
+    select: { paymentStatus: true, status: true }
+  });
+  if (!order) return res.status(404).json({ error: 'Order not found' });
+  res.json({ paymentStatus: order.paymentStatus, status: order.status });
+}));
+
 // GET /api/menu/order/:id/invoice
 router.get('/order/:id/invoice', asyncHandler(async (req, res) => {
   const { id } = req.params;

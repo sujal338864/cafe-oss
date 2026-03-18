@@ -53,6 +53,20 @@ export default function MenuPage() {
     }
   }, [phone]);
 
+  // Poll for order payment status updates
+  useEffect(() => {
+    if (step !== 'done' || !result?.id || result.paymentStatus === 'PAID') return;
+    const interval = setInterval(async () => {
+      try {
+        const d = await get(`/api/menu/order/${result.id}/status`);
+        if (d.paymentStatus === 'PAID') {
+          setResult(r => r ? { ...r, paymentStatus: 'PAID' } : r);
+        }
+      } catch (e) { /* console.warn('Polling failed'); */ }
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [step, result?.id, result?.paymentStatus]);
+
   const lookupCustomer = async (digits: string) => {
     try {
       const data = await get(`/api/menu/customer?phone=${digits}`);
@@ -162,7 +176,7 @@ export default function MenuPage() {
             </div>
           </div>
           
-          {result?.id && pay === 'CASH' && (
+          {result?.id && result?.paymentStatus === 'PAID' && (
             <button onClick={() => window.open((process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000') + '/api/menu/order/' + result.id + '/invoice')}
               style={{ width: '100%', background: 'rgba(59,130,246,0.1)', border: '1px solid #3b82f6', color: '#60a5fa', padding: '12px', borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: 'pointer', marginBottom: 12 }}>
               📄 Download Invoice (PDF)
