@@ -162,7 +162,7 @@ export default function MenuPage() {
             </div>
           </div>
           
-          {result?.id && (
+          {result?.id && pay === 'CASH' && (
             <button onClick={() => window.open((process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000') + '/api/menu/order/' + result.id + '/invoice')}
               style={{ width: '100%', background: 'rgba(59,130,246,0.1)', border: '1px solid #3b82f6', color: '#60a5fa', padding: '12px', borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: 'pointer', marginBottom: 12 }}>
               📄 Download Invoice (PDF)

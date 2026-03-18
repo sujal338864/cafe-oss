@@ -45,6 +45,10 @@ export default function OrdersPage() {
     try {
       await api.put(`/api/orders/${id}/payment`, { paymentStatus: 'PAID' });
       setOrders(prev => prev.map(o => o.id === id ? { ...o, paymentStatus: 'PAID' } : o));
+      
+      // Auto-open invoice for printing
+      const url = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000') + `/api/menu/order/${id}/invoice`;
+      window.open(url, '_blank');
     } catch (e: any) {
       alert(e.response?.data?.error || 'Failed to update');
     } finally { setUpdating(null); }

@@ -200,6 +200,9 @@ export default function POSPage() {
     try {
       await api.put(`/api/orders/${orderId}/payment`, { paymentStatus: 'PAID' });
       loadPending();
+      // Auto-open invoice for printing
+      const url = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000') + `/api/menu/order/${orderId}/invoice`;
+      window.open(url, '_blank');
     } catch (e: any) {
       alert(e.response?.data?.error || 'Failed to mark paid');
     } finally { setMarkingPaid(null); }
