@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+// Trigger netlify
 
 type Product = { id: string; name: string; sellingPrice: number; description?: string; imageUrl?: string; category?: { name: string }; stock: number; taxRate: number; };
 type CartItem = Product & { qty: number; note: string };
