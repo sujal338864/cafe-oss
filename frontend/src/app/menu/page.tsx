@@ -1,6 +1,5 @@
 'use client';
 import { useEffect, useState } from 'react';
-// Trigger netlify
 
 type Product = { id: string; name: string; sellingPrice: number; description?: string; imageUrl?: string; category?: { name: string }; stock: number; taxRate: number; };
 type CartItem = Product & { qty: number; note: string };
@@ -27,20 +26,19 @@ export default function MenuPage() {
   const [cat, setCat] = useState('All');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
-  const [step, setStep] = useState<'menu' | 'info' | 'done'>('menu');
+  const [step, setStep] = useState<'menu'|'info'|'done'>('menu');
   const [shopName, setShopName] = useState('Our Menu');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [table, setTable] = useState('');
   const [notes, setNotes] = useState('');
-  const [pay, setPay] = useState<'UPI' | 'CASH'>('UPI');
+  const [pay, setPay] = useState<'UPI'|'CASH'>('UPI');
   const [placing, setPlacing] = useState(false);
   const [result, setResult] = useState<{ id?: string; invoiceNumber: string; tokenNumber?: string; paymentStatus: string; whatsappSent: boolean } | null>(null);
-  const [noteFor, setNoteFor] = useState<string | null>(null);
+  const [noteFor, setNoteFor] = useState<string|null>(null);
 
   const [loyaltyPoints, setLoyaltyPoints] = useState(0);
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
-
 
   useEffect(() => { load(); }, []);
 
@@ -61,7 +59,6 @@ export default function MenuPage() {
       if (data.name && !name.trim()) setName(data.name);
     } catch (e) { console.warn('Lookup failed'); }
   };
-
 
   const load = async () => {
     try {
@@ -86,7 +83,7 @@ export default function MenuPage() {
   const total = subtotal + tax;
   const pointsDiscount = (pointsToRedeem / REDEEM_RATE) || 0;
   const finalTotal = Math.max(0, total - pointsDiscount);
-
+  
   const count = cart.reduce((s, i) => s + i.qty, 0);
   const filtered = products.filter(p => (cat === 'All' || p.category?.name === cat) && p.name.toLowerCase().includes(search.toLowerCase()));
 
@@ -115,64 +112,93 @@ export default function MenuPage() {
     finally { setPlacing(false); }
   };
 
-  const G = '#080c08'; const C = '#0f1a0f'; const B = '#1a2e1a'; const T = '#f0fdf4'; const M = '#86efac'; const A = '#22c55e';
-  const inp: any = { background: C, border: '1px solid ' + B, borderRadius: 10, padding: '12px 14px', color: T, fontSize: 14, outline: 'none', width: '100%', boxSizing: 'border-box' };
-  const COLS = ['#22c55e', '#3b82f6', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4'];
+  // ── DESIGN SYSTEM (Light Theme) ──────────────────────────────────────────────
+  const BG = '#f9fafb';
+  const CARD = '#ffffff';
+  const BORDER = '#f3f4f6';
+  const TEXT_MAIN = '#111827';
+  const TEXT_MUTED = '#6b7280';
+  const ACCENT = '#10b981';
+  const ACCENT_BG = '#ecfdf5';
+  
+  const inp: any = { background: BG, border: 'none', borderRadius: 16, padding: '16px', color: TEXT_MAIN, fontSize: 15, outline: 'none', width: '100%', boxSizing: 'border-box' as const };
+  const COLS = ['#10b981','#3b82f6','#f59e0b','#ec4899','#8b5cf6','#06b6d4'];
 
   // ── Done screen ──────────────────────────────────────────────
   if (step === 'done' && result) {
     const isPaid = result.paymentStatus === 'PAID';
     const token = result.tokenNumber?.replace(/^0+/, '') || result.invoiceNumber?.replace('ONL-', '').replace(/^0+/, '') || '?';
+    
     return (
-      <div style={{ minHeight: '100vh', background: G, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: 'system-ui,sans-serif' }}>
-        <div style={{ textAlign: 'center', maxWidth: 360, width: '100%' }}>
+      <div style={{ minHeight: '100vh', background: BG, padding: '40px 20px', fontFamily: 'system-ui,sans-serif', maxWidth: 480, margin: '0 auto', display: 'flex', flexDirection: 'column' as const, justifyContent: 'center' }}>
+        
+        {/* Top Section */}
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
           {isPaid ? (
-            <>
-              <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'linear-gradient(135deg,#22c55e,#16a34a)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', fontSize: 38 }}>✓</div>
-              <h1 style={{ fontSize: 26, fontWeight: 800, color: T, marginBottom: 6 }}>Order Confirmed!</h1>
-              <p style={{ color: M, marginBottom: 4 }}>Thank you, <b style={{ color: T }}>{name}</b>!</p>
-              {result.invoiceNumber && <p style={{ color: A, fontSize: 13, marginBottom: 16 }}>#{result.invoiceNumber}</p>}
-              {result.whatsappSent && phone && (
-                <div style={{ background: '#064e3b', border: '1px solid #065f46', borderRadius: 12, padding: '10px 16px', marginBottom: 20, fontSize: 13, color: '#6ee7b7' }}>
-                  📲 Bill sent to WhatsApp: <b style={{ color: T }}>{phone}</b>
-                </div>
-              )}
-            </>
+            <div style={{ width: 80, height: 80, borderRadius: '50%', background: ACCENT_BG, color: ACCENT, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', fontSize: 32, boxShadow: '0 8px 16px rgba(16,185,129,0.1)' }}>✓</div>
           ) : (
-            <>
-              <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'linear-gradient(135deg,#f59e0b,#d97706)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', fontSize: 38 }}>🎫</div>
-              <h1 style={{ fontSize: 26, fontWeight: 800, color: T, marginBottom: 6 }}>Order Placed!</h1>
-              <p style={{ color: M, marginBottom: 16 }}>Please pay at the counter</p>
-              {/* Token card */}
-              <div style={{ background: 'linear-gradient(135deg,#f59e0b22,#d9770622)', border: '2px solid #f59e0b', borderRadius: 18, padding: '24px 16px', marginBottom: 20 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#f59e0b', textTransform: 'uppercase' as const, letterSpacing: 2, marginBottom: 8 }}>Your Token Number</div>
-                <div style={{ fontSize: 64, fontWeight: 900, color: '#fbbf24', lineHeight: 1, marginBottom: 8 }}>#{token}</div>
-                <div style={{ fontSize: 13, color: M }}>Show this number at the counter to collect your order</div>
-              </div>
-            </>
+            <div style={{ width: 80, height: 80, borderRadius: '50%', background: '#fffbeb', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', fontSize: 32, boxShadow: '0 8px 16px rgba(217,119,6,0.1)' }}>🎫</div>
           )}
+          
+          <h1 style={{ fontSize: 24, fontWeight: 800, color: TEXT_MAIN, margin: '0 0 8px' }}>
+            {isPaid ? 'Order Placed Successfully' : 'Please Pay at Counter'}
+          </h1>
+          <p style={{ color: TEXT_MUTED, fontSize: 15, margin: 0 }}>
+            {isPaid ? 'Your food is being prepared' : `Your token number is #${token}`}
+          </p>
+        </div>
 
-          {/* Order summary */}
-          <div style={{ background: C, border: '1px solid ' + B, borderRadius: 14, padding: 16, marginBottom: 20 }}>
-            {cart.map((item, i) => <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: i < cart.length - 1 ? '1px solid ' + B : 'none', color: T, fontSize: 14 }}><span>{item.name} ×{item.qty}</span><span style={{ color: A, fontWeight: 700 }}>{fmt(item.sellingPrice * item.qty)}</span></div>)}
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: '1px solid ' + B, fontWeight: 800, fontSize: 16, color: T }}><span>Total</span><span style={{ color: A }}>{fmt(total)}</span></div>
-            <div style={{ marginTop: 10, padding: '8px 12px', background: B, borderRadius: 8, color: M, fontSize: 13, textAlign: 'center' }}>
-              {isPaid ? '📱 UPI payment confirmed' : '💵 Cash — Show token at counter'}
-            </div>
+        {/* Order Details Card */}
+        <div style={{ background: CARD, borderRadius: 24, padding: 24, boxShadow: '0 4px 30px rgba(0,0,0,0.03)', marginBottom: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, paddingBottom: 16, borderBottom: '1px dashed ' + BORDER }}>
+            <span style={{ color: TEXT_MUTED, fontSize: 12, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: 1 }}>Order ID</span>
+            <span style={{ color: TEXT_MAIN, fontSize: 14, fontWeight: 700 }}>#{result.invoiceNumber}</span>
           </div>
 
+          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 14 }}>
+            {cart.map((item, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <span style={{ color: TEXT_MAIN, fontWeight: 700 }}>{item.qty}×</span>
+                  <span style={{ color: TEXT_MUTED, fontWeight: 500 }}>{item.name}</span>
+                </div>
+                <span style={{ color: TEXT_MAIN, fontWeight: 700 }}>{fmt(item.sellingPrice * item.qty)}</span>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ margin: '20px 0', borderBottom: '1px solid ' + BORDER }} />
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ color: TEXT_MAIN, fontWeight: 700, fontSize: 16 }}>Total Amount</span>
+            <span style={{ color: ACCENT, fontWeight: 800, fontSize: 18 }}>{fmt(finalTotal)}</span>
+          </div>
+          
+          {table && (
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid ' + BORDER, textAlign: 'center' as const, color: TEXT_MUTED, fontSize: 14, fontWeight: 600 }}>
+              🪑 Delivering to Table {table}
+            </div>
+          )}
+        </div>
+
+        {/* Action Buttons */}
+        <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 12 }}>
           {result?.id && (
             <button onClick={() => window.open((process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000') + '/api/menu/order/' + result.id + '/invoice')}
-              style={{ width: '100%', background: 'rgba(59,130,246,0.1)', border: '1px solid #3b82f6', color: '#60a5fa', padding: '12px', borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: 'pointer', marginBottom: 12 }}>
+              style={{ background: TEXT_MAIN, color: 'white', border: 'none', padding: 16, borderRadius: 16, fontWeight: 700, fontSize: 15, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
               📄 Download Invoice (PDF)
             </button>
           )}
-
-          {table && <p style={{ color: M, fontSize: 14, marginBottom: 16 }}>🪑 Table <b style={{ color: T }}>{table}</b></p>}
+          
           <button onClick={() => { setCart([]); setStep('menu'); setName(''); setPhone(''); setTable(''); setNotes(''); setResult(null); setPointsToRedeem(0); }}
-            style={{ width: '100%', background: 'linear-gradient(135deg,#22c55e,#16a34a)', border: 'none', color: 'white', padding: '13px', borderRadius: 12, fontWeight: 800, fontSize: 15, cursor: 'pointer' }}>
+            style={{ background: CARD, color: TEXT_MAIN, border: 'none', padding: 16, borderRadius: 16, fontWeight: 700, fontSize: 15, cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
             Order More
           </button>
+        </div>
+
+        {/* Bottom Note */}
+        <div style={{ textAlign: 'center', marginTop: 32 }}>
+          <p style={{ color: TEXT_MUTED, fontSize: 13, fontWeight: 500 }}>Thank you for ordering ❤️</p>
         </div>
       </div>
     );
@@ -180,92 +206,100 @@ export default function MenuPage() {
 
   // ── Info / checkout step ───────────────────────────────────────
   if (step === 'info') return (
-    <div style={{ minHeight: '100vh', background: G, fontFamily: 'system-ui,sans-serif', paddingBottom: 90, maxWidth: 480, margin: '0 auto', position: 'relative' }}>
-      <div style={{ padding: '14px 18px', borderBottom: '1px solid ' + B, display: 'flex', alignItems: 'center', gap: 12, background: '#0a0f0a', position: 'sticky', top: 0, zIndex: 10 }}>
-        <button onClick={() => setStep('menu')} style={{ background: B, border: 'none', color: M, width: 36, height: 36, borderRadius: '50%', fontSize: 20, cursor: 'pointer' }}>←</button>
-        <div style={{ fontWeight: 800, fontSize: 17, color: T }}>Your Order</div>
+    <div style={{ minHeight: '100vh', background: BG, fontFamily: 'system-ui,sans-serif', paddingBottom: 110, maxWidth: 480, margin: '0 auto', position: 'relative' }}>
+      
+      {/* Header */}
+      <div style={{ padding: '20px', background: BG, display: 'flex', alignItems: 'center', gap: 16, position: 'sticky', top: 0, zIndex: 10 }}>
+        <button onClick={() => setStep('menu')} style={{ background: CARD, border: 'none', width: 44, height: 44, borderRadius: 22, fontSize: 20, cursor: 'pointer', color: TEXT_MAIN, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>←</button>
+        <div style={{ fontWeight: 800, fontSize: 20, color: TEXT_MAIN }}>Checkout</div>
       </div>
-      <div style={{ padding: '18px 18px 0' }}>
+
+      <div style={{ padding: '0 20px' }}>
+        
         {/* Order summary */}
-        <div style={{ background: C, border: '1px solid ' + B, borderRadius: 14, padding: 14, marginBottom: 18 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: A, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 10 }}>Summary</div>
+        <div style={{ background: CARD, borderRadius: 24, padding: 20, marginBottom: 24, boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT_MUTED, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 16 }}>Your Order</div>
+          
           {cart.map((item, i) => (
-            <div key={i}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0' }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: T }}>{item.name}</div>
-                  {item.note && <div style={{ fontSize: 11, color: M }}>📝 {item.note}</div>}
+            <div key={i} style={{ marginBottom: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ flex: 1, paddingRight: 16 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: TEXT_MAIN, marginBottom: 4 }}>{item.name}</div>
+                  <div style={{ color: ACCENT, fontWeight: 700, fontSize: 14 }}>{fmt(item.sellingPrice * item.qty)}</div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: B, borderRadius: 20, padding: '4px 9px' }}>
-                    <button onClick={() => dec(item.id)} style={{ background: 'none', border: 'none', color: A, fontSize: 17, cursor: 'pointer', lineHeight: 1 }}>−</button>
-                    <span style={{ color: T, fontWeight: 700, minWidth: 14, textAlign: 'center' as const }}>{item.qty}</span>
-                    <button onClick={() => inc(item.id)} style={{ background: 'none', border: 'none', color: A, fontSize: 17, cursor: 'pointer', lineHeight: 1 }}>+</button>
-                  </div>
-                  <span style={{ color: A, fontWeight: 700, minWidth: 60, textAlign: 'right' as const, fontSize: 13 }}>{fmt(item.sellingPrice * item.qty)}</span>
+                
+                {/* Minimal Counter */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: BG, borderRadius: 24, padding: '6px 12px' }}>
+                  <button onClick={() => dec(item.id)} style={{ background: 'none', border: 'none', color: TEXT_MAIN, fontSize: 18, cursor: 'pointer', lineHeight: 1, padding: 0 }}>−</button>
+                  <span style={{ color: TEXT_MAIN, fontWeight: 800, minWidth: 16, textAlign: 'center' as const, fontSize: 14 }}>{item.qty}</span>
+                  <button onClick={() => inc(item.id)} style={{ background: 'none', border: 'none', color: TEXT_MAIN, fontSize: 18, cursor: 'pointer', lineHeight: 1, padding: 0 }}>+</button>
                 </div>
               </div>
-              <button onClick={() => setNoteFor(noteFor === item.id ? null : item.id)} style={{ background: 'none', border: 'none', color: A, fontSize: 11, cursor: 'pointer', opacity: 0.7, padding: '0 0 5px' }}>
-                {noteFor === item.id ? '▲ Hide note' : '+ Add note (less spice, etc.)'}
-              </button>
-              {noteFor === item.id && <input value={item.note} onChange={e => setNote(item.id, e.target.value)} placeholder="e.g. less sugar, extra hot..." style={{ ...inp, marginBottom: 6, fontSize: 12 }} />}
+
+              {/* Note input */}
+              <div style={{ marginTop: 8 }}>
+                <button onClick={() => setNoteFor(noteFor === item.id ? null : item.id)} style={{ background: 'none', border: 'none', color: TEXT_MUTED, fontSize: 12, cursor: 'pointer', padding: 0, fontWeight: 600 }}>
+                  {noteFor === item.id ? '▲ Hide note' : '+ Add note'}
+                </button>
+                {noteFor === item.id && <input value={item.note} onChange={e => setNote(item.id, e.target.value)} placeholder="e.g. less spice, extra hot..." style={{ ...inp, marginTop: 8, padding: '12px 16px', fontSize: 13 }} />}
+              </div>
             </div>
           ))}
-          <div style={{ borderTop: '1px solid ' + B, marginTop: 6, paddingTop: 10 }}>
-            {tax > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: M, marginBottom: 3 }}><span>Tax</span><span>{fmt(Math.round(tax))}</span></div>}
-            {pointsDiscount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#f59e0b', marginBottom: 3 }}><span>Points Discount</span><span>-{fmt(pointsDiscount)}</span></div>}
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 17, color: T }}><span>Total</span><span style={{ color: A }}>{fmt(finalTotal)}</span></div>
+
+          <div style={{ borderTop: '1px solid ' + BORDER, marginTop: 16, paddingTop: 16 }}>
+            {tax > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: TEXT_MUTED, marginBottom: 8, fontWeight: 500 }}><span>Taxes</span><span>{fmt(Math.round(tax))}</span></div>}
+            {pointsDiscount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: '#f59e0b', marginBottom: 8, fontWeight: 600 }}><span>Points Discount</span><span>-{fmt(pointsDiscount)}</span></div>}
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 18, color: TEXT_MAIN, marginTop: 4 }}><span>Total</span><span>{fmt(finalTotal)}</span></div>
           </div>
         </div>
 
         {/* Loyalty Redemption */}
         {loyaltyPoints >= 100 && (
-          <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 12, padding: 12, marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ background: '#fffbeb', border: 'none', borderRadius: 20, padding: 16, marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 4px 12px rgba(245,158,11,0.05)' }}>
             <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#f59e0b' }}>⭐ {loyaltyPoints} Points Available</div>
-              <div style={{ fontSize: 11, color: M }}>Use points for instant discount</div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: '#d97706', marginBottom: 4 }}>⭐ {loyaltyPoints} Points Available</div>
+              <div style={{ fontSize: 12, color: '#b45309', fontWeight: 500 }}>Use points for instant discount</div>
             </div>
-            <button onClick={() => setPointsToRedeem(pointsToRedeem > 0 ? 0 : Math.floor(loyaltyPoints / 100) * 100)}
-              style={{ background: pointsToRedeem > 0 ? '#f59e0b' : 'transparent', border: '1px solid #f59e0b', color: pointsToRedeem > 0 ? '#fff' : '#f59e0b', borderRadius: 20, padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s' }}>
+            <button onClick={() => setPointsToRedeem(pointsToRedeem > 0 ? 0 : Math.floor(loyaltyPoints / 100) * 100)} 
+              style={{ background: pointsToRedeem > 0 ? '#f59e0b' : CARD, color: pointsToRedeem > 0 ? '#fff' : '#d97706', border: 'none', borderRadius: 14, padding: '10px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
               {pointsToRedeem > 0 ? 'Applied' : 'Redeem'}
             </button>
           </div>
         )}
 
         {/* Your details */}
-        <div style={{ fontSize: 11, fontWeight: 700, color: A, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 8 }}>Your Details</div>
-        <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 9, marginBottom: 16 }}>
-          <input value={name} onChange={e => setName(e.target.value)} placeholder="Your name *" style={inp} />
-          <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="📱 Mobile (get bill on WhatsApp)" type="tel" style={inp} />
-          <input value={table} onChange={e => setTable(e.target.value)} placeholder="Table number (optional)" style={inp} />
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Special requests..." rows={2} style={{ ...inp, resize: 'none' as const, fontFamily: 'inherit' }} />
+        <div style={{ fontSize: 12, fontWeight: 700, color: TEXT_MUTED, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 12, marginLeft: 4 }}>Details</div>
+        <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 12, marginBottom: 24 }}>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="Your Name *" style={inp} />
+          <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="Mobile Number (optional)" type="tel" style={inp} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+             <input value={table} onChange={e => setTable(e.target.value)} placeholder="Table No." style={inp} />
+             <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Any requests?" style={inp} />
+          </div>
         </div>
 
         {/* Payment method */}
-        <div style={{ fontSize: 11, fontWeight: 700, color: A, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 8 }}>How do you want to pay?</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9, marginBottom: 16 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: TEXT_MUTED, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 12, marginLeft: 4 }}>Payment Method</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
           {[
-            { v: 'UPI', icon: '📱', l: 'Pay with UPI', s: 'GPay · PhonePe · Paytm' },
-            { v: 'CASH', icon: '💵', l: 'Pay at Counter', s: 'Cash when you collect' },
+            { v: 'UPI',  icon: '💳', l: 'Pay Online', s: 'UPI / Cards' },
+            { v: 'CASH', icon: '💵', l: 'Pay at Counter', s: 'Cash' },
           ].map(m => (
             <button key={m.v} onClick={() => setPay(m.v as any)}
-              style={{ background: pay === m.v ? (m.v === 'UPI' ? 'linear-gradient(135deg,#1d4ed8,#3b82f6)' : 'linear-gradient(135deg,#b45309,#d97706)') : C, border: '2px solid ' + (pay === m.v ? (m.v === 'UPI' ? '#3b82f6' : '#f59e0b') : B), borderRadius: 11, padding: '14px 10px', cursor: 'pointer', textAlign: 'left' as const }}>
-              <div style={{ fontSize: 22, marginBottom: 4 }}>{m.icon}</div>
-              <div style={{ fontWeight: 700, fontSize: 13, color: T }}>{m.l}</div>
-              <div style={{ fontSize: 10, color: M, marginTop: 2 }}>{m.s}</div>
-              {m.v === 'CASH' && pay === 'CASH' && (
-                <div style={{ marginTop: 6, background: 'rgba(0,0,0,0.2)', borderRadius: 6, padding: '4px 8px', fontSize: 10, color: '#fbbf24', fontWeight: 600 }}>
-                  🎫 You'll get a token number
-                </div>
-              )}
+              style={{ background: pay === m.v ? TEXT_MAIN : CARD, border: 'none', borderRadius: 20, padding: '16px', cursor: 'pointer', textAlign: 'left' as const, boxShadow: pay === m.v ? '0 8px 16px rgba(0,0,0,0.1)' : '0 4px 12px rgba(0,0,0,0.03)', transition: 'all 0.2s' }}>
+              <div style={{ fontSize: 24, marginBottom: 8 }}>{m.icon}</div>
+              <div style={{ fontWeight: 800, fontSize: 14, color: pay === m.v ? 'white' : TEXT_MAIN }}>{m.l}</div>
+              <div style={{ fontSize: 11, color: pay === m.v ? '#9ca3af' : TEXT_MUTED, marginTop: 4, fontWeight: 500 }}>{m.s}</div>
             </button>
           ))}
         </div>
       </div>
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, maxWidth: 480, margin: '0 auto', padding: '12px 18px', background: G, borderTop: '1px solid ' + B, boxSizing: 'border-box' }}>
+
+      {/* Fixed Checkout Bar */}
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, maxWidth: 480, margin: '0 auto', padding: '16px 20px', background: 'rgba(249, 250, 251, 0.9)', backdropFilter: 'blur(10px)', boxSizing: 'border-box' as const }}>
         <button onClick={placeOrder} disabled={placing || !name.trim()}
-          style={{ width: '100%', background: name.trim() ? 'linear-gradient(135deg,#22c55e,#16a34a)' : B, border: 'none', color: name.trim() ? 'white' : '#4b5563', padding: '14px', borderRadius: 13, fontWeight: 800, fontSize: 15, cursor: name.trim() ? 'pointer' : 'not-allowed' }}>
-          {placing ? 'Placing...' : pay === 'UPI' ? `Pay ${fmt(finalTotal)} · UPI` : `Get Token · ${fmt(finalTotal)}`}
+          style={{ width: '100%', background: name.trim() ? TEXT_MAIN : '#d1d5db', border: 'none', color: 'white', padding: '18px', borderRadius: 16, fontWeight: 800, fontSize: 16, cursor: name.trim() ? 'pointer' : 'not-allowed', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, boxShadow: name.trim() ? '0 8px 20px rgba(0,0,0,0.15)' : 'none' }}>
+          {placing ? 'Processing...' : `Confirm Order — ${fmt(finalTotal)}`}
         </button>
       </div>
     </div>
@@ -273,57 +307,88 @@ export default function MenuPage() {
 
   // ── Menu browsing ─────────────────────────────────────────────
   return (
-    <div style={{ minHeight: '100vh', background: G, fontFamily: 'system-ui,sans-serif', paddingBottom: count > 0 ? 88 : 20, maxWidth: 480, margin: '0 auto', position: 'relative' }}>
-      <div style={{ background: 'linear-gradient(180deg,#0a1a0a,#080c08)', padding: '24px 18px 14px', textAlign: 'center', borderBottom: '1px solid ' + B }}>
-        <div style={{ width: 50, height: 50, borderRadius: 13, background: 'linear-gradient(135deg,#22c55e,#16a34a)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px', fontSize: 24 }}>☕</div>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: T, margin: '0 0 3px' }}>{shopName}</h1>
-        <p style={{ fontSize: 12, color: M, margin: '0 0 12px' }}>Scan · Order · Enjoy</p>
+    <div style={{ minHeight: '100vh', background: BG, fontFamily: 'system-ui,sans-serif', paddingBottom: count > 0 ? 100 : 20, maxWidth: 480, margin: '0 auto', position: 'relative' }}>
+      
+      {/* Sticky Header */}
+      <div style={{ background: 'rgba(249, 250, 251, 0.9)', backdropFilter: 'blur(10px)', padding: '24px 20px 16px', position: 'sticky', top: 0, zIndex: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 12, background: ACCENT_BG, color: ACCENT, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, boxShadow: '0 4px 10px rgba(16,185,129,0.1)' }}>☕</div>
+          <div>
+            <h1 style={{ fontSize: 20, fontWeight: 800, color: TEXT_MAIN, margin: '0 0 2px' }}>{shopName}</h1>
+            <p style={{ fontSize: 13, color: TEXT_MUTED, margin: 0, fontWeight: 500 }}>Scan · Order · Enjoy</p>
+          </div>
+        </div>
+        
         <div style={{ position: 'relative' }}>
-          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }}>🔍</span>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search menu..." style={{ ...inp, paddingLeft: 36 }} />
+          <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', opacity: 0.5 }}>🔍</span>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search for dishes..." style={{ ...inp, paddingLeft: 42, background: CARD, boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }} />
         </div>
       </div>
+
       {cats.length > 1 && (
-        <div style={{ display: 'flex', gap: 7, padding: '11px 14px', overflowX: 'auto' as const, scrollbarWidth: 'none' as const }}>
-          {cats.map(c => <button key={c} onClick={() => setCat(c)} style={{ flexShrink: 0, padding: '6px 14px', borderRadius: 50, border: 'none', fontWeight: 600, fontSize: 12, cursor: 'pointer', background: cat === c ? 'linear-gradient(135deg,#22c55e,#16a34a)' : C, color: cat === c ? 'white' : M }}>{c}</button>)}
+        <div style={{ display: 'flex', gap: 8, padding: '0 20px 16px', overflowX: 'auto' as const, scrollbarWidth: 'none' as const }}>
+          {cats.map(c => (
+            <button key={c} onClick={() => setCat(c)} 
+              style={{ flexShrink: 0, padding: '8px 16px', borderRadius: 20, border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer', background: cat === c ? TEXT_MAIN : CARD, color: cat === c ? 'white' : TEXT_MUTED, boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+              {c}
+            </button>
+          ))}
         </div>
       )}
-      <div style={{ padding: '4px 12px' }}>
-        {loading ? <div style={{ textAlign: 'center', padding: 60, color: A }}>Loading menu...</div> :
-          filtered.length === 0 ? <div style={{ textAlign: 'center', padding: 60, color: '#4b5563' }}>No items found</div> : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10 }}>
-              {filtered.map((p, idx) => {
-                const inCart = cart.find(i => i.id === p.id);
-                const col = COLS[idx % COLS.length];
-                return (
-                  <div key={p.id} style={{ background: C, border: '1px solid ' + (inCart ? col + '66' : B), borderRadius: 14, overflow: 'hidden' }}>
-                    <div style={{ width: '100%', aspectRatio: '4/3' as any, background: col + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                      {p.imageUrl ? <img src={p.imageUrl} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' as const }} /> : <span style={{ fontSize: 38, fontWeight: 900, color: col }}>{p.name[0].toUpperCase()}</span>}
-                    </div>
-                    <div style={{ padding: '10px 11px 12px' }}>
-                      <div style={{ fontWeight: 700, fontSize: 13, color: T, marginBottom: 7, lineHeight: 1.3 }}>{p.name}</div>
-                      {p.description && <div style={{ fontSize: 11, color: '#4b5563', marginBottom: 7, lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' } as any}>{p.description}</div>}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontWeight: 800, fontSize: 14, color: col }}>{fmt(p.sellingPrice)}</span>
-                        {inCart ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: B, borderRadius: 20, padding: '4px 8px' }}>
-                            <button onClick={() => dec(p.id)} style={{ background: 'none', border: 'none', color: col, fontSize: 16, cursor: 'pointer', lineHeight: 1 }}>−</button>
-                            <span style={{ color: T, fontWeight: 800, fontSize: 13, minWidth: 14, textAlign: 'center' as const }}>{inCart.qty}</span>
-                            <button onClick={() => inc(p.id)} style={{ background: 'none', border: 'none', color: col, fontSize: 16, cursor: 'pointer', lineHeight: 1 }}>+</button>
-                          </div>
-                        ) : <button onClick={() => addToCart(p)} style={{ background: col, border: 'none', color: 'white', width: 28, height: 28, borderRadius: '50%', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>}
-                      </div>
+
+      {/* Product Grid */}
+      <div style={{ padding: '0 20px' }}>
+        {loading ? <div style={{ textAlign: 'center', padding: 60, color: TEXT_MUTED, fontWeight: 600 }}>Loading menu...</div> :
+         filtered.length === 0 ? <div style={{ textAlign: 'center', padding: 60, color: TEXT_MUTED, fontWeight: 600 }}>No items found</div> : (
+          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 16 }}>
+            {filtered.map((p, idx) => {
+              const inCart = cart.find(i => i.id === p.id);
+              const col = COLS[idx % COLS.length];
+              
+              return (
+                <div key={p.id} style={{ background: CARD, borderRadius: 24, padding: 16, display: 'flex', gap: 16, boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
+                  
+                  {/* Info Column */}
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column' as const, justifyContent: 'center' }}>
+                    <div style={{ fontWeight: 800, fontSize: 16, color: TEXT_MAIN, marginBottom: 4 }}>{p.name}</div>
+                    <div style={{ fontWeight: 800, fontSize: 15, color: TEXT_MAIN, marginBottom: p.description ? 8 : 12 }}>{fmt(p.sellingPrice)}</div>
+                    {p.description && <div style={{ fontSize: 12, color: TEXT_MUTED, lineHeight: 1.4, marginBottom: 12, fontWeight: 500, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' } as any}>{p.description}</div>}
+                    
+                    {/* Add Button */}
+                    <div>
+                      {inCart ? (
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12, background: BG, borderRadius: 20, padding: '6px 12px' }}>
+                          <button onClick={() => dec(p.id)} style={{ background: 'none', border: 'none', color: TEXT_MAIN, fontSize: 18, cursor: 'pointer', lineHeight: 1, padding: 0 }}>−</button>
+                          <span style={{ color: TEXT_MAIN, fontWeight: 800, fontSize: 14, minWidth: 16, textAlign: 'center' as const }}>{inCart.qty}</span>
+                          <button onClick={() => inc(p.id)} style={{ background: 'none', border: 'none', color: TEXT_MAIN, fontSize: 18, cursor: 'pointer', lineHeight: 1, padding: 0 }}>+</button>
+                        </div>
+                      ) : (
+                        <button onClick={() => addToCart(p)} style={{ background: ACCENT_BG, border: 'none', color: ACCENT, padding: '8px 20px', borderRadius: 20, fontSize: 13, fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                          + Add
+                        </button>
+                      )}
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
+
+                  {/* Image Column */}
+                  <div style={{ width: 110, height: 110, borderRadius: 16, background: p.imageUrl ? 'transparent' : `${col}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                    {p.imageUrl ? 
+                      <img src={p.imageUrl} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' as const }} /> : 
+                      <span style={{ fontSize: 32, fontWeight: 900, color: col }}>{p.name[0].toUpperCase()}</span>
+                    }
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
+
+      {/* Floating View Cart Button */}
       {count > 0 && (
-        <div style={{ position: 'fixed', bottom: 14, left: 0, right: 0, maxWidth: 480, margin: '0 auto', padding: '0 14px', zIndex: 50, boxSizing: 'border-box' }}>
-          <button onClick={() => setStep('info')} style={{ width: '100%', background: 'linear-gradient(135deg,#22c55e,#16a34a)', border: 'none', color: 'white', padding: '14px 18px', borderRadius: 14, fontWeight: 800, fontSize: 14, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 6px 24px rgba(34,197,94,0.4)' }}>
-            <span style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 20, padding: '2px 9px', fontSize: 12 }}>{count} items</span>
+        <div style={{ position: 'fixed', bottom: 20, left: 0, right: 0, maxWidth: 480, margin: '0 auto', padding: '0 20px', zIndex: 50, boxSizing: 'border-box' as const }}>
+          <button onClick={() => setStep('info')} style={{ width: '100%', background: TEXT_MAIN, border: 'none', color: 'white', padding: '16px 20px', borderRadius: 20, fontWeight: 800, fontSize: 15, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 10px 30px rgba(0,0,0,0.15)' }}>
+            <span style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 20, padding: '4px 10px', fontSize: 13 }}>{count} items</span>
             <span>View Order</span>
             <span>{fmt(total)}</span>
           </button>
