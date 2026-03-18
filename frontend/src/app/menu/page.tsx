@@ -34,11 +34,12 @@ export default function MenuPage() {
   const [notes, setNotes] = useState('');
   const [pay, setPay] = useState<'UPI'|'CASH'>('UPI');
   const [placing, setPlacing] = useState(false);
-  const [result, setResult] = useState<{ invoiceNumber: string; tokenNumber?: string; paymentStatus: string; whatsappSent: boolean } | null>(null);
+  const [result, setResult] = useState<{ id?: string; invoiceNumber: string; tokenNumber?: string; paymentStatus: string; whatsappSent: boolean } | null>(null);
   const [noteFor, setNoteFor] = useState<string|null>(null);
 
   const [loyaltyPoints, setLoyaltyPoints] = useState(0);
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
+
 
   useEffect(() => { load(); }, []);
 
@@ -59,6 +60,7 @@ export default function MenuPage() {
       if (data.name && !name.trim()) setName(data.name);
     } catch (e) { console.warn('Lookup failed'); }
   };
+
 
   const load = async () => {
     try {
@@ -101,6 +103,7 @@ export default function MenuPage() {
         items: cart.map(i => ({ productId: i.id, name: i.name, quantity: i.qty, unitPrice: i.sellingPrice, costPrice: 0, taxRate: i.taxRate, discount: 0 }))
       });
       setResult({
+        id: d.order?.id || '',
         invoiceNumber: d.order?.invoiceNumber || d.invoiceNumber || '',
         tokenNumber: d.tokenNumber,
         paymentStatus: d.paymentStatus || pay,
@@ -156,10 +159,17 @@ export default function MenuPage() {
               {isPaid ? '📱 UPI payment confirmed' : '💵 Cash — Show token at counter'}
             </div>
           </div>
+          
+          {result?.id && (
+            <button onClick={() => window.open((process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000') + '/api/menu/order/' + result.id + '/invoice')}
+              style={{ width: '100%', background: 'rgba(59,130,246,0.1)', border: '1px solid #3b82f6', color: '#60a5fa', padding: '12px', borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: 'pointer', marginBottom: 12 }}>
+              📄 Download Invoice (PDF)
+            </button>
+          )}
 
           {table && <p style={{ color: M, fontSize: 14, marginBottom: 16 }}>🪑 Table <b style={{ color: T }}>{table}</b></p>}
-          <button onClick={() => { setCart([]); setStep('menu'); setName(''); setPhone(''); setTable(''); setNotes(''); setResult(null); }}
-            style={{ background: 'linear-gradient(135deg,#22c55e,#16a34a)', border: 'none', color: 'white', padding: '14px 36px', borderRadius: 50, fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
+          <button onClick={() => { setCart([]); setStep('menu'); setName(''); setPhone(''); setTable(''); setNotes(''); setResult(null); setPointsToRedeem(0); }}
+            style={{ width: '100%', background: 'linear-gradient(135deg,#22c55e,#16a34a)', border: 'none', color: 'white', padding: '13px', borderRadius: 12, fontWeight: 800, fontSize: 15, cursor: 'pointer' }}>
             Order More
           </button>
         </div>

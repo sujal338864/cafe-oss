@@ -61,6 +61,16 @@ router.post(
   authenticate,
   validateRequest(customerSchema),
   asyncHandler(async (req: AuthRequest, res) => {
+    // Prevent duplicate phone numbers for same shop
+    if (req.body.phone) {
+      const existing = await prisma.customer.findFirst({
+        where: { shopId: req.user!.shopId, phone: req.body.phone }
+      });
+      if (existing) {
+        return res.status(400).json({ error: 'Customer with this phone number already exists' });
+      }
+    }
+
     const customer = await prisma.customer.create({
       data: {
         shopId: req.user!.shopId,

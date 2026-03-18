@@ -34,11 +34,15 @@ export default function OrderPage() {
   const [notes, setNotes] = useState('');
   const [pay, setPay] = useState<'UPI'|'CASH'>('UPI');
   const [placing, setPlacing] = useState(false);
-  const [result, setResult] = useState<{ invoiceNumber: string; tokenNumber?: string; paymentStatus: string; whatsappSent: boolean } | null>(null);
+  const [result, setResult] = useState<{ id?: string; invoiceNumber: string; tokenNumber?: string; paymentStatus: string; whatsappSent: boolean } | null>(null);
   const [noteFor, setNoteFor] = useState<string|null>(null);
 
   const [loyaltyPoints, setLoyaltyPoints] = useState(0);
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
+
+  const [showHistory, setShowHistory] = useState(false);
+  const [pastOrders, setPastOrders] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   useEffect(() => { load(); }, []);
 
@@ -58,6 +62,24 @@ export default function OrderPage() {
       if (data.loyaltyPoints) setLoyaltyPoints(data.loyaltyPoints);
       if (data.name && !name.trim()) setName(data.name);
     } catch (e) { console.warn('Lookup failed'); }
+  };
+
+  const loadHistory = async () => {
+    let digits = phone.replace(/\D/g, '');
+    if (digits.length < 10) {
+      const input = prompt('Enter your 10-digit mobile number to see past orders:');
+      if (!input) return;
+      digits = input.replace(/\D/g, '').replace(/^91/, '').replace(/^0/, '');
+      if (digits.length < 10) { alert('Please enter a valid 10-digit number'); return; }
+      setPhone(input);
+    }
+    setLoadingHistory(true);
+    try {
+      const data = await get(`/api/menu/orders?phone=${digits}`);
+      setPastOrders(data.orders || []);
+      setShowHistory(true);
+    } catch (e) { alert('Failed to load order history'); }
+    finally { setLoadingHistory(false); }
   };
 
   const load = async () => {
@@ -83,7 +105,7 @@ export default function OrderPage() {
   const total = subtotal + tax;
   const pointsDiscount = (pointsToRedeem / REDEEM_RATE) || 0;
   const finalTotal = Math.max(0, total - pointsDiscount);
-
+  
   const count = cart.reduce((s, i) => s + i.qty, 0);
   const filtered = products.filter(p => (cat === 'All' || p.category?.name === cat) && p.name.toLowerCase().includes(search.toLowerCase()));
 
@@ -101,6 +123,7 @@ export default function OrderPage() {
         items: cart.map(i => ({ productId: i.id, name: i.name, quantity: i.qty, unitPrice: i.sellingPrice, costPrice: 0, taxRate: i.taxRate, discount: 0 }))
       });
       setResult({
+        id: d.order?.id || '',
         invoiceNumber: d.order?.invoiceNumber || d.invoiceNumber || '',
         tokenNumber: d.tokenNumber,
         paymentStatus: d.paymentStatus || pay,
@@ -115,6 +138,7 @@ export default function OrderPage() {
   const inp: any = { background: C, border: '1px solid ' + B, borderRadius: 10, padding: '12px 14px', color: T, fontSize: 14, outline: 'none', width: '100%', boxSizing: 'border-box' };
   const COLS = ['#22c55e','#3b82f6','#f59e0b','#ec4899','#8b5cf6','#06b6d4'];
 
+  // ── Done screen ──────────────────────────────────────────────
   if (step === 'done' && result) {
     const isPaid = result.paymentStatus === 'PAID';
     const token = result.tokenNumber?.replace(/^0+/, '') || result.invoiceNumber?.replace('ONL-', '').replace(/^0+/, '') || '?';
@@ -138,6 +162,7 @@ export default function OrderPage() {
               <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'linear-gradient(135deg,#f59e0b,#d97706)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', fontSize: 38 }}>🎫</div>
               <h1 style={{ fontSize: 26, fontWeight: 800, color: T, marginBottom: 6 }}>Order Placed!</h1>
               <p style={{ color: M, marginBottom: 16 }}>Please pay at the counter</p>
+              {/* Token card */}
               <div style={{ background: 'linear-gradient(135deg,#f59e0b22,#d9770622)', border: '2px solid #f59e0b', borderRadius: 18, padding: '24px 16px', marginBottom: 20 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: '#f59e0b', textTransform: 'uppercase' as const, letterSpacing: 2, marginBottom: 8 }}>Your Token Number</div>
                 <div style={{ fontSize: 64, fontWeight: 900, color: '#fbbf24', lineHeight: 1, marginBottom: 8 }}>#{token}</div>
@@ -145,6 +170,8 @@ export default function OrderPage() {
               </div>
             </>
           )}
+
+          {/* Order summary */}
           <div style={{ background: C, border: '1px solid ' + B, borderRadius: 14, padding: 16, marginBottom: 20 }}>
             {cart.map((item, i) => <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: i < cart.length-1 ? '1px solid '+B : 'none', color: T, fontSize: 14 }}><span>{item.name} ×{item.qty}</span><span style={{ color: A, fontWeight: 700 }}>{fmt(item.sellingPrice * item.qty)}</span></div>)}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: '1px solid '+B, fontWeight: 800, fontSize: 16, color: T }}><span>Total</span><span style={{ color: A }}>{fmt(total)}</span></div>
@@ -152,9 +179,17 @@ export default function OrderPage() {
               {isPaid ? '📱 UPI payment confirmed' : '💵 Cash — Show token at counter'}
             </div>
           </div>
+          
+          {result?.id && (
+            <button onClick={() => window.open((process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000') + '/api/menu/order/' + result.id + '/invoice')}
+              style={{ width: '100%', background: 'rgba(59,130,246,0.1)', border: '1px solid #3b82f6', color: '#60a5fa', padding: '12px', borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: 'pointer', marginBottom: 12 }}>
+              📄 Download Invoice (PDF)
+            </button>
+          )}
+
           {table && <p style={{ color: M, fontSize: 14, marginBottom: 16 }}>🪑 Table <b style={{ color: T }}>{table}</b></p>}
-          <button onClick={() => { setCart([]); setStep('menu'); setName(''); setPhone(''); setTable(''); setNotes(''); setResult(null); }}
-            style={{ background: 'linear-gradient(135deg,#22c55e,#16a34a)', border: 'none', color: 'white', padding: '14px 36px', borderRadius: 50, fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
+          <button onClick={() => { setCart([]); setStep('menu'); setName(''); setPhone(''); setTable(''); setNotes(''); setResult(null); setPointsToRedeem(0); }}
+            style={{ width: '100%', background: 'linear-gradient(135deg,#22c55e,#16a34a)', border: 'none', color: 'white', padding: '13px', borderRadius: 12, fontWeight: 800, fontSize: 15, cursor: 'pointer' }}>
             Order More
           </button>
         </div>
@@ -162,6 +197,7 @@ export default function OrderPage() {
     );
   }
 
+  // ── Info / checkout step ───────────────────────────────────────
   if (step === 'info') return (
     <div style={{ minHeight: '100vh', background: G, fontFamily: 'system-ui,sans-serif', paddingBottom: 90 }}>
       <div style={{ padding: '14px 18px', borderBottom: '1px solid '+B, display: 'flex', alignItems: 'center', gap: 12, background: '#0a0f0a', position: 'sticky', top: 0, zIndex: 10 }}>
@@ -169,6 +205,7 @@ export default function OrderPage() {
         <div style={{ fontWeight: 800, fontSize: 17, color: T }}>Your Order</div>
       </div>
       <div style={{ padding: '18px 18px 0' }}>
+        {/* Order summary */}
         <div style={{ background: C, border: '1px solid '+B, borderRadius: 14, padding: 14, marginBottom: 18 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: A, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 10 }}>Summary</div>
           {cart.map((item, i) => (
@@ -213,6 +250,8 @@ export default function OrderPage() {
             </button>
           </div>
         )}
+
+        {/* Your details */}
         <div style={{ fontSize: 11, fontWeight: 700, color: A, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 8 }}>Your Details</div>
         <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 9, marginBottom: 16 }}>
           <input value={name} onChange={e => setName(e.target.value)} placeholder="Your name *" style={inp} />
@@ -220,6 +259,8 @@ export default function OrderPage() {
           <input value={table} onChange={e => setTable(e.target.value)} placeholder="Table number (optional)" style={inp} />
           <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Special requests..." rows={2} style={{ ...inp, resize: 'none' as const, fontFamily: 'inherit' }} />
         </div>
+
+        {/* Payment method */}
         <div style={{ fontSize: 11, fontWeight: 700, color: A, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 8 }}>How do you want to pay?</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9, marginBottom: 16 }}>
           {[
@@ -232,7 +273,9 @@ export default function OrderPage() {
               <div style={{ fontWeight: 700, fontSize: 13, color: T }}>{m.l}</div>
               <div style={{ fontSize: 10, color: M, marginTop: 2 }}>{m.s}</div>
               {m.v === 'CASH' && pay === 'CASH' && (
-                <div style={{ marginTop: 6, background: 'rgba(0,0,0,0.2)', borderRadius: 6, padding: '4px 8px', fontSize: 10, color: '#fbbf24', fontWeight: 600 }}>🎫 You'll get a token number</div>
+                <div style={{ marginTop: 6, background: 'rgba(0,0,0,0.2)', borderRadius: 6, padding: '4px 8px', fontSize: 10, color: '#fbbf24', fontWeight: 600 }}>
+                  🎫 You'll get a token number
+                </div>
               )}
             </button>
           ))}
@@ -244,11 +287,52 @@ export default function OrderPage() {
           {placing ? 'Placing...' : pay === 'UPI' ? `Pay ${fmt(finalTotal)} · UPI` : `Get Token · ${fmt(finalTotal)}`}
         </button>
       </div>
+      {/* History Modal */}
+      {showHistory && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 200, padding: '40px 16px', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflowY: 'auto' as any }}>
+          <div style={{ background: '#0f1a0f', border: '1px solid #1a2e1a', borderRadius: 18, width: '100%', maxWidth: 420, padding: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 800, color: '#f0fdf4', margin: 0 }}>🕰️ Your Orders</h3>
+              <button onClick={() => setShowHistory(false)} style={{ background: 'none', border: 'none', color: '#86efac', cursor: 'pointer', fontSize: 13 }}>Close</button>
+            </div>
+            {pastOrders.length === 0 ? (
+              <p style={{ color: '#86efac', fontSize: 14, textAlign: 'center', padding: 20 }}>No past orders found.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column' as any, gap: 12 }}>
+                {pastOrders.map((o: any) => (
+                  <div key={o.id} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid #1a2e1a', borderRadius: 12, padding: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <span style={{ fontSize: 12, color: '#86efac' }}>{new Date(o.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: o.paymentStatus === 'PAID' ? '#10b981' : '#f59e0b' }}>{o.paymentStatus}</span>
+                    </div>
+                    <div style={{ fontSize: 13, color: '#f0fdf4', marginBottom: 8 }}>
+                      {o.items.map((i: any) => `${i.name} x${i.quantity}`).join(', ')}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #1a2e1a', paddingTop: 8 }}>
+                      <span style={{ fontWeight: 800, color: '#22c55e' }}>Rs.{Number(o.totalAmount).toFixed(2)}</span>
+                      <button onClick={() => window.open((process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000') + '/api/menu/order/' + o.id + '/invoice')}
+                        style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid #3b82f6', color: '#60a5fa', padding: '5px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                        📄 Invoice
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 
+  // ── Menu browsing ─────────────────────────────────────────────
   return (
-    <div style={{ minHeight: '100vh', background: G, fontFamily: 'system-ui,sans-serif', paddingBottom: count > 0 ? 88 : 20 }}>
+    <div style={{ minHeight: '100vh', background: G, fontFamily: 'system-ui,sans-serif', paddingBottom: count > 0 ? 88 : 20, position: 'relative' }}>
+      
+      <button onClick={loadHistory} style={{ position: 'absolute', top: 16, right: 16, background: B, border: '1px solid ' + B, color: M, padding: '6px 12px', borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: 'pointer', zIndex: 10 }}>
+        {loadingHistory ? 'Loading...' : '🕰️ My Orders'}
+      </button>
+
       <div style={{ background: 'linear-gradient(180deg,#0a1a0a,#080c08)', padding: '24px 18px 14px', textAlign: 'center', borderBottom: '1px solid '+B }}>
         <div style={{ width: 50, height: 50, borderRadius: 13, background: 'linear-gradient(135deg,#22c55e,#16a34a)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px', fontSize: 24 }}>☕</div>
         <h1 style={{ fontSize: 22, fontWeight: 800, color: T, margin: '0 0 3px' }}>{shopName}</h1>

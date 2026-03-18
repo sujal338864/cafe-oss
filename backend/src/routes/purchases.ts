@@ -97,7 +97,7 @@ router.post(
       }
 
       return newPurchase;
-    });
+    }, { timeout: 15000 });
 
     res.status(201).json(purchase);
   })

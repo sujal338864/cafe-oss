@@ -4,6 +4,8 @@ import { asyncHandler } from '../middleware/auth';
 import { PaymentMethod } from '@prisma/client';
 import { sendWhatsAppBill } from '../lib/whatsapp';
 
+import { generateInvoicePDF } from '../lib/invoice';
+
 const POINTS_PER_RUPEE = parseFloat(process.env.LOYALTY_POINTS_PER_RUPEE || '0.1');
 
 const router = Router();
@@ -18,15 +20,34 @@ router.get('/', asyncHandler(async (_req, res) => {
   return res.json({ products });
 }));
 
+// Public: lookup customer loyalty points
+router.get('/customer', asyncHandler(async (req, res) => {
+  const { phone } = req.query;
+  if (!phone || typeof phone !== 'string') return res.status(400).json({ error: 'phone required' });
+
+  const shop = await prisma.shop.findFirst();
+  if (!shop) return res.status(404).json({ error: 'Shop not found' });
+
+  const digits = phone.replace(/\D/g, '').replace(/^91/, '').replace(/^0/, '');
+  const cust = await prisma.customer.findFirst({
+    where: { shopId: shop.id, phone: { contains: digits } }
+  });
+
+  if (!cust) return res.status(404).json({ error: 'Customer not found' });
+  res.json({ loyaltyPoints: cust.loyaltyPoints || 0, name: cust.name });
+}));
+
 // Public: place order from scanner menu
 router.post('/order', asyncHandler(async (req, res) => {
-  const { customerName, customerPhone, tableNumber, notes, paymentMethod, items } = req.body;
+  const { customerName, customerPhone, tableNumber, notes, paymentMethod, items, redeemPoints = 0 } = req.body;
   if (!items?.length) return res.status(400).json({ error: 'No items' });
 
   const shop = await prisma.shop.findFirst({ include: { users: { take: 1 } } });
   if (!shop) return res.status(404).json({ error: 'Shop not found' });
   const userId = shop.users[0]?.id;
   if (!userId) return res.status(404).json({ error: 'No user found' });
+
+  const REDEEM_RATE = parseFloat(process.env.LOYALTY_REDEEM_RATE || '10');
 
   // Find or create customer by phone
   let customerId: string | null = null;
@@ -77,6 +98,10 @@ router.post('/order', asyncHandler(async (req, res) => {
   // paymentMethod 'CASH' from scanner = Pay at Counter (UNPAID), 'UPI' = online (PAID)
   const paymentStatus = pm === 'CASH' ? 'UNPAID' : 'PAID';
 
+  const pointsDiscount = Number(redeemPoints) / REDEEM_RATE;
+  const discountAmount = pointsDiscount;
+  const finalTotal = Math.max(0, totalAmount - pointsDiscount);
+
   const order = await prisma.order.create({
     data: {
       shopId: shop.id,
@@ -85,9 +110,9 @@ router.post('/order', asyncHandler(async (req, res) => {
       invoiceNumber,
       subtotal,
       taxAmount,
-      discountAmount: 0,
-      totalAmount,
-      paidAmount: paymentStatus === 'PAID' ? totalAmount : 0,
+      discountAmount,
+      totalAmount: finalTotal,
+      paidAmount: paymentStatus === 'PAID' ? finalTotal : 0,
       paymentMethod: pm,
       paymentStatus: paymentStatus as any,
       status: 'COMPLETED',
@@ -105,15 +130,15 @@ router.post('/order', asyncHandler(async (req, res) => {
     });
   }
 
-  // Award loyalty points for UPI (PAID) orders only
-  if (customerId && paymentStatus === 'PAID') {
-    const pointsEarned = Math.floor(totalAmount * POINTS_PER_RUPEE);
+  // Update customer loyalty points (Earn/Deduct)
+  if (customerId) {
+    const pointsEarned = paymentStatus === 'PAID' ? Math.floor(finalTotal * POINTS_PER_RUPEE) : 0;
     try {
       await prisma.customer.update({
         where: { id: customerId },
         data: {
-          totalPurchases: { increment: totalAmount },
-          loyaltyPoints: { increment: pointsEarned }
+          totalPurchases: paymentStatus === 'PAID' ? { increment: finalTotal } : undefined,
+          loyaltyPoints: { increment: pointsEarned - Number(redeemPoints) }
         } as any
       });
     } catch (e) { console.warn('Loyalty update failed:', e); }
@@ -149,6 +174,50 @@ router.post('/order', asyncHandler(async (req, res) => {
     paymentStatus,
     whatsappSent: !!(customerPhone && paymentStatus === 'PAID'),
   });
+}));
+
+// GET /api/menu/orders
+router.get('/orders', asyncHandler(async (req, res) => {
+  const { phone } = req.query;
+  if (!phone || typeof phone !== 'string') return res.status(400).json({ error: 'phone required' });
+
+  const shop = await prisma.shop.findFirst();
+  if (!shop) return res.status(404).json({ error: 'Shop not found' });
+
+  const digits = phone.replace(/\D/g, '').replace(/^91/, '').replace(/^0/, '');
+  const cust = await prisma.customer.findFirst({
+    where: { shopId: shop.id, phone: { contains: digits } }
+  });
+
+  if (!cust) return res.json({ orders: [] });
+
+  const orders = await prisma.order.findMany({
+    where: { customerId: cust.id },
+    include: { items: true },
+    orderBy: { createdAt: 'desc' },
+    take: 20
+  });
+
+  res.json({ orders });
+}));
+
+// GET /api/menu/order/:id/invoice
+router.get('/order/:id/invoice', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const order = await prisma.order.findUnique({
+    where: { id },
+    include: { items: true, customer: true }
+  });
+
+  if (!order) return res.status(404).json({ error: 'Order not found' });
+
+  const shop = await prisma.shop.findFirst();
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename=invoice-${order.invoiceNumber}.pdf`);
+
+  const doc = generateInvoicePDF(order, shop || { name: 'Our Shop' });
+  doc.pipe(res);
 }));
 
 export default router;
