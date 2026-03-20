@@ -1,6 +1,1 @@
-Perf: unified menu API with Redis cache, skeleton loaders, premium UI animations
-
-- Backend: Single /api/menu endpoint with Redis caching (5min TTL)
-- Cache invalidation on product/category CRUD
-- Frontend: Skeleton loader, debounced search, glassmorphism header
-- Sticky categories, next/image, CSS animations, smooth transitions
+UI: minimal premium glassmorphism menu rewrite 
