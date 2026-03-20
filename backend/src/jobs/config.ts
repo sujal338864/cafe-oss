@@ -1,5 +1,5 @@
 import { RedisOptions } from 'ioredis';
-import IORedis from 'ioredis';
+import { URL } from 'url';
 
 /**
  * Global Redis connection configuration for BullMQ
@@ -11,7 +11,18 @@ const connectionOptions: RedisOptions = {
   maxRetriesPerRequest: null, // Critical requirement for BullMQ
 };
 
-// Use REDIS_URL if present (Render/Production), fallback to discrete options (Local)
-export const redisConnection = process.env.REDIS_URL
-  ? new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null })
-  : connectionOptions;
+// Parse REDIS_URL on Production (Render) environments safely
+if (process.env.REDIS_URL) {
+  try {
+    const parsed = new URL(process.env.REDIS_URL);
+    connectionOptions.host = parsed.hostname;
+    connectionOptions.port = parseInt(parsed.port || '6379');
+    if (parsed.password) {
+      connectionOptions.password = decodeURIComponent(parsed.password);
+    }
+  } catch (e) {
+    console.error('[Redis] Failed to parse REDIS_URL config:', e);
+  }
+}
+
+export const redisConnection = connectionOptions;
