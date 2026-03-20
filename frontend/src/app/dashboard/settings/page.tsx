@@ -14,6 +14,11 @@ export default function SettingsPage() {
   const [shopSaving, setShopSaving] = useState(false);
   const [shopMsg,    setShopMsg]    = useState('');
 
+  // Invoice settings
+  const [invForm,   setInvForm]   = useState({ template: 'standard', footer: '', showGst: true });
+  const [invSaving, setInvSaving] = useState(false);
+  const [invMsg,    setInvMsg]    = useState('');
+
   // Password
   const [pwForm,   setPwForm]   = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [pwSaving, setPwSaving] = useState(false);
@@ -34,7 +39,29 @@ export default function SettingsPage() {
         upiId:    data.upiId    || '',
         currency: data.currency || 'Rs.',
       });
+
+      if (data.invoiceSettings) {
+        try {
+          const inv = JSON.parse(data.invoiceSettings);
+          setInvForm({
+            template: inv.template || 'standard',
+            footer: inv.footer || '',
+            showGst: inv.showGst !== false
+          });
+        } catch (e) {}
+      }
     } catch (e) { console.error(e); }
+  };
+
+  const saveInvoiceSettings = async () => {
+    setInvSaving(true); setInvMsg('');
+    try {
+      await api.put('/api/shop/invoice-settings', { invoiceSettings: JSON.stringify(invForm) });
+      setInvMsg('✓ Invoice settings saved!');
+      setTimeout(() => setInvMsg(''), 3000);
+    } catch (e: any) {
+      setInvMsg('✗ Failed to save invoice settings');
+    } finally { setInvSaving(false); }
   };
 
   const saveShop = async () => {
@@ -146,6 +173,47 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      {/* ── Invoice Structure ─────────────────────────────────────────── */}
+      <div style={card}>
+        <div style={cardHead}>
+          <div style={{ fontWeight: 700, fontSize: 15, color: theme.text }}>🧾 Invoice Layout & Structure</div>
+          <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 2 }}>Customize how your bills look like (Standard vs Cafe Thermal)</div>
+        </div>
+        <div style={cardBody}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div>
+              <label style={lbl}>Layout Template</label>
+              <select value={invForm.template} onChange={e => setInvForm(v => ({ ...v, template: e.target.value }))} style={inp}>
+                <option value="standard" style={{background: theme.card || '#111827'}}>Standard Layout (A5 Receipt)</option>
+                <option value="thermal" style={{background: theme.card || '#111827'}}>Small Thermal Layout (58mm Roll)</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={lbl}>Custom Footer / Notes</label>
+              <input value={invForm.footer} placeholder="e.g. Thank you for visiting! | WiFi: Caffe123"
+                onChange={e => setInvForm(v => ({ ...v, footer: e.target.value }))} style={inp} />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="checkbox" checked={invForm.showGst} onChange={e => setInvForm(v => ({ ...v, showGst: e.target.checked }))} style={{ cursor: 'pointer' }} id="showGst" />
+              <label htmlFor="showGst" style={{ fontSize: 13, color: theme.text, cursor: 'pointer' }}>Print Shop GST on Bill</label>
+            </div>
+          </div>
+
+          {invMsg && (
+            <div style={{ marginTop: 14, padding: '10px 14px', borderRadius: 9, background: invMsg.startsWith('✓') ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', color: invMsg.startsWith('✓') ? '#10b981' : '#ef4444', fontSize: 13, fontWeight: 600 }}>
+              {invMsg}
+            </div>
+          )}
+
+          <button onClick={saveInvoiceSettings} disabled={invSaving}
+            style={{ marginTop: 16, background: 'linear-gradient(135deg,#7c3aed,#3b82f6)', border: 'none', color: 'white', padding: '11px 28px', borderRadius: 10, fontWeight: 700, cursor: invSaving ? 'not-allowed' : 'pointer', opacity: invSaving ? 0.7 : 1 }}>
+            {invSaving ? 'Saving...' : 'Save Invoice Configuration'}
+          </button>
+        </div>
+      </div>
+
       {/* ── Appearance ───────────────────────────────────────────────── */}
       <div style={card}>
         <div style={cardHead}>
@@ -206,7 +274,10 @@ export default function SettingsPage() {
             <div style={{ fontWeight: 700, fontSize: 14, color: theme.text }}>Shop OS</div>
             <div style={{ fontSize: 12, color: theme.textFaint, marginTop: 2 }}>Version 1.0 · Built with Next.js 14 + Express</div>
           </div>
-          <span style={{ background: 'linear-gradient(135deg,#7c3aed,#3b82f6)', color: 'white', borderRadius: 8, padding: '4px 12px', fontSize: 11, fontWeight: 800 }}>STARTER</span>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+            <span style={{ background: 'linear-gradient(135deg,#7c3aed,#3b82f6)', color: 'white', borderRadius: 8, padding: '4px 12px', fontSize: 11, fontWeight: 800 }}>{shop?.plan || 'STARTER'}</span>
+            <a href="/dashboard/settings/subscription" style={{ fontSize: 12, color: '#7c3aed', fontWeight: 600, textDecoration: 'none' }}>Upgrade Plan →</a>
+          </div>
         </div>
       </div>
     </div>

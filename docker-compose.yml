@@ -19,6 +19,13 @@ services:
       timeout: 5s
       retries: 5
 
+  # Redis Caching & Queue
+  redis:
+    image: redis:7-alpine
+    container_name: shopos-redis
+    ports:
+      - "6379:6379"
+
   # Backend API
   backend:
     build:
@@ -32,11 +39,34 @@ services:
       NODE_ENV: development
       FRONTEND_URL: "http://localhost:3000"
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+      RUN_WORKERS: "false"
     ports:
       - "4000:4000"
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - ./backend/src:/app/src
+    command: npm run dev
+
+  # Background Worker Node 👷🏽
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: shopos-worker
+    environment:
+      DATABASE_URL: "postgresql://shopos:shopos_dev_password@postgres:5432/shopos"
+      JWT_SECRET: "dev-secret-key-min-32-characters-long"
+      NODE_ENV: development
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      RUN_API: "false"
+      RUN_WORKERS: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     volumes:
       - ./backend/src:/app/src
     command: npm run dev

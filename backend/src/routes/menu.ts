@@ -11,21 +11,38 @@ const POINTS_PER_RUPEE = parseFloat(process.env.LOYALTY_POINTS_PER_RUPEE || '0.1
 const router = Router();
 
 // Public: get menu products
-router.get('/', asyncHandler(async (_req, res) => {
+router.get('/', asyncHandler(async (req, res) => {
+  const { shopId } = req.query;
+  if (!shopId || typeof shopId !== 'string') return res.status(400).json({ error: 'shopId query is required' });
+
   const products = await prisma.product.findMany({
-    where: { isActive: true, stock: { gt: 0 } },
+    where: { shopId, isActive: true, stock: { gt: 0 } },
     include: { category: { select: { name: true } } },
     orderBy: [{ category: { name: 'asc' } }, { name: 'asc' }],
   });
   return res.json({ products });
 }));
 
+// Public: get shop info
+router.get('/shop', asyncHandler(async (req, res) => {
+  const { shopId } = req.query;
+  if (!shopId || typeof shopId !== 'string') return res.status(400).json({ error: 'shopId required' });
+
+  const shop = await prisma.shop.findUnique({
+    where: { id: shopId },
+    select: { name: true }
+  });
+  if (!shop) return res.status(404).json({ error: 'Shop not found' });
+  res.json(shop);
+}));
+
 // Public: lookup customer loyalty points
 router.get('/customer', asyncHandler(async (req, res) => {
-  const { phone } = req.query;
+  const { phone, shopId } = req.query;
   if (!phone || typeof phone !== 'string') return res.status(400).json({ error: 'phone required' });
+  if (!shopId || typeof shopId !== 'string') return res.status(400).json({ error: 'shopId required' });
 
-  const shop = await prisma.shop.findFirst();
+  const shop = await prisma.shop.findUnique({ where: { id: shopId } });
   if (!shop) return res.status(404).json({ error: 'Shop not found' });
 
   const digits = phone.replace(/\D/g, '').replace(/^91/, '').replace(/^0/, '');
@@ -39,10 +56,11 @@ router.get('/customer', asyncHandler(async (req, res) => {
 
 // Public: place order from scanner menu
 router.post('/order', asyncHandler(async (req, res) => {
-  const { customerName, customerPhone, tableNumber, notes, paymentMethod, items, redeemPoints = 0 } = req.body;
+  const { customerName, customerPhone, tableNumber, notes, paymentMethod, items, redeemPoints = 0, shopId } = req.body;
   if (!items?.length) return res.status(400).json({ error: 'No items' });
+  if (!shopId || typeof shopId !== 'string') return res.status(400).json({ error: 'shopId is required' });
 
-  const shop = await prisma.shop.findFirst({ include: { users: { take: 1 } } });
+  const shop = await prisma.shop.findUnique({ where: { id: shopId }, include: { users: { take: 1 } } });
   if (!shop) return res.status(404).json({ error: 'Shop not found' });
   const userId = shop.users[0]?.id;
   if (!userId) return res.status(404).json({ error: 'No user found' });
@@ -178,10 +196,11 @@ router.post('/order', asyncHandler(async (req, res) => {
 
 // GET /api/menu/orders
 router.get('/orders', asyncHandler(async (req, res) => {
-  const { phone } = req.query;
+  const { phone, shopId } = req.query;
   if (!phone || typeof phone !== 'string') return res.status(400).json({ error: 'phone required' });
+  if (!shopId || typeof shopId !== 'string') return res.status(400).json({ error: 'shopId required' });
 
-  const shop = await prisma.shop.findFirst();
+  const shop = await prisma.shop.findUnique({ where: { id: shopId } });
   if (!shop) return res.status(404).json({ error: 'Shop not found' });
 
   const digits = phone.replace(/\D/g, '').replace(/^91/, '').replace(/^0/, '');

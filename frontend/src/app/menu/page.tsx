@@ -1,6 +1,6 @@
 'use client';
-import { useEffect, useState } from 'react';
-// Trigger netlify
+import { useEffect, useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 
 type Product = { id: string; name: string; sellingPrice: number; description?: string; imageUrl?: string; category?: { name: string }; stock: number; taxRate: number; };
 type CartItem = Product & { qty: number; note: string };
@@ -21,6 +21,17 @@ async function post(path: string, body: any) {
 }
 
 export default function MenuPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: '100vh', background: '#080c08', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#86efac', fontWeight: 'bold' }}>Loading...</div>}>
+      <MenuContent />
+    </Suspense>
+  );
+}
+
+function MenuContent() {
+  const searchParams = useSearchParams();
+  const shopId = searchParams.get('shopId');
+
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cats, setCats] = useState<string[]>([]);
@@ -32,6 +43,11 @@ export default function MenuPage() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [table, setTable] = useState('');
+
+  useEffect(() => {
+    const t = searchParams.get('table') || searchParams.get('tableNumber') || searchParams.get('t');
+    if (t) setTable(t);
+  }, [searchParams]);
   const [notes, setNotes] = useState('');
   const [pay, setPay] = useState<'UPI'|'CASH'>('UPI');
   const [placing, setPlacing] = useState(false);
@@ -41,7 +57,7 @@ export default function MenuPage() {
   const [loyaltyPoints, setLoyaltyPoints] = useState(0);
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { if (shopId) load(); }, [shopId]);
 
   useEffect(() => {
     const digits = phone.replace(/\D/g, '');
@@ -69,7 +85,7 @@ export default function MenuPage() {
 
   const lookupCustomer = async (digits: string) => {
     try {
-      const data = await get(`/api/menu/customer?phone=${digits}`);
+      const data = await get(`/api/menu/customer?phone=${digits}&shopId=${shopId}`);
       if (data.loyaltyPoints) setLoyaltyPoints(data.loyaltyPoints);
       if (data.name && !name.trim()) setName(data.name);
     } catch (e) { console.warn('Lookup failed'); }
@@ -77,7 +93,10 @@ export default function MenuPage() {
 
   const load = async () => {
     try {
-      const [p, s] = await Promise.allSettled([get('/api/menu'), get('/api/shop')]);
+      const [p, s] = await Promise.allSettled([
+        get(`/api/menu?shopId=${shopId}`), 
+        get(`/api/menu/shop?shopId=${shopId}`)
+      ]);
       if (p.status === 'fulfilled') {
         const prods: Product[] = p.value.products || [];
         setProducts(prods.filter(x => x.stock > 0));
@@ -107,6 +126,7 @@ export default function MenuPage() {
     setPlacing(true);
     try {
       const d = await post('/api/menu/order', {
+        shopId, // Security Fix: Pass shopId
         customerName: name.trim(),
         customerPhone: phone.trim() || undefined,
         tableNumber: table.trim() || undefined,
@@ -129,9 +149,10 @@ export default function MenuPage() {
 
   const loadHistory = async () => {
     if (!phone.replace(/\D/g, '')) return alert('Please enter phone number on confirmation screen to see history');
-    /* Historical orders view feature (disabled initially on pure dark mode fix, keeping original simple view) */
     alert('Please ask staff for your complete order history.');
   };
+
+  if (!shopId) return <div style={{ minHeight: '100vh', background: '#080c08', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Invalid Menu Link</div>;
 
   const G = '#080c08'; const C = '#0f1a0f'; const B = '#1a2e1a'; const T = '#f0fdf4'; const M = '#86efac'; const A = '#22c55e';
   const inp: any = { background: C, border: '1px solid ' + B, borderRadius: 10, padding: '12px 14px', color: T, fontSize: 14, outline: 'none', width: '100%', boxSizing: 'border-box' };
@@ -227,7 +248,7 @@ export default function MenuPage() {
           <div style={{ borderTop: '1px solid '+B, marginTop: 6, paddingTop: 10 }}>
             {tax > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: M, marginBottom: 3 }}><span>Tax</span><span>{fmt(Math.round(tax))}</span></div>}
             {pointsDiscount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#f59e0b', marginBottom: 3 }}><span>Points Discount</span><span>-{fmt(pointsDiscount)}</span></div>}
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 17, color: T }}><span>Total</span><span style={{ color: A }}>{fmt(finalTotal)}</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 17, color: T }}><span>Total</span><span style={{ color: A }}>{fmt(total)}</span></div>
           </div>
         </div>
 

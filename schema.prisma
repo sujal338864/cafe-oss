@@ -6,8 +6,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ─────────────────────────────────────────────
@@ -185,6 +186,8 @@ model Supplier {
   updatedAt     DateTime  @updatedAt
 
   purchases     Purchase[]
+
+  @@index([shopId])
 }
 
 // ─────────────────────────────────────────────
@@ -230,6 +233,8 @@ model OrderItem {
   taxRate     Decimal  @default(0) @db.Decimal(5, 2)
   discount    Decimal  @default(0) @db.Decimal(10, 2)
   total       Decimal  @db.Decimal(10, 2)
+
+  @@index([orderId])
 }
 
 enum PaymentMethod {
@@ -283,6 +288,8 @@ model PurchaseItem {
   quantity    Int
   costPrice   Decimal  @db.Decimal(10, 2)
   total       Decimal  @db.Decimal(10, 2)
+
+  @@index([purchaseId])
 }
 
 // ─────────────────────────────────────────────

@@ -85,6 +85,7 @@ model Shop {
   currency    String    @default("INR")
   timezone    String    @default("Asia/Kolkata")
   logoUrl     String?
+  invoiceSettings String?
   plan        Plan      @default(STARTER)
   planExpiry  DateTime?
   isActive    Boolean   @default(true)
@@ -178,6 +179,7 @@ model Product {
   @@unique([shopId, sku])
   @@index([shopId, name])
   @@index([shopId, isActive])
+  @@index([shopId, categoryId])
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -219,6 +221,7 @@ model Customer {
 
   @@index([shopId, phone])
   @@index([shopId, name])
+  @@index([shopId, outstandingBalance])
 }
 
 // ─────────────────────────────────────────────────────────────
