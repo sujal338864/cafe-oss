@@ -3,27 +3,68 @@ import { prisma } from '../index';
 import { asyncHandler } from '../middleware/auth';
 import { PaymentMethod } from '@prisma/client';
 import { sendWhatsAppBill } from '../lib/whatsapp';
+import { getCache, setCache } from '../common/cache';
 
 import { generateInvoicePDF } from '../lib/invoice';
 
 const POINTS_PER_RUPEE = parseFloat(process.env.LOYALTY_POINTS_PER_RUPEE || '0.1');
+const MENU_CACHE_TTL = 300; // 5 minutes
 
 const router = Router();
 
-// Public: get menu products
+/**
+ * GET /api/menu?shopId=...
+ * Unified endpoint: returns shop + categories + products in one response.
+ * Redis-cached with 5-minute TTL for ultra-fast responses.
+ */
 router.get('/', asyncHandler(async (req, res) => {
   const { shopId } = req.query;
   if (!shopId || typeof shopId !== 'string') return res.status(400).json({ error: 'shopId query is required' });
 
-  const products = await prisma.product.findMany({
-    where: { shopId, isActive: true, stock: { gt: 0 } },
-    include: { category: { select: { name: true } } },
-    orderBy: [{ category: { name: 'asc' } }, { name: 'asc' }],
-  });
-  return res.json({ products });
+  const cacheKey = `menu:${shopId}`;
+
+  // 1. Redis-first: try cache
+  const cached = await getCache<any>(cacheKey);
+  if (cached) {
+    res.set('X-Cache', 'HIT');
+    res.set('Cache-Control', 'public, max-age=60, s-maxage=300');
+    return res.json(cached);
+  }
+
+  // 2. DB fallback: parallel queries
+  const [shop, categories, products] = await Promise.all([
+    prisma.shop.findUnique({
+      where: { id: shopId },
+      select: { name: true, logoUrl: true, currency: true }
+    }),
+    prisma.category.findMany({
+      where: { shopId },
+      select: { id: true, name: true, color: true },
+      orderBy: { name: 'asc' }
+    }),
+    prisma.product.findMany({
+      where: { shopId, isActive: true, stock: { gt: 0 } },
+      select: {
+        id: true, name: true, sellingPrice: true, stock: true,
+        imageUrl: true, description: true, taxRate: true, categoryId: true
+      },
+      orderBy: [{ category: { name: 'asc' } }, { name: 'asc' }],
+    }),
+  ]);
+
+  if (!shop) return res.status(404).json({ error: 'Shop not found' });
+
+  const payload = { shop, categories, products };
+
+  // 3. Cache the result
+  await setCache(cacheKey, payload, MENU_CACHE_TTL);
+
+  res.set('X-Cache', 'MISS');
+  res.set('Cache-Control', 'public, max-age=60, s-maxage=300');
+  return res.json(payload);
 }));
 
-// Public: get shop info
+// Public: get shop info (kept for backward compat)
 router.get('/shop', asyncHandler(async (req, res) => {
   const { shopId } = req.query;
   if (!shopId || typeof shopId !== 'string') return res.status(400).json({ error: 'shopId required' });

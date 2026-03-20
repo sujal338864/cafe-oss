@@ -1,8 +1,10 @@
 'use client';
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, Suspense, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Image from 'next/image';
 
-type Product = { id: string; name: string; sellingPrice: number; description?: string; imageUrl?: string; category?: { name: string }; stock: number; taxRate: number; };
+type Product = { id: string; name: string; sellingPrice: number; description?: string; imageUrl?: string; categoryId?: string; stock: number; taxRate: number; };
+type Category = { id: string; name: string; color?: string };
 type CartItem = Product & { qty: number; note: string };
 
 const fmt = (n: number) => 'Rs.' + Number(n || 0).toLocaleString('en-IN');
@@ -20,11 +22,38 @@ async function post(path: string, body: any) {
   return d;
 }
 
+function SkeletonCard() {
+  return (
+    <div style={{ background: '#0f1a0f', border: '1px solid #1a2e1a', borderRadius: 14, overflow: 'hidden' }}>
+      <div style={{ width: '100%', aspectRatio: '4/3' as any, background: 'linear-gradient(90deg, #1a2e1a 25%, #243824 50%, #1a2e1a 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite' }} />
+      <div style={{ padding: '10px 11px 12px' }}>
+        <div style={{ height: 14, width: '70%', background: '#1a2e1a', borderRadius: 4, marginBottom: 10 }} />
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <div style={{ height: 14, width: '30%', background: '#1a2e1a', borderRadius: 4 }} />
+          <div style={{ width: 28, height: 28, background: '#1a2e1a', borderRadius: '50%' }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function MenuPage() {
   return (
-    <Suspense fallback={<div style={{ minHeight: '100vh', background: '#080c08', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#86efac', fontWeight: 'bold' }}>Loading...</div>}>
-      <MenuContent />
-    </Suspense>
+    <>
+      <style>{`
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+        @keyframes slideUpSheet { from { transform: translateY(40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .menu-card { transition: transform 0.2s ease, border-color 0.2s ease; }
+        .menu-card:active { transform: scale(0.97); }
+        @media (hover: hover) { .menu-card:hover { transform: scale(1.03); } }
+      `}</style>
+      <Suspense fallback={<div style={{ minHeight: '100vh', background: '#080c08', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#86efac', fontWeight: 'bold' }}>Loading...</div>}>
+        <MenuContent />
+      </Suspense>
+    </>
   );
 }
 
@@ -33,10 +62,12 @@ function MenuContent() {
   const shopId = searchParams.get('shopId');
 
   const [products, setProducts] = useState<Product[]>([]);
+  const [allCategories, setAllCategories] = useState<Category[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [cats, setCats] = useState<string[]>([]);
   const [cat, setCat] = useState('All');
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const searchTimeout = useRef<NodeJS.Timeout>();
   const [loading, setLoading] = useState(true);
   const [step, setStep] = useState<'menu'|'info'|'done'>('menu');
   const [shopName, setShopName] = useState('Our Menu');
@@ -58,6 +89,13 @@ function MenuContent() {
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
 
   useEffect(() => { if (shopId) load(); }, [shopId]);
+
+  // Debounced search
+  useEffect(() => {
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    searchTimeout.current = setTimeout(() => setDebouncedSearch(search), 200);
+    return () => { if (searchTimeout.current) clearTimeout(searchTimeout.current); };
+  }, [search]);
 
   useEffect(() => {
     const digits = phone.replace(/\D/g, '');
@@ -93,16 +131,14 @@ function MenuContent() {
 
   const load = async () => {
     try {
-      const [p, s] = await Promise.allSettled([
-        get(`/api/menu?shopId=${shopId}`), 
-        get(`/api/menu/shop?shopId=${shopId}`)
-      ]);
-      if (p.status === 'fulfilled') {
-        const prods: Product[] = p.value.products || [];
-        setProducts(prods.filter(x => x.stock > 0));
-        setCats(['All', ...Array.from(new Set(prods.map(x => x.category?.name).filter(Boolean) as string[]))]);
-      }
-      if (s.status === 'fulfilled') setShopName(s.value.shop?.name || s.value.name || 'Our Menu');
+      // Single unified API call — returns shop + categories + products
+      const data = await get(`/api/menu?shopId=${shopId}`);
+      const prods: Product[] = data.products || [];
+      setProducts(prods.filter(x => x.stock > 0));
+      setAllCategories(data.categories || []);
+      setShopName(data.shop?.name || 'Our Menu');
+    } catch (e) {
+      console.error('Menu load failed:', e);
     } finally { setLoading(false); }
   };
 
@@ -117,9 +153,11 @@ function MenuContent() {
   const total = subtotal + tax;
   const pointsDiscount = (pointsToRedeem / REDEEM_RATE) || 0;
   const finalTotal = Math.max(0, total - pointsDiscount);
-  
+
+  const cats = ['All', ...allCategories.map(c => c.name)];
+  const catMap = Object.fromEntries(allCategories.map(c => [c.id, c.name]));
   const count = cart.reduce((s, i) => s + i.qty, 0);
-  const filtered = products.filter(p => (cat === 'All' || p.category?.name === cat) && p.name.toLowerCase().includes(search.toLowerCase()));
+  const filtered = products.filter(p => (cat === 'All' || catMap[p.categoryId || ''] === cat) && p.name.toLowerCase().includes(debouncedSearch.toLowerCase()));
 
   const placeOrder = async () => {
     if (!name.trim()) return;
@@ -215,7 +253,7 @@ function MenuContent() {
   }
 
   if (step === 'info') return (
-    <div style={{ minHeight: '100vh', background: G, fontFamily: 'system-ui,sans-serif', paddingBottom: 90 }}>
+    <div style={{ minHeight: '100vh', background: G, fontFamily: 'system-ui,sans-serif', paddingBottom: 90, animation: 'slideUpSheet 0.3s ease-out' }}>
       <div style={{ padding: '14px 18px', borderBottom: '1px solid '+B, display: 'flex', alignItems: 'center', gap: 12, background: '#0a0f0a', position: 'sticky', top: 0, zIndex: 10 }}>
         <button onClick={() => setStep('menu')} style={{ background: B, border: 'none', color: M, width: 36, height: 36, borderRadius: '50%', fontSize: 20, cursor: 'pointer' }}>←</button>
         <div style={{ fontWeight: 800, fontSize: 17, color: T }}>Your Order</div>
@@ -304,31 +342,31 @@ function MenuContent() {
 
   return (
     <div style={{ minHeight: '100vh', background: G, fontFamily: 'system-ui,sans-serif', paddingBottom: count > 0 ? 88 : 20 }}>
-      <div style={{ background: 'linear-gradient(180deg,#0a1a0a,#080c08)', padding: '24px 18px 14px', textAlign: 'center', borderBottom: '1px solid '+B }}>
-        <div style={{ width: 50, height: 50, borderRadius: 13, background: 'linear-gradient(135deg,#22c55e,#16a34a)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px', fontSize: 24 }}>☕</div>
+      <div style={{ background: 'rgba(10, 26, 10, 0.85)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', padding: '24px 18px 14px', textAlign: 'center', borderBottom: '1px solid rgba(34, 197, 94, 0.15)', position: 'sticky', top: 0, zIndex: 20 }}>
+        <div style={{ width: 50, height: 50, borderRadius: 13, background: 'linear-gradient(135deg,#22c55e,#16a34a)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px', fontSize: 24, boxShadow: '0 4px 20px rgba(34,197,94,0.3)' }}>☕</div>
         <h1 style={{ fontSize: 22, fontWeight: 800, color: T, margin: '0 0 3px' }}>{shopName}</h1>
         <p style={{ fontSize: 12, color: M, margin: '0 0 12px' }}>Scan · Order · Enjoy</p>
         <div style={{ position: 'relative' }}>
           <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }}>🔍</span>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search menu..." style={{ ...inp, paddingLeft: 36 }} />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search menu..." style={{ ...inp, paddingLeft: 36, transition: 'border-color 0.2s' }} />
         </div>
       </div>
       {cats.length > 1 && (
-        <div style={{ display: 'flex', gap: 7, padding: '11px 14px', overflowX: 'auto' as const, scrollbarWidth: 'none' as const }}>
-          {cats.map(c => <button key={c} onClick={() => setCat(c)} style={{ flexShrink: 0, padding: '6px 14px', borderRadius: 50, border: 'none', fontWeight: 600, fontSize: 12, cursor: 'pointer', background: cat === c ? 'linear-gradient(135deg,#22c55e,#16a34a)' : C, color: cat === c ? 'white' : M }}>{c}</button>)}
+        <div style={{ display: 'flex', gap: 7, padding: '11px 14px', overflowX: 'auto' as const, scrollbarWidth: 'none' as const, position: 'sticky', top: 130, zIndex: 15, background: 'rgba(8, 12, 8, 0.95)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' }}>
+          {cats.map(c => <button key={c} onClick={() => setCat(c)} style={{ flexShrink: 0, padding: '6px 14px', borderRadius: 50, border: 'none', fontWeight: 600, fontSize: 12, cursor: 'pointer', background: cat === c ? 'linear-gradient(135deg,#22c55e,#16a34a)' : C, color: cat === c ? 'white' : M, transition: 'all 0.2s ease', boxShadow: cat === c ? '0 2px 12px rgba(34,197,94,0.3)' : 'none' }}>{c}</button>)}
         </div>
       )}
       <div style={{ padding: '4px 12px' }}>
-        {loading ? <div style={{ textAlign: 'center', padding: 60, color: A }}>Loading menu...</div> :
+        {loading ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10 }}>{Array.from({length: 6}).map((_, i) => <SkeletonCard key={i} />)}</div> :
          filtered.length === 0 ? <div style={{ textAlign: 'center', padding: 60, color: '#4b5563' }}>No items found</div> : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10 }}>
             {filtered.map((p, idx) => {
               const inCart = cart.find(i => i.id === p.id);
               const col = COLS[idx % COLS.length];
               return (
-                <div key={p.id} style={{ background: C, border: '1px solid ' + (inCart ? col+'66' : B), borderRadius: 14, overflow: 'hidden' }}>
-                  <div style={{ width: '100%', aspectRatio: '4/3' as any, background: col+'22', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                    {p.imageUrl ? <img src={p.imageUrl} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' as const }} /> : <span style={{ fontSize: 38, fontWeight: 900, color: col }}>{p.name[0].toUpperCase()}</span>}
+                <div key={p.id} className="menu-card" style={{ background: C, border: '1px solid ' + (inCart ? col+'66' : B), borderRadius: 14, overflow: 'hidden', animation: `fadeIn 0.3s ease-out ${idx * 0.05}s both` }}>
+                  <div style={{ width: '100%', aspectRatio: '4/3' as any, background: col+'22', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative' as const }}>
+                    {p.imageUrl ? <Image src={p.imageUrl} alt={p.name} width={200} height={150} style={{ width: '100%', height: '100%', objectFit: 'cover' as const }} loading="lazy" /> : <span style={{ fontSize: 38, fontWeight: 900, color: col }}>{p.name[0].toUpperCase()}</span>}
                   </div>
                   <div style={{ padding: '10px 11px 12px' }}>
                     <div style={{ fontWeight: 700, fontSize: 13, color: T, marginBottom: 7, lineHeight: 1.3 }}>{p.name}</div>
@@ -351,11 +389,11 @@ function MenuContent() {
         )}
       </div>
       {count > 0 && (
-        <div style={{ position: 'fixed', bottom: 14, left: 14, right: 14, zIndex: 50 }}>
-          <button onClick={() => setStep('info')} style={{ width: '100%', background: 'linear-gradient(135deg,#22c55e,#16a34a)', border: 'none', color: 'white', padding: '14px 18px', borderRadius: 14, fontWeight: 800, fontSize: 14, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 6px 24px rgba(34,197,94,0.4)' }}>
-            <span style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 20, padding: '2px 9px', fontSize: 12 }}>{count} items</span>
-            <span>View Order</span>
-            <span>{fmt(total)}</span>
+        <div style={{ position: 'fixed', bottom: 14, left: 14, right: 14, zIndex: 50, animation: 'slideUp 0.3s ease-out' }}>
+          <button onClick={() => setStep('info')} style={{ width: '100%', background: 'linear-gradient(135deg,#22c55e,#16a34a)', border: 'none', color: 'white', padding: '14px 18px', borderRadius: 14, fontWeight: 800, fontSize: 14, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 8px 32px rgba(34,197,94,0.45)', transition: 'transform 0.2s, box-shadow 0.2s' }}>
+            <span style={{ background: 'rgba(0,0,0,0.25)', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}>{count} items</span>
+            <span>View Order →</span>
+            <span style={{ fontWeight: 900 }}>{fmt(total)}</span>
           </button>
         </div>
       )}

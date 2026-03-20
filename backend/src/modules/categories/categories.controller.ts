@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../../middleware/auth';
 import * as categoryService from './categories.service';
+import { deleteCache } from '../../common/cache';
 
 export const getCategories = async (req: AuthRequest, res: Response) => {
   const categories = await categoryService.getCategories(req.user!.shopId);
@@ -16,6 +17,7 @@ export const createCategory = async (req: AuthRequest, res: Response) => {
   }
 
   const category = await categoryService.createCategory(req.user!.shopId, { name, color });
+  await deleteCache(`menu:${req.user!.shopId}`);
   res.status(201).json(category);
 };
 
@@ -26,6 +28,7 @@ export const updateCategory = async (req: AuthRequest, res: Response) => {
   }
 
   const updated = await categoryService.updateCategory(req.params.id, req.body);
+  await deleteCache(`menu:${req.user!.shopId}`);
   res.json(updated);
 };
 
@@ -36,5 +39,6 @@ export const deleteCategory = async (req: AuthRequest, res: Response) => {
   }
 
   await categoryService.deleteCategory(req.params.id);
+  await deleteCache(`menu:${req.user!.shopId}`);
   res.json({ success: true });
 };

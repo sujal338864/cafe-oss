@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../../middleware/auth';
 import * as productService from './products.service';
+import { deleteCache } from '../../common/cache';
 
 export const getProducts = async (req: AuthRequest, res: Response) => {
   const { page = '1', limit = '20', search = '', category, lowStock } = req.query;
@@ -46,6 +47,7 @@ export const createProduct = async (req: AuthRequest, res: Response) => {
   }
 
   const product = await productService.createProduct(req.user!.shopId, data);
+  await deleteCache(`menu:${req.user!.shopId}`);
   res.status(201).json(product);
 };
 
@@ -56,6 +58,7 @@ export const updateProduct = async (req: AuthRequest, res: Response) => {
   }
 
   const updated = await productService.updateProduct(req.params.id, req.body);
+  await deleteCache(`menu:${req.user!.shopId}`);
   res.json(updated);
 };
 
@@ -66,6 +69,7 @@ export const deleteProduct = async (req: AuthRequest, res: Response) => {
   }
 
   await productService.softDeleteProduct(req.params.id);
+  await deleteCache(`menu:${req.user!.shopId}`);
   res.json({ success: true, message: 'Product deleted' });
 };
 
