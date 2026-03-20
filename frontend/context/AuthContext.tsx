@@ -5,7 +5,7 @@ import axios from 'axios';
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
-interface User { id: string; name: string; email: string; role: string; }
+interface User { id: string; name: string; email: string; role: string; shopId?: string; }
 interface Shop { id: string; name: string; plan: string; }
 interface AuthContextType {
   user: User | null; shop: Shop | null; token: string | null;
