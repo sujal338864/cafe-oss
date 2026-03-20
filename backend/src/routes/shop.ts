@@ -62,8 +62,8 @@ router.post(
 
     // 3. Create Sample Products
     const p1 = await prisma.product.create({ data: { shopId, categoryId: cat1.id, name: 'Filter Coffee', costPrice: 20, sellingPrice: 50, stock: 100 } });
-    const p2 = await prisma.product.create({ data: { shopId, categoryId: cat1.id, name: 'Cold Brew',   costPrice: 40, sellingPrice: 90, stock: 40  } });
-    const p3 = await prisma.product.create({ data: { shopId, categoryId: cat2.id, name: 'Nachos Grid',  costPrice: 30, sellingPrice: 70, stock: 8, lowStockAlert: 10 } }); // low stock trigger
+    const p2 = await prisma.product.create({ data: { shopId, categoryId: cat1.id, name: 'Cold Brew', costPrice: 40, sellingPrice: 90, stock: 40 } });
+    const p3 = await prisma.product.create({ data: { shopId, categoryId: cat2.id, name: 'Nachos Grid', costPrice: 30, sellingPrice: 70, stock: 8, lowStockAlert: 10 } }); // low stock trigger
 
     // 4. Create Sample Customer
     const customer = await prisma.customer.create({ data: { shopId, name: 'Common Walk-in', phone: '9000000000' } });
@@ -88,7 +88,7 @@ router.post(
           items: {
             create: [
               { productId: p1.id, name: 'Filter Coffee', quantity: 2, costPrice: 20, unitPrice: 50, total: 100 },
-              { productId: p2.id, name: 'Cold Brew',   quantity: 1, costPrice: 40, unitPrice: 60, total: 60 }
+              { productId: p2.id, name: 'Cold Brew', quantity: 1, costPrice: 40, unitPrice: 60, total: 60 }
             ]
           }
         }
@@ -133,9 +133,32 @@ router.put(
     const { invoiceSettings } = req.body;
     const shop = await prisma.shop.update({
       where: { id: req.user!.shopId },
-      data: { invoiceSettings }
+      data: {
+        invoiceSettings: typeof invoiceSettings === 'object' ? JSON.stringify(invoiceSettings) : invoiceSettings
+      }
     });
     res.json(shop);
+  })
+);
+
+/**
+ * GET /api/shop/debug/db-push?secret=cafeoss123
+ * Emergency route to executing ALTER TABLE directly from Render environment
+ */
+router.get(
+  '/debug/db-push',
+  asyncHandler(async (req, res) => {
+    const { secret } = req.query;
+    if (secret !== 'cafeoss123') {
+      return res.status(401).send('Unauthorized');
+    }
+
+    try {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Shop" ADD COLUMN IF NOT EXISTS "invoiceSettings" TEXT;`);
+      res.send('✅ SQL ALTER TABLE SUCCESS: Column has been forced onto Render Live DB!');
+    } catch (err: any) {
+      res.status(500).send(`❌ SQL failed from Render: ${err.message}`);
+    }
   })
 );
 
