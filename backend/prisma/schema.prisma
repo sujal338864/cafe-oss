@@ -85,7 +85,6 @@ model Shop {
   currency    String    @default("INR")
   timezone    String    @default("Asia/Kolkata")
   logoUrl     String?
-  invoiceSettings String?
   plan        Plan      @default(STARTER)
   planExpiry  DateTime?
   isActive    Boolean   @default(true)

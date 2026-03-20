@@ -123,43 +123,4 @@ router.post(
   })
 );
 
-/**
- * PUT /api/shop/invoice-settings
- */
-router.put(
-  '/invoice-settings',
-  authenticate,
-  asyncHandler(async (req: AuthRequest, res) => {
-    const { invoiceSettings } = req.body;
-    const shop = await prisma.shop.update({
-      where: { id: req.user!.shopId },
-      data: {
-        invoiceSettings: typeof invoiceSettings === 'object' ? JSON.stringify(invoiceSettings) : invoiceSettings
-      }
-    });
-    res.json(shop);
-  })
-);
-
-/**
- * GET /api/shop/debug/db-push?secret=cafeoss123
- * Emergency route to executing ALTER TABLE directly from Render environment
- */
-router.get(
-  '/debug/db-push',
-  asyncHandler(async (req, res) => {
-    const { secret } = req.query;
-    if (secret !== 'cafeoss123') {
-      return res.status(401).send('Unauthorized');
-    }
-
-    try {
-      await prisma.$executeRawUnsafe(`ALTER TABLE "Shop" ADD COLUMN IF NOT EXISTS "invoiceSettings" TEXT;`);
-      res.send('✅ SQL ALTER TABLE SUCCESS: Column has been forced onto Render Live DB!');
-    } catch (err: any) {
-      res.status(500).send(`❌ SQL failed from Render: ${err.message}`);
-    }
-  })
-);
-
 export default router;
