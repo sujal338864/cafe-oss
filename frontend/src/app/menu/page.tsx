@@ -91,24 +91,9 @@ const ProductItem = memo(function ProductItem({ p, inCart, onAdd, onInc, onDec }
 
 export default function MenuPage() {
   return (
-    <>
-      <style suppressHydrationWarning dangerouslySetInnerHTML={{ __html: `
-        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-        @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        html { scroll-behavior: smooth; }
-        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; }
-        .product-row { transition: background 0.15s; }
-        .product-row:active { background: rgba(0,0,0,0.02); }
-        input:focus, textarea:focus { border-color: #16a34a !important; outline: none; }
-        ::-webkit-scrollbar { display: none; }
-      ` }} />
-      <Suspense fallback={<div style={{ minHeight: '100vh', background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999' }}>Loading...</div>}>
-        <MenuContent />
-      </Suspense>
-    </>
+    <Suspense fallback={<div style={{ minHeight: '100vh', background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999' }}>Loading...</div>}>
+      <MenuContent />
+    </Suspense>
   );
 }
 

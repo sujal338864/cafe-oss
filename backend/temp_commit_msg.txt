@@ -1,1 +1,1 @@
-UI: minimal premium glassmorphism menu rewrite 
+Fix hydration error in menu style tag 
