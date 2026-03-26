@@ -8,6 +8,7 @@ import api from '@/lib/api';
 const NAV = [
   { href: '/dashboard',            label: 'Dashboard',  icon: '▦' },
   { href: '/dashboard/pos',        label: 'New Sale',   icon: '⊕' },
+  { href: '/dashboard/kitchen',    label: 'Kitchen',    icon: '🍳' },
   { href: '/dashboard/products',   label: 'Products',   icon: '📦' },
   { href: '/dashboard/categories', label: 'Categories', icon: '🏷️' },
   { href: '/dashboard/orders',     label: 'Orders',     icon: '🧾' },
@@ -16,6 +17,7 @@ const NAV = [
   { href: '/dashboard/purchases',  label: 'Purchases',  icon: '🛒' },
   { href: '/dashboard/expenses',   label: 'Expenses',   icon: '💸' },
   { href: '/dashboard/analytics',  label: 'Analytics',  icon: '📊' },
+  { href: '/dashboard/qr',         label: 'QR Codes',   icon: '📱' },
   { href: '/dashboard/settings',   label: 'Settings',   icon: '⚙️' },
 ];
 

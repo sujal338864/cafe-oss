@@ -174,7 +174,7 @@ router.post('/order', asyncHandler(async (req, res) => {
       paidAmount: paymentStatus === 'PAID' ? finalTotal : 0,
       paymentMethod: pm,
       paymentStatus: paymentStatus as any,
-      status: 'COMPLETED',
+      status: 'PENDING',
       notes: (tableNumber ? 'Table: ' + tableNumber + '. ' : '') + (notes || ''),
       items: { create: orderItems },
     },

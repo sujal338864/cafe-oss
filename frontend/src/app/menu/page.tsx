@@ -118,7 +118,7 @@ function MenuContent() {
   const [notes, setNotes] = useState('');
   const [pay, setPay] = useState<'UPI' | 'CASH'>('UPI');
   const [placing, setPlacing] = useState(false);
-  const [result, setResult] = useState<{ id?: string; invoiceNumber: string; tokenNumber?: string; paymentStatus: string; whatsappSent: boolean } | null>(null);
+  const [result, setResult] = useState<{ id?: string; invoiceNumber: string; tokenNumber?: string; paymentStatus: string; status: string; whatsappSent: boolean } | null>(null);
   const [noteFor, setNoteFor] = useState<string | null>(null);
   const [loyaltyPoints, setLoyaltyPoints] = useState(0);
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
@@ -143,15 +143,18 @@ function MenuContent() {
   }, [phone]);
 
   useEffect(() => {
-    if (step !== 'done' || !result?.id || result.paymentStatus === 'PAID') return;
+    if (step !== 'done' || !result?.id) return;
+    // Keep polling until order is COMPLETED and PAID
+    const isDone = result.status === 'COMPLETED' && result.paymentStatus === 'PAID';
+    if (isDone) return;
     const interval = setInterval(async () => {
       try {
         const d = await get(`/api/menu/order/${result.id}/status`);
-        if (d.paymentStatus === 'PAID') setResult(r => r ? { ...r, paymentStatus: 'PAID' } : r);
+        setResult(r => r ? { ...r, paymentStatus: d.paymentStatus || r.paymentStatus, status: d.status || r.status } : r);
       } catch {}
     }, 4000);
     return () => clearInterval(interval);
-  }, [step, result?.id, result?.paymentStatus]);
+  }, [step, result?.id, result?.paymentStatus, result?.status]);
 
   const lookupCustomer = async (digits: string) => {
     try {
@@ -209,7 +212,7 @@ function MenuContent() {
       });
       setResult({
         id: d.order?.id || '', invoiceNumber: d.order?.invoiceNumber || d.invoiceNumber || '',
-        tokenNumber: d.tokenNumber, paymentStatus: d.paymentStatus || pay, whatsappSent: d.whatsappSent || false,
+        tokenNumber: d.tokenNumber, paymentStatus: d.paymentStatus || pay, status: d.order?.status || 'PENDING', whatsappSent: d.whatsappSent || false,
       });
       setStep('done');
     } catch (e: any) { alert(e?.response?.data?.error || 'Failed to place order'); }
@@ -222,9 +225,41 @@ function MenuContent() {
   if (step === 'done' && result) {
     const isPaid = result.paymentStatus === 'PAID';
     const token = result.tokenNumber?.replace(/^0+/, '') || result.invoiceNumber?.replace('ONL-', '').replace(/^0+/, '') || '?';
+    const orderStatus = result.status || 'PENDING';
+    const stages = ['PENDING', 'PREPARING', 'READY', 'COMPLETED'];
+    const stageLabels = ['✓ Confirmed', '🔥 Preparing', '✅ Ready', '🎉 Done'];
+    const currentStage = stages.indexOf(orderStatus);
+    const isKitchenActive = currentStage >= 0 && currentStage < 3;
     return (
       <div style={{ minHeight: '100vh', background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: 'system-ui' }}>
         <div style={{ textAlign: 'center', width: '100%', maxWidth: 400, animation: 'fadeUp 0.4s ease-out' }}>
+
+          {/* Live Order Status Tracker */}
+          {isKitchenActive && (
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, marginBottom: 16 }}>
+                {stages.map((s, i) => {
+                  const done = i <= currentStage;
+                  const active = i === currentStage;
+                  return (
+                    <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <div style={{
+                        width: active ? 36 : 28, height: active ? 36 : 28, borderRadius: '50%',
+                        background: done ? '#16a34a' : '#e5e5e5', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: active ? 16 : 12, color: done ? '#fff' : '#999', fontWeight: 800,
+                        transition: 'all 0.3s', boxShadow: active ? '0 0 0 4px rgba(22,163,106,0.2)' : 'none',
+                      }}>{done ? '✓' : i + 1}</div>
+                      {i < stages.length - 1 && <div style={{ width: 24, height: 3, borderRadius: 99, background: i < currentStage ? '#16a34a' : '#e5e5e5', transition: 'all 0.3s' }} />}
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 13, color: '#16a34a', fontWeight: 700, marginBottom: 4 }}>
+                {stageLabels[currentStage]}
+              </div>
+              <div style={{ fontSize: 11, color: '#999' }}>Auto-updating every few seconds...</div>
+            </div>
+          )}
           {isPaid ? (
             <>
               <div style={{ width: 72, height: 72, borderRadius: '50%', background: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', fontSize: 32, color: '#fff' }}>✓</div>

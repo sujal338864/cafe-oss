@@ -52,6 +52,9 @@ enum PaymentStatus {
 }
 
 enum OrderStatus {
+  PENDING
+  PREPARING
+  READY
   COMPLETED
   CANCELLED
   REFUNDED

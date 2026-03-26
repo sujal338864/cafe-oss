@@ -1,1 +1,1 @@
-Fix: move CSS to globals.css to eliminate hydration error permanently 
+Fix: all bugs from site analysis - encoding, auth, retry states, favicon 

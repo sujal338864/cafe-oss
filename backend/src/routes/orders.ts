@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../index';
 import { authenticate, authorize, asyncHandler, validateRequest, AuthRequest } from '../middleware/auth';
 import { sendWhatsAppBill } from '../lib/whatsapp';
+import { emitToShop } from '../lib/socket';
 
 const POINTS_PER_RUPEE = parseFloat(process.env.LOYALTY_POINTS_PER_RUPEE || '0.1'); // 1 pt per Rs.10
 const POINTS_REDEEM_RATE = parseFloat(process.env.LOYALTY_REDEEM_RATE || '10');      // 100 pts = Rs.10 off
@@ -295,6 +296,33 @@ router.put(
         }
       } catch (e) { console.warn('WhatsApp bill on mark-paid failed:', e); }
     }
+
+    res.json(updated);
+  })
+);
+// Kitchen workflow — update order status (PENDING → PREPARING → READY → COMPLETED)
+router.put(
+  '/:id/status',
+  authenticate,
+  asyncHandler(async (req: AuthRequest, res) => {
+    const { status } = req.body;
+    const validStatuses = ['PENDING', 'PREPARING', 'READY', 'COMPLETED'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+    }
+    const order = await prisma.order.findFirst({
+      where: { id: req.params.id, shopId: req.user!.shopId }
+    });
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    const updated = await prisma.order.update({
+      where: { id: req.params.id },
+      data: { status },
+      include: { items: true, customer: true }
+    });
+
+    // Broadcast via WebSocket for real-time KDS + customer tracking
+    try { emitToShop(req.user!.shopId, 'ORDER_UPDATED', updated); } catch {}
 
     res.json(updated);
   })
