@@ -65,7 +65,7 @@ router.post(
           paidAmount: paymentStatus === 'PAID' ? totalAmount : 0,
           paymentMethod,
           paymentStatus,
-          status: 'COMPLETED',
+          status: 'PENDING',
           notes,
           items: {
             create: items.map((item: any) => ({
@@ -114,6 +114,9 @@ router.post(
 
       return newOrder;
     }, { timeout: 15000 });
+
+    // Broadcast to Kitchen Display System instantly
+    try { emitToShop(req.user!.shopId, 'ORDER_CREATED', order); } catch {}
 
     // Low stock check (non-critical)
     try {

@@ -57,7 +57,7 @@ export default function KitchenPage() {
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { load(); const i = setInterval(load, 15000); return () => clearInterval(i); }, [load]);
+  useEffect(() => { load(); const i = setInterval(load, 2000); return () => clearInterval(i); }, [load]);
 
   useEffect(() => {
     if (!socket) return;

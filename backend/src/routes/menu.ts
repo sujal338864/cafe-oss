@@ -4,6 +4,7 @@ import { asyncHandler } from '../middleware/auth';
 import { PaymentMethod } from '@prisma/client';
 import { sendWhatsAppBill } from '../lib/whatsapp';
 import { getCache, setCache } from '../common/cache';
+import { emitToShop } from '../lib/socket';
 
 import { generateInvoicePDF } from '../lib/invoice';
 
@@ -180,6 +181,9 @@ router.post('/order', asyncHandler(async (req, res) => {
     },
     include: { items: true },
   });
+
+  // Broadcast to Kitchen Display System instantly
+  try { emitToShop(shop.id, 'ORDER_CREATED', order); } catch {}
 
   // Deduct stock
   for (const item of items) {

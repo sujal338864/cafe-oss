@@ -22,6 +22,7 @@ export const analyticsAggregationProcessor = async () => {
         by: ['name'],
         where: { order: { shopId, status: 'COMPLETED', createdAt: { gte: yesterday } } },
         _sum: { quantity: true, total: true },
+        orderBy: { _sum: { quantity: 'desc' } },
         take: 5
       });
 
