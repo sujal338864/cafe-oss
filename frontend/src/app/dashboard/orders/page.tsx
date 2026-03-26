@@ -29,14 +29,16 @@ export default function OrdersPage() {
   const [expanded, setExpanded] = useState<string|null>(null);
   const [updating, setUpdating] = useState<string|null>(null);
 
+  const [error,    setError]    = useState('');
+
   useEffect(() => { load(); }, []);
 
   const load = async () => {
-    setLoading(true);
+    setLoading(true); setError('');
     try {
       const { data } = await api.get('/api/orders?limit=200');
       setOrders(data.orders || data.data || (Array.isArray(data) ? data : []));
-    } catch {}
+    } catch { setError('Failed to load orders. Backend may be warming up.'); }
     finally { setLoading(false); }
   };
 
@@ -131,7 +133,8 @@ export default function OrdersPage() {
       </div>
 
       <div style={{...card, overflow:'hidden'}}>
-        {loading ? <div style={{padding:40,textAlign:'center',color:theme.textFaint}}>Loading orders...</div>
+        {loading ? <div style={{padding:40,textAlign:'center',color:theme.textFaint}}><div>Loading orders...</div><div style={{fontSize:11,marginTop:8}}>If this takes long, the backend is warming up.</div></div>
+        : error && orders.length === 0 ? <div style={{padding:40,textAlign:'center'}}><div style={{fontSize:14,color:'#ef4444',marginBottom:12}}>{error}</div><button onClick={load} style={{background:'#7c3aed',color:'white',border:'none',padding:'8px 20px',borderRadius:8,fontWeight:700,cursor:'pointer'}}>Retry</button></div>
         : filtered.length===0 ? <div style={{padding:40,textAlign:'center',color:theme.textFaint}}>No orders match filters.</div>
         : (
           <table style={{width:'100%',borderCollapse:'collapse'}}>
@@ -158,7 +161,7 @@ export default function OrdersPage() {
                         {o.customer?.phone && <div style={{fontSize:11,color:theme.textFaint}}>{o.customer.phone}</div>}
                         {o.tableNumber && <div style={{fontSize:11,color:'#38bdf8'}}>Table {o.tableNumber}</div>}
                       </td>
-                      <td style={{padding:'11px 14px',fontSize:13,color:theme.textMuted}}>{o.items?.length??'ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â'}</td>
+                      <td style={{padding:'11px 14px',fontSize:13,color:theme.textMuted}}>{o.items?.length ?? '—'}</td>
                       <td style={{padding:'11px 14px',fontWeight:700,color:theme.text}}>{fmt(o.totalAmount)}</td>
                       <td style={{padding:'11px 14px'}}>
                         <span style={{fontSize:11,fontWeight:700,padding:'2px 9px',borderRadius:20,background:mc+'18',color:mc}}>{o.paymentMethod}</span>
@@ -199,12 +202,6 @@ export default function OrdersPage() {
                               {o.taxAmount>0 && <span>Tax: <b style={{color:'#f59e0b'}}>{fmt(o.taxAmount)}</b></span>}
                               {o.discountAmount>0 && <span>Discount: <b style={{color:'#10b981'}}>-{fmt(o.discountAmount)}</b></span>}
                               {o.notes && <span>Note: <i style={{color:theme.text}}>{o.notes}</i></span>}
-                            {o.paymentStatus !== 'PAID' && (
-                              <button onClick={() => markPaid(o.id)}
-                                style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid #10b981', color: '#10b981', padding: '5px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                                 Mark as Paid
-                              </button>
-                            )}
                               {isUnpaid && (
                                 <button onClick={()=>markPaid(o.id)} disabled={updating===o.id}
                                   style={{background:'rgba(16,185,129,0.15)',border:'1px solid #10b981',color:'#10b981',padding:'6px 16px',borderRadius:8,fontSize:12,fontWeight:700,cursor:'pointer',marginLeft:'auto',opacity:updating===o.id?0.6:1}}>

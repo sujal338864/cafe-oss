@@ -119,7 +119,10 @@ export default function DashboardPage() {
   };
 
   if (loading) return (
-    <div style={{ color: theme.textMuted, padding: 40, textAlign: 'center' }}>Loading dashboard...</div>
+    <div style={{ color: theme.textMuted, padding: 40, textAlign: 'center' }}>
+      <div>Loading dashboard...</div>
+      <div style={{ fontSize: 11, color: theme.textFaint, marginTop: 8 }}>If this takes long, the backend is warming up (Render free tier).</div>
+    </div>
   );
 
   return (

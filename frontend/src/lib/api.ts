@@ -16,8 +16,13 @@ api.interceptors.response.use(
   res => res,
   err => {
     if (err.response?.status === 401 && typeof window !== 'undefined') {
-      localStorage.removeItem('shop_os_token');
-      window.location.href = '/login';
+      // Don't redirect for optional/background endpoints
+      const url = err.config?.url || '';
+      const isOptional = url.includes('/ai/') || url.includes('/analytics/') || url.includes('/menu/');
+      if (!isOptional) {
+        localStorage.removeItem('shop_os_token');
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(err);
   }

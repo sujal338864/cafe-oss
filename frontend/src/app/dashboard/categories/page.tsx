@@ -21,10 +21,11 @@ export default function CategoriesPage() {
   useEffect(() => { load(); }, []);
 
   const load = async () => {
+    setLoading(true); setError('');
     try {
       const { data } = await api.get('/api/categories');
       setCategories(data.categories || []);
-    } catch (e) { console.error(e); }
+    } catch (e) { setError('Failed to load categories. Backend may be warming up.'); }
     finally { setLoading(false); }
   };
 
@@ -95,7 +96,15 @@ export default function CategoriesPage() {
 
       {/* Category Cards Grid */}
       {loading ? (
-        <div style={{ padding: 40, textAlign: 'center', color: theme.textFaint }}>Loading...</div>
+        <div style={{ padding: 40, textAlign: 'center', color: theme.textFaint }}>
+          <div>Loading categories...</div>
+          <div style={{ fontSize: 11, color: theme.textFaint, marginTop: 8 }}>If this takes long, the backend is warming up.</div>
+        </div>
+      ) : error && categories.length === 0 ? (
+        <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, padding: 40, textAlign: 'center' }}>
+          <div style={{ fontSize: 14, color: '#ef4444', marginBottom: 12 }}>{error}</div>
+          <button onClick={load} style={{ background: '#7c3aed', color: 'white', border: 'none', padding: '8px 20px', borderRadius: 8, fontWeight: 700, cursor: 'pointer' }}>Retry</button>
+        </div>
       ) : categories.length === 0 ? (
         <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, padding: 60, textAlign: 'center' }}>
           <div style={{ fontSize: 48, marginBottom: 12 }}>🏷️</div>
