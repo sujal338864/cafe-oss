@@ -63,7 +63,7 @@ export default function OrderPage() {
           setResult(r => r ? { ...r, paymentStatus: 'PAID' } : r);
         }
       } catch (e) { /* console.warn('Polling failed'); */ }
-    }, 4000);
+    }, 15000);
     return () => clearInterval(interval);
   }, [step, result?.id, result?.paymentStatus]);
 

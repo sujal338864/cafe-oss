@@ -152,7 +152,7 @@ function MenuContent() {
         const d = await get(`/api/menu/order/${result.id}/status`);
         setResult(r => r ? { ...r, paymentStatus: d.paymentStatus || r.paymentStatus, status: d.status || r.status } : r);
       } catch {}
-    }, 4000);
+    }, 15000);
     return () => clearInterval(interval);
   }, [step, result?.id, result?.paymentStatus, result?.status]);
 

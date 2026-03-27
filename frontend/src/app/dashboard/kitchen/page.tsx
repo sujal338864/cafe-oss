@@ -41,11 +41,9 @@ export default function KitchenPage() {
     try {
       const { data } = await api.get('/api/orders?limit=100');
       const all = data.orders || data.data || [];
-      // Only show today's active kitchen orders
-      const today = new Date().toDateString();
-      const kitchen = all.filter((o: Order) =>
-        ['PENDING', 'PREPARING', 'READY'].includes(o.status) &&
-        new Date(o.createdAt).toDateString() === today
+      // Only show active kitchen orders (exclude COMPLETED/CANCELLED)
+      const kitchen = all.filter((o: Order) => 
+        ['PENDING', 'PREPARING', 'READY'].includes(o.status)
       );
       // Ping if new orders arrived
       if (kitchen.filter((o: Order) => o.status === 'PENDING').length > prevCountRef.current) {
@@ -57,7 +55,7 @@ export default function KitchenPage() {
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { load(); const i = setInterval(load, 2000); return () => clearInterval(i); }, [load]);
+  useEffect(() => { load(); const i = setInterval(load, 60000); return () => clearInterval(i); }, [load]);
 
   useEffect(() => {
     if (!socket) return;
