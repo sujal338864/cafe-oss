@@ -2,7 +2,7 @@
 import { useEffect, useState, Suspense, useRef, memo, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 
-type Product = { id: string; name: string; sellingPrice: number; description?: string; imageUrl?: string; categoryId?: string; stock: number; taxRate: number; };
+type Product = { id: string; name: string; sellingPrice: number; description?: string; imageUrl?: string; categoryId?: string; stock: number; taxRate: number; originalPrice?: number; discountedPrice?: number; activeRule?: string | null; };
 type Category = { id: string; name: string; color?: string };
 type CartItem = Product & { qty: number; note: string };
 
@@ -61,7 +61,15 @@ const ProductItem = memo(function ProductItem({ p, inCart, onAdd, onInc, onDec }
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 600, fontSize: 14, color: '#1a1a1a', lineHeight: 1.3, marginBottom: 2 }}>{p.name}</div>
         {p.description && <div style={{ fontSize: 12, color: '#999', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{p.description}</div>}
-        <div style={{ fontWeight: 700, fontSize: 14, color: '#111', marginTop: 4 }}>{fmt(p.sellingPrice)}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: p.activeRule ? '#16a34a' : '#111' }}>
+            {fmt(p.discountedPrice || p.sellingPrice)}
+          </div>
+          {p.activeRule && (
+            <div style={{ fontSize: 12, color: '#999', textDecoration: 'line-through' }}>{fmt(p.originalPrice || p.sellingPrice)}</div>
+          )}
+        </div>
+        {p.activeRule && <div style={{ fontSize: 10, fontWeight: 700, color: '#16a34a', textTransform: 'uppercase', marginTop: 2 }}>⚡ {p.activeRule}</div>}
       </div>
 
       {/* Add / Qty */}
@@ -89,6 +97,46 @@ const ProductItem = memo(function ProductItem({ p, inCart, onAdd, onInc, onDec }
   );
 });
 
+/* ─── Recommendations Row ─── */
+const RecommendationRow = ({ items, onAdd }: { items: Product[], onAdd: (p: Product) => void }) => {
+  if (!items.length) return null;
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: '#16a34a', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+        ✨ Chef Recommended
+      </div>
+      <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 8, scrollbarWidth: 'none' }}>
+        {items.map(p => (
+          <div key={p.id} style={{ 
+            flexShrink: 0, width: 140, background: '#fff', borderRadius: 16, border: '1px solid rgba(0,0,0,0.06)', 
+            padding: 10, position: 'relative', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' 
+          }}>
+            <div style={{ width: '100%', height: 80, borderRadius: 10, background: '#f8f8f8', marginBottom: 8, overflow: 'hidden' }}>
+              {p.imageUrl ? (
+                <img src={p.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 800, color: '#ddd' }}>{p.name[0]}</div>
+              )}
+            </div>
+            <div style={{ fontWeight: 700, fontSize: 12, color: '#111', lineHeight: 1.2, height: 28, overflow: 'hidden' }}>{p.name}</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
+              <span style={{ fontWeight: 800, fontSize: 13, color: '#111' }}>{fmt(p.sellingPrice)}</span>
+              <button 
+                onClick={() => onAdd(p)}
+                style={{ 
+                  background: '#16a34a', border: 'none', color: '#fff', width: 28, height: 28, 
+                  borderRadius: 8, fontSize: 18, fontWeight: 700, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}
+              >+</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 export default function MenuPage() {
   return (
     <Suspense fallback={<div style={{ minHeight: '100vh', background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999' }}>Loading...</div>}>
@@ -112,6 +160,8 @@ function MenuContent() {
   const [error, setError] = useState(false);
   const [step, setStep] = useState<'menu' | 'cart' | 'info' | 'done'>('menu');
   const [shopName, setShopName] = useState('Our Menu');
+  const [pricingEnabled, setPricingEnabled] = useState(false);
+  const [activePromo, setActivePromo] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [table, setTable] = useState('');
@@ -122,6 +172,16 @@ function MenuContent() {
   const [noteFor, setNoteFor] = useState<string | null>(null);
   const [loyaltyPoints, setLoyaltyPoints] = useState(0);
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
+  const [recommendations, setRecommendations] = useState<Product[]>([]);
+
+  useEffect(() => {
+    if ((step === 'cart' || step === 'info') && shopId) {
+      const cartIds = cart.map(i => i.id).join(',');
+      get(`/api/menu/recommendations?shopId=${shopId}&cartItemIds=${cartIds}`)
+        .then(d => setRecommendations(d.recommendations || []))
+        .catch(() => {});
+    }
+  }, [step, shopId, cart.length]);
 
   useEffect(() => {
     const t = searchParams.get('table') || searchParams.get('tableNumber') || searchParams.get('t');
@@ -171,6 +231,10 @@ function MenuContent() {
       setProducts((data.products || []).filter((x: Product) => x.stock > 0));
       setAllCategories(data.categories || []);
       setShopName(data.shop?.name || 'Our Menu');
+      setPricingEnabled(!!data.shop?.pricingEnabled);
+      // Check if any product has an active rule to show the banner
+      const firstActive = (data.products || []).find((p: Product) => p.activeRule);
+      if (firstActive) setActivePromo(firstActive.activeRule);
     } catch { setError(true); }
     finally { setLoading(false); }
   };
@@ -318,6 +382,7 @@ function MenuContent() {
         {/* Order Summary */}
         <div style={{ ...glass, border: '1px solid rgba(0,0,0,0.06)', borderRadius: 16, padding: 16, marginBottom: 20 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#888', textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 10 }}>Order Summary</div>
+          <RecommendationRow items={recommendations} onAdd={addToCart} />
           {cart.map((item, i) => (
             <div key={i}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0' }}>
@@ -439,6 +504,9 @@ function MenuContent() {
             <div style={{ borderTop: '1px solid #e5e5e5', marginTop: 8, paddingTop: 12, display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 17, color: '#111' }}>
               <span>Total</span><span>{fmt(total)}</span>
             </div>
+            <div style={{ marginTop: 20 }}>
+                <RecommendationRow items={recommendations} onAdd={addToCart} />
+            </div>
           </>
         )}
       </div>
@@ -477,6 +545,21 @@ function MenuContent() {
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search menu..."
             style={{ ...inp, paddingLeft: 38, background: '#f5f5f5', border: '1px solid transparent', borderRadius: 12 }} />
         </div>
+
+        {/* Dynamic Pricing Banner */}
+        {pricingEnabled && activePromo && (
+          <div style={{ 
+            marginTop: 14, padding: '10px 14px', background: 'linear-gradient(90deg, #16a34a, #22c55e)', 
+            borderRadius: 12, color: '#fff', display: 'flex', alignItems: 'center', gap: 10,
+            animation: 'pulse 2s infinite ease-in-out' 
+          }}>
+            <span style={{ fontSize: 20 }}>⚡</span>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 800 }}>{activePromo} IS LIVE!</div>
+              <div style={{ fontSize: 11, opacity: 0.9 }}>Limited time discounts applied automatically.</div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Category Tabs */}
@@ -531,6 +614,13 @@ function MenuContent() {
           </button>
         </div>
       )}
+      <style jsx>{`
+        @keyframes pulse {
+          0% { transform: scale(1); }
+          50% { transform: scale(1.02); }
+          100% { transform: scale(1); }
+        }
+      `}</style>
     </div>
   );
 }

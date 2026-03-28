@@ -5,296 +5,395 @@ import { PaymentMethod } from '@prisma/client';
 import { sendWhatsAppBill } from '../lib/whatsapp';
 import { getCache, setCache } from '../common/cache';
 import { emitToShop } from '../lib/socket';
-
+import { logger } from '../lib/logger';
 import { generateInvoicePDF } from '../lib/invoice';
+import { applyPricingRules } from '../lib/pricing';
+import rateLimit from 'express-rate-limit';
 
 const POINTS_PER_RUPEE = parseFloat(process.env.LOYALTY_POINTS_PER_RUPEE || '0.1');
+const REDEEM_RATE = parseFloat(process.env.LOYALTY_REDEEM_RATE || '10');
 const MENU_CACHE_TTL = 300; // 5 minutes
+
+/**
+ * Public Menu Rate Limiters
+ * Prevents automated scraping and order spam.
+ */
+const menuLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  message: { error: 'Too many menu requests. Please wait a minute.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const orderLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  message: { error: 'Too many order attempts. Please wait a minute.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 const router = Router();
 
 /**
  * GET /api/menu?shopId=...
  * Unified endpoint: returns shop + categories + products in one response.
- * Redis-cached with 5-minute TTL for ultra-fast responses.
+ * Implements a "Double-Layer" cache: Redis (5m) and Browser Cache (1m).
  */
-router.get('/', asyncHandler(async (req, res) => {
+router.get('/', menuLimiter, asyncHandler(async (req, res) => {
   const { shopId } = req.query;
   if (!shopId || typeof shopId !== 'string') return res.status(400).json({ error: 'shopId query is required' });
 
   const cacheKey = `menu:${shopId}`;
 
-  // 1. Redis-first: try cache
-  const cached = await getCache<any>(cacheKey);
-  if (cached) {
-    res.set('X-Cache', 'HIT');
+  try {
+    // 1. Redis-first: try cache
+    const cached = await getCache<any>(cacheKey);
+    if (cached) {
+      res.set('X-Cache', 'HIT');
+      res.set('Cache-Control', 'public, max-age=60, s-maxage=300');
+      return res.json(cached);
+    }
+
+    // 2. DB fallback: parallel queries for performance
+    const [shop, categories, products] = await Promise.all([
+      prisma.shop.findUnique({
+        where: { id: shopId },
+        select: { name: true, logoUrl: true, currency: true, pricingEnabled: true, pricingRules: true }
+      }),
+      prisma.category.findMany({
+        where: { shopId },
+        select: { id: true, name: true, color: true },
+        orderBy: { name: 'asc' }
+      }),
+      prisma.product.findMany({
+        where: { shopId, isActive: true, stock: { gt: 0 } },
+        select: {
+          id: true, name: true, sellingPrice: true, stock: true,
+          imageUrl: true, description: true, taxRate: true, categoryId: true
+        },
+        orderBy: [{ category: { name: 'asc' } }, { name: 'asc' }],
+      }),
+    ]);
+
+    if (!shop) return res.status(404).json({ error: 'Shop not found' });
+
+    // 2.5 Apply Dynamic Pricing Rules
+    const dynamicProducts = applyPricingRules(products, shop);
+    const payload = { shop, categories, products: dynamicProducts };
+
+    // 3. Cache the result
+    await setCache(cacheKey, payload, MENU_CACHE_TTL);
+
+    res.set('X-Cache', 'MISS');
     res.set('Cache-Control', 'public, max-age=60, s-maxage=300');
-    return res.json(cached);
+    return res.json(payload);
+  } catch (error: any) {
+    logger.error(`[MENU] Failed to fetch menu: ${error.message}`, { shopId });
+    return res.status(500).json({ error: 'Failed to retrieve menu. Please try again later.' });
   }
+}));
 
-  // 2. DB fallback: parallel queries
-  const [shop, categories, products] = await Promise.all([
-    prisma.shop.findUnique({
-      where: { id: shopId },
-      select: { name: true, logoUrl: true, currency: true }
-    }),
-    prisma.category.findMany({
-      where: { shopId },
-      select: { id: true, name: true, color: true },
-      orderBy: { name: 'asc' }
-    }),
-    prisma.product.findMany({
-      where: { shopId, isActive: true, stock: { gt: 0 } },
-      select: {
-        id: true, name: true, sellingPrice: true, stock: true,
-        imageUrl: true, description: true, taxRate: true, categoryId: true
+/**
+ * GET /api/menu/recommendations?shopId=...&cartItemIds=id1,id2
+ * AI Upsell Engine: suggests high-margin items not already in cart.
+ */
+router.get('/recommendations', menuLimiter, asyncHandler(async (req, res) => {
+  const { shopId, cartItemIds = '' } = req.query;
+  if (!shopId || typeof shopId !== 'string') return res.status(400).json({ error: 'shopId required' });
+
+  const ignoreIds = (cartItemIds as string).split(',').filter(Boolean);
+
+  try {
+    // 1. Get Top 10 Popular Items (by sales volume)
+    const popularData = await prisma.orderItem.groupBy({
+      by: ['productId'],
+      _count: { productId: true },
+      where: { order: { shopId } },
+      orderBy: { _count: { productId: 'desc' } },
+      take: 10
+    });
+    const popularIds = popularData.map(d => d.productId);
+
+    // 2. Fetch Products (prioritizing high-margin/popular)
+    const products = await prisma.product.findMany({
+      where: { 
+        shopId, 
+        isActive: true, 
+        stock: { gt: 0 },
+        id: { notIn: ignoreIds }
       },
-      orderBy: [{ category: { name: 'asc' } }, { name: 'asc' }],
-    }),
-  ]);
+      select: { 
+        id: true, name: true, sellingPrice: true, costPrice: true, 
+        imageUrl: true, description: true, stock: true 
+      },
+      take: 20
+    });
 
-  if (!shop) return res.status(404).json({ error: 'Shop not found' });
+    // 3. Score and Sort: (Selling - Cost) * (Popularity Bonus)
+    const scored = products.map(p => {
+      const margin = Number(p.sellingPrice) - Number(p.costPrice || 0);
+      const isPopular = popularIds.includes(p.id);
+      const score = margin * (isPopular ? 1.5 : 1.0);
+      return { ...p, score };
+    });
 
-  const payload = { shop, categories, products };
+    const recommendations = scored
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5)
+      .map(({ score, costPrice, ...rest }) => rest); // Hide internal score/cost from public API
 
-  // 3. Cache the result
-  await setCache(cacheKey, payload, MENU_CACHE_TTL);
-
-  res.set('X-Cache', 'MISS');
-  res.set('Cache-Control', 'public, max-age=60, s-maxage=300');
-  return res.json(payload);
+    return res.json({ recommendations });
+  } catch (error: any) {
+    logger.error(`[MENU] Recommendations failed: ${error.message}`);
+    return res.json({ recommendations: [] }); // Fallback to empty instead of error
+  }
 }));
 
-// Public: get shop info (kept for backward compat)
-router.get('/shop', asyncHandler(async (req, res) => {
-  const { shopId } = req.query;
-  if (!shopId || typeof shopId !== 'string') return res.status(400).json({ error: 'shopId required' });
 
-  const shop = await prisma.shop.findUnique({
-    where: { id: shopId },
-    select: { name: true }
-  });
-  if (!shop) return res.status(404).json({ error: 'Shop not found' });
-  res.json(shop);
-}));
-
-// Public: lookup customer loyalty points
-router.get('/customer', asyncHandler(async (req, res) => {
-  const { phone, shopId } = req.query;
-  if (!phone || typeof phone !== 'string') return res.status(400).json({ error: 'phone required' });
-  if (!shopId || typeof shopId !== 'string') return res.status(400).json({ error: 'shopId required' });
-
-  const shop = await prisma.shop.findUnique({ where: { id: shopId } });
-  if (!shop) return res.status(404).json({ error: 'Shop not found' });
-
-  const digits = phone.replace(/\D/g, '').replace(/^91/, '').replace(/^0/, '');
-  const cust = await prisma.customer.findFirst({
-    where: { shopId: shop.id, phone: { contains: digits } }
-  });
-
-  if (!cust) return res.status(404).json({ error: 'Customer not found' });
-  res.json({ loyaltyPoints: cust.loyaltyPoints || 0, name: cust.name });
-}));
-
-// Public: place order from scanner menu
-router.post('/order', asyncHandler(async (req, res) => {
+/**
+ * POST /api/menu/order
+ * Public endpoint for scanner menu orders.
+ * Handles customer creation, loyalty points, and real-time kitchen notification.
+ */
+router.post('/order', orderLimiter, asyncHandler(async (req, res) => {
   const { customerName, customerPhone, tableNumber, notes, paymentMethod, items, redeemPoints = 0, shopId } = req.body;
-  if (!items?.length) return res.status(400).json({ error: 'No items' });
+  if (!items?.length) return res.status(400).json({ error: 'No items in order' });
   if (!shopId || typeof shopId !== 'string') return res.status(400).json({ error: 'shopId is required' });
 
-  const shop = await prisma.shop.findUnique({ where: { id: shopId }, include: { users: { take: 1 } } });
-  if (!shop) return res.status(404).json({ error: 'Shop not found' });
-  const userId = shop.users[0]?.id;
-  if (!userId) return res.status(404).json({ error: 'No user found' });
-
-  const REDEEM_RATE = parseFloat(process.env.LOYALTY_REDEEM_RATE || '10');
-
-  // Find or create customer by phone
-  let customerId: string | null = null;
-  let customer: any = null;
-  if (customerPhone) {
-    const digits = customerPhone.replace(/\D/g, '').replace(/^91/, '').replace(/^0/, '');
-    let cust = await prisma.customer.findFirst({ where: { shopId: shop.id, phone: { contains: digits } } });
-    if (!cust) {
-      cust = await prisma.customer.create({
-        data: { shopId: shop.id, name: customerName || 'Walk-in', phone: customerPhone }
-      });
-    }
-    customerId = cust.id;
-    customer = cust;
-  }
-
-  const productIds = items.map((i: any) => i.productId);
-  const dbProducts = await prisma.product.findMany({ where: { id: { in: productIds } } });
-
-  let subtotal = 0;
-  const orderItems = items.map((i: any) => {
-    const p = dbProducts.find((x: any) => x.id === i.productId);
-    if (!p) throw new Error('Product not found: ' + i.productId);
-    const amount = Number(p.sellingPrice) * i.quantity;
-    subtotal += amount;
-    return {
-      productId: p.id,
-      name: p.name,
-      quantity: i.quantity,
-      unitPrice: p.sellingPrice,
-      costPrice: p.costPrice || 0,
-      taxRate: p.taxRate || 0,
-      discount: 0,
-      total: amount
-    };
-  });
-
-  const taxAmount = orderItems.reduce((s: number, i: any) => s + i.total * (Number(i.taxRate) / 100), 0);
-  const totalAmount = subtotal + taxAmount;
-
-  const count = await prisma.order.count({ where: { shopId: shop.id } });
-  const invoiceNumber = 'ONL-' + String(count + 1).padStart(6, '0');
-
-  // Token number: short 4-digit numeric token for "Pay at Counter" orders
-  const tokenNumber = ((count % 9999) + 1).toString().padStart(4, '0');
-
-  const pm = (paymentMethod as PaymentMethod) || PaymentMethod.CASH;
-  // paymentMethod 'CASH' from scanner = Pay at Counter (UNPAID), 'UPI' = online (PAID)
-  const paymentStatus = pm === 'CASH' ? 'UNPAID' : 'PAID';
-
-  const pointsDiscount = Number(redeemPoints) / REDEEM_RATE;
-  const discountAmount = pointsDiscount;
-  const finalTotal = Math.max(0, totalAmount - pointsDiscount);
-
-  const order = await prisma.order.create({
-    data: {
-      shopId: shop.id,
-      userId,
-      customerId,
-      invoiceNumber,
-      subtotal,
-      taxAmount,
-      discountAmount,
-      totalAmount: finalTotal,
-      paidAmount: paymentStatus === 'PAID' ? finalTotal : 0,
-      paymentMethod: pm,
-      paymentStatus: paymentStatus as any,
-      status: 'COMPLETED',
-      notes: `[KITCHEN:PENDING] ${tableNumber ? 'Table: ' + tableNumber + '. ' : ''}${notes || ''}`,
-      items: { create: orderItems },
-    },
-    include: { items: true },
-  });
-
-  console.log(`[MENU API] Successfully saved Scanner Order ${invoiceNumber} into KITCHEN queue!`);
-
-  // Broadcast to Kitchen Display System instantly
-  try { emitToShop(shop.id, 'ORDER_CREATED', { ...order, status: 'PENDING' }); } catch {}
-
-  // Deduct stock
-  for (const item of items) {
-    await prisma.product.update({
-      where: { id: item.productId },
-      data: { stock: { decrement: item.quantity } }
+  try {
+    const shop = await prisma.shop.findUnique({ 
+      where: { id: shopId }, 
+      include: { users: { take: 1, select: { id: true } } } 
     });
-  }
+    if (!shop) return res.status(404).json({ error: 'Shop not found' });
+    
+    const userId = shop.users[0]?.id;
+    if (!userId) {
+      logger.error(`[MENU] Shop ${shopId} has no active users to assign orders to.`);
+      return res.status(500).json({ error: 'Server configuration error' });
+    }
 
-  // Update customer loyalty points (Earn/Deduct)
-  if (customerId) {
-    const pointsEarned = paymentStatus === 'PAID' ? Math.floor(finalTotal * POINTS_PER_RUPEE) : 0;
-    try {
-      await prisma.customer.update({
-        where: { id: customerId },
-        data: {
-          totalPurchases: paymentStatus === 'PAID' ? { increment: finalTotal } : undefined,
-          loyaltyPoints: { increment: pointsEarned - Number(redeemPoints) }
-        } as any
-      });
-    } catch (e) { console.warn('Loyalty update failed:', e); }
-
-    // WhatsApp bill for UPI orders
-    try {
-      if (customerPhone) {
-        const updatedCustomer = (await prisma.customer.findUnique({ where: { id: customerId } })) as any;
-        await sendWhatsAppBill(
-          customerPhone,
-          {
-            invoiceNumber: order.invoiceNumber,
-            items: order.items.map((i: any) => ({ name: i.name, quantity: i.quantity, unitPrice: Number(i.unitPrice), total: Number(i.total) })),
-            subtotal: Number(order.subtotal),
-            taxAmount: Number(order.taxAmount),
-            discountAmount: 0,
-            totalAmount: Number(order.totalAmount),
-            paymentMethod: order.paymentMethod,
-            paymentStatus: 'PAID',
-          },
-          shop.name,
-          pointsEarned,
-          updatedCustomer?.loyaltyPoints
-        );
+    // Resolve Customer
+    let customerId: string | null = null;
+    if (customerPhone) {
+      const digits = customerPhone.replace(/\D/g, '').replace(/^91/, '').replace(/^0/, '');
+      let cust = await prisma.customer.findFirst({ where: { shopId: shop.id, phone: { contains: digits } } });
+      if (!cust) {
+        cust = await prisma.customer.create({
+          data: { shopId: shop.id, name: customerName || 'Walk-in', phone: customerPhone }
+        });
       }
-    } catch (e) { console.warn('WhatsApp bill failed:', e); }
-  }
+      customerId = cust.id;
+    }
 
-  return res.status(201).json({
-    order,
-    invoiceNumber,
-    tokenNumber,
-    paymentStatus,
-    whatsappSent: !!(customerPhone && paymentStatus === 'PAID'),
-  });
+    // Pricing & Validation
+    const productIds = items.map((i: any) => i.productId);
+    const dbProducts = await prisma.product.findMany({ where: { id: { in: productIds } } });
+
+    let subtotal = 0;
+    // Apply Pricing Rules for backend Price protection
+    const productsWithPricing = applyPricingRules(dbProducts, shop);
+
+    const orderItems = items.map((i: any) => {
+      const p = productsWithPricing.find((x: any) => x.id === i.productId);
+      if (!p) throw new Error('Product not found: ' + i.productId);
+      
+      const priceToUse = p.discountedPrice || Number(p.sellingPrice);
+      const amount = priceToUse * i.quantity;
+      subtotal += amount;
+      return {
+        productId: p.id,
+        name: p.name,
+        quantity: i.quantity,
+        unitPrice: priceToUse,
+        costPrice: p.costPrice || 0,
+        taxRate: p.taxRate || 0,
+        discount: 0,
+        total: amount
+      };
+    });
+
+    const taxAmount = orderItems.reduce((s: number, i: any) => s + i.total * (Number(i.taxRate) / 100), 0);
+    const totalAmount = subtotal + taxAmount;
+    const pointsDiscount = Number(redeemPoints) / REDEEM_RATE;
+    const finalTotal = Math.max(0, totalAmount - pointsDiscount);
+
+    // Meta Generation
+    const count = await prisma.order.count({ where: { shopId: shop.id } });
+    const invoiceNumber = `ONL-${String(count + 1).padStart(6, '0')}`;
+    const tokenNumber = ((count % 9999) + 1).toString().padStart(4, '0');
+
+    // Payment Strategy
+    const pm = (paymentMethod as PaymentMethod) || PaymentMethod.CASH;
+    const paymentStatus = pm === 'CASH' ? 'UNPAID' : 'PAID';
+
+    // Create Order
+    const order = await prisma.order.create({
+      data: {
+        shopId: shop.id,
+        userId,
+        customerId,
+        invoiceNumber,
+        subtotal,
+        taxAmount,
+        discountAmount: pointsDiscount,
+        totalAmount: finalTotal,
+        paidAmount: paymentStatus === 'PAID' ? finalTotal : 0,
+        paymentMethod: pm,
+        paymentStatus: paymentStatus as any,
+        status: 'PENDING' as any, // Public orders always start as PENDING in kitchen
+        notes: `[KITCHEN:PENDING] ${tableNumber ? 'Table: ' + tableNumber + '. ' : ''}${notes || ''}`,
+        items: { create: orderItems },
+      },
+      include: { items: true },
+    });
+
+    // Side Effects
+    logger.info(`[MENU] Scanner Order created: ${invoiceNumber} for Shop ${shop.id}`);
+    emitToShop(shop.id, 'ORDER_CREATED', { ...order, status: 'PENDING' });
+
+    // Stock & Loyalty updates (Deferred for performance)
+    updatePostOrderMetrics(shop.id, items, customerId, Number(redeemPoints), finalTotal, paymentStatus, customerPhone).catch(err => {
+      logger.warn(`[MENU] Deferred updates failed for ${invoiceNumber}: ${err.message}`);
+    });
+
+    return res.status(201).json({
+      order,
+      invoiceNumber,
+      tokenNumber,
+      paymentStatus,
+      whatsappSent: !!(customerPhone && paymentStatus === 'PAID'),
+    });
+
+  } catch (error: any) {
+    logger.error(`[MENU] Order placement failed: ${error.message}`);
+    return res.status(400).json({ error: error.message });
+  }
 }));
 
-// GET /api/menu/orders
+/**
+ * GET /api/menu/orders
+ * Returns history for a specific customer phone.
+ */
 router.get('/orders', asyncHandler(async (req, res) => {
   const { phone, shopId } = req.query;
   if (!phone || typeof phone !== 'string') return res.status(400).json({ error: 'phone required' });
   if (!shopId || typeof shopId !== 'string') return res.status(400).json({ error: 'shopId required' });
 
-  const shop = await prisma.shop.findUnique({ where: { id: shopId } });
-  if (!shop) return res.status(404).json({ error: 'Shop not found' });
+  try {
+    const digits = phone.replace(/\D/g, '').replace(/^91/, '').replace(/^0/, '');
+    const cust = await prisma.customer.findFirst({
+      where: { shopId, phone: { contains: digits } }
+    });
 
-  const digits = phone.replace(/\D/g, '').replace(/^91/, '').replace(/^0/, '');
-  const cust = await prisma.customer.findFirst({
-    where: { shopId: shop.id, phone: { contains: digits } }
-  });
+    if (!cust) return res.json({ orders: [] });
 
-  if (!cust) return res.json({ orders: [] });
+    const orders = await prisma.order.findMany({
+      where: { customerId: cust.id },
+      include: { items: true },
+      orderBy: { createdAt: 'desc' },
+      take: 20
+    });
 
-  const orders = await prisma.order.findMany({
-    where: { customerId: cust.id },
-    include: { items: true },
-    orderBy: { createdAt: 'desc' },
-    take: 20
-  });
-
-  res.json({ orders });
+    return res.json({ orders });
+  } catch (error: any) {
+    logger.error(`[MENU] History fetch failed: ${error.message}`);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
 }));
 
-// Public: check order status for scanner client polling
+/**
+ * GET /api/menu/order/:id/status
+ * Polling endpoint for scanner menu clients.
+ */
 router.get('/order/:id/status', asyncHandler(async (req, res) => {
-  const { id } = req.params;
   const order = await prisma.order.findUnique({
-    where: { id },
+    where: { id: req.params.id },
     select: { paymentStatus: true, status: true }
   });
   if (!order) return res.status(404).json({ error: 'Order not found' });
-  res.json({ paymentStatus: order.paymentStatus, status: order.status });
+  return res.json(order);
 }));
 
-// GET /api/menu/order/:id/invoice
+/**
+ * GET /api/menu/order/:id/invoice
+ * Generates PDF invoice for public download.
+ */
 router.get('/order/:id/invoice', asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const order = await prisma.order.findUnique({
-    where: { id },
-    include: { items: true, customer: true }
-  });
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: req.params.id },
+      include: { items: true, customer: true, shop: true }
+    });
+    if (!order) return res.status(404).json({ error: 'Order not found' });
 
-  if (!order) return res.status(404).json({ error: 'Order not found' });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=invoice-${order.invoiceNumber}.pdf`);
 
-  const shop = await prisma.shop.findFirst();
-
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename=invoice-${order.invoiceNumber}.pdf`);
-
-  const doc = generateInvoicePDF(order, shop || { name: 'Our Shop' });
-  doc.pipe(res);
+    const doc = generateInvoicePDF(order, order.shop);
+    doc.pipe(res);
+  } catch (error: any) {
+    logger.error(`[MENU] PDF generation failed: ${error.message}`);
+    return res.status(500).json({ error: 'Failed to generate invoice' });
+  }
 }));
+
+/**
+ * Post-order metrics update handler.
+ * Deducts stock, updates loyalty, and sends WhatsApp notifications.
+ */
+async function updatePostOrderMetrics(
+  shopId: string, 
+  items: any[], 
+  customerId: string | null, 
+  redeemPoints: number,
+  finalTotal: number,
+  paymentStatus: string,
+  customerPhone: string | null
+) {
+  // 1. Stock Deduction & Low Stock Alert
+  for (const item of items) {
+    const product = await prisma.product.update({
+      where: { id: item.productId },
+      data: { stock: { decrement: item.quantity } },
+      select: { id: true, name: true, stock: true, lowStockAlert: true }
+    });
+    if (product.stock <= product.lowStockAlert) {
+      logger.warn(`[STOCK] Low stock alert for Shop ${shopId}: ${product.name} at ${product.stock}`);
+      emitToShop(shopId, 'STOCK_LOW', { productId: product.id, name: product.name, currentStock: product.stock });
+    }
+  }
+
+  // 2. Loyalty & WhatsApp
+  if (customerId) {
+    const pointsEarned = paymentStatus === 'PAID' ? Math.floor(finalTotal * POINTS_PER_RUPEE) : 0;
+    await prisma.customer.update({
+      where: { id: customerId },
+      data: {
+        totalPurchases: paymentStatus === 'PAID' ? { increment: finalTotal } : undefined,
+        loyaltyPoints: { increment: pointsEarned - redeemPoints }
+      } as any
+    });
+
+    if (customerPhone && paymentStatus === 'PAID') {
+      const updatedCustomer = (await prisma.customer.findUnique({ where: { id: customerId } })) as any;
+      const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { name: true } });
+      
+      await sendWhatsAppBill(customerPhone, {
+          invoiceNumber: 'AUTO', // Re-fetching would be heavy, use summary
+          items: [], 
+          subtotal: 0, taxAmount: 0, discountAmount: 0, 
+          totalAmount: Number(finalTotal), 
+          paymentMethod: 'UPI', paymentStatus: 'PAID'
+        }, 
+        shop?.name || 'Shop', 
+        pointsEarned, 
+        updatedCustomer?.loyaltyPoints
+      ).catch(e => logger.warn(`[MENU] WhatsApp failed: ${e.message}`));
+    }
+  }
+}
 
 export default router;

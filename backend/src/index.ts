@@ -51,7 +51,11 @@ app.use(morgan('combined', { stream: { write: (msg) => logger.info(msg.trim()) }
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Rate limiters disabled for demo/testing
+/**
+ * Auth Rate Limiter
+ * Currently a pass-through for development; should be connected to 
+ * distributedRateLimiter in production environments.
+ */
 export const authLimiter = (req: any, res: any, next: any) => next();
 
 // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ ROUTES 
@@ -107,10 +111,6 @@ dashboardRouter.use('/users', userRoutes);
 
 app.use('/api', dashboardRouter);
 
-// Liveness Probe 🟢
-app.get('/health', (_req: Request, res: Response) => {
-  res.status(200).send('OK');
-});
 
 // Readiness Probe 🟡
 app.get('/ready', async (_req: Request, res: Response) => {

@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Fragment } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { useSocket } from '@/context/SocketContext';
@@ -15,6 +15,9 @@ export default function DashboardPage() {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
+  const [profitList, setProfitList] = useState<any[]>([]);
+  const [forecasting, setForecasting] = useState<any[]>([]);
+  const [heatmap, setHeatmap] = useState<any>(null);
 
   // AI Insights State
   const [aiInsight, setAiInsight] = useState<string>('');
@@ -54,15 +57,21 @@ export default function DashboardPage() {
     setLoading(true);
     setError('');
     try {
-      const [statsRes, ordersRes] = await Promise.allSettled([
+      const [statsRes, ordersRes, profitRes, forecastRes, heatmapRes] = await Promise.allSettled([
         api.get('/api/analytics/dashboard'),
         api.get('/api/orders?limit=10'),
+        api.get('/api/analytics/daily-profit'),
+        api.get('/api/analytics/inventory-forecast'),
+        api.get('/api/analytics/peak-hours'),
       ]);
       if (statsRes.status === 'fulfilled') setStats(statsRes.value.data);
       if (ordersRes.status === 'fulfilled') {
         const d = ordersRes.value.data;
         setOrders(d.orders || d.data || (Array.isArray(d) ? d : []));
       }
+      if (profitRes.status === 'fulfilled') setProfitList(profitRes.value.data.profitList || []);
+      if (forecastRes.status === 'fulfilled') setForecasting(forecastRes.value.data.forecasting || []);
+      if (heatmapRes.status === 'fulfilled') setHeatmap(heatmapRes.value.data.heatmap || null);
       
       // If both failed, show error
       if (statsRes.status === 'rejected' && ordersRes.status === 'rejected') {
@@ -240,6 +249,106 @@ export default function DashboardPage() {
             )}
           </div>
         )}
+      </div>
+
+      {/* 🔮 Business Intelligence & Forecasting */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
+        
+        {/* Peak-Hour Staffing Intelligence */}
+        <div style={{ ...card, gridColumn: '1 / -1' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: theme.text }}>Peak-Hour Staffing Intelligence 📊</h3>
+            <span style={{ fontSize: 11, background: 'rgba(124, 58, 237, 0.1)', color: '#7c3aed', padding: '4px 8px', borderRadius: 6, fontWeight: 700 }}>Staffing Heatmap</span>
+          </div>
+          <div style={{ overflowX: 'auto', paddingBottom: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '80px repeat(24, 1fr)', gap: 4, minWidth: 800 }}>
+              <div />
+              {Array.from({ length: 24 }).map((_, h) => (
+                <div key={h} style={{ fontSize: 9, color: theme.textFaint, textAlign: 'center' }}>{h === 0 ? '12a' : h === 12 ? '12p' : h > 12 ? (h-12)+'p' : h+'a'}</div>
+              ))}
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, d) => (
+                <Fragment key={day}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: theme.text }}>{day}</div>
+                  {Array.from({ length: 24 }).map((_, h) => {
+                    const count = heatmap?.[d]?.[h] || 0;
+                    const opacity = Math.min(count / 10, 1);
+                    return (
+                      <div key={h} title={`${day} ${h}:00 - ${count} orders`}
+                        style={{ height: 24, background: count > 0 ? `rgba(124, 58, 237, ${0.1 + opacity * 0.9})` : 'rgba(0,0,0,0.02)', borderRadius: 4, border: count > 5 ? '1px solid #7c3aed44' : 'none' }} />
+                    );
+                  })}
+                </Fragment>
+              ))}
+            </div>
+          </div>
+          <div style={{ marginTop: 14, display: 'flex', gap: 15, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <div style={{ width: 12, height: 12, borderRadius: 3, background: 'rgba(0,0,0,0.02)' }} />
+              <span style={{ fontSize: 11, color: theme.textFaint }}>Quiet</span>
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <div style={{ width: 12, height: 12, borderRadius: 3, background: 'rgba(124, 58, 237, 0.4)' }} />
+              <span style={{ fontSize: 11, color: theme.textFaint }}>Moderate</span>
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <div style={{ width: 12, height: 12, borderRadius: 3, background: '#7c3aed' }} />
+              <span style={{ fontSize: 11, color: theme.textFaint }}>Peak Rush</span>
+            </div>
+            <div style={{ marginLeft: 'auto', fontSize: 11, color: theme.text, fontWeight: 600, background: 'rgba(124, 58, 237, 0.05)', padding: '4px 10px', borderRadius: 8 }}>
+              💡 Recommendation: Schedule +1 staff during dark purple zones.
+            </div>
+          </div>
+        </div>
+
+        {/* Daily Profit List */}
+        <div style={{ ...card }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: theme.text }}>Daily Profit Pulse 💰</h3>
+            <span style={{ fontSize: 11, background: 'rgba(74, 222, 128, 0.1)', color: '#4ade80', padding: '4px 8px', borderRadius: 6, fontWeight: 700 }}>Last 7 Days</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {profitList.length === 0 ? <p style={{ fontSize: 13, color: theme.textFaint }}>No sales yet this week.</p> : profitList.map(p => (
+              <div key={p.date} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: 'rgba(0,0,0,0.02)', borderRadius: 10 }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{new Date(p.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</div>
+                  <div style={{ fontSize: 11, color: theme.textFaint }}>{p.orderCount} Orders</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: '#4ade80' }}>+{fmt(p.profit)}</div>
+                  <div style={{ fontSize: 10, color: theme.textFaint }}>Margin: {p.revenue > 0 ? Math.round((p.profit / p.revenue) * 100) : 0}%</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Inventory Forecast */}
+        <div style={{ ...card }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: theme.text }}>Stockout Prediction 📈</h3>
+            <span style={{ fontSize: 11, background: 'rgba(251, 191, 36, 0.1)', color: '#fbbf24', padding: '4px 8px', borderRadius: 6, fontWeight: 700 }}>Auto-Pilot</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {forecasting.filter(f => f.status !== 'HEALTHY').length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                <div style={{ fontSize: 24, marginBottom: 8 }}>✅</div>
+                <p style={{ fontSize: 13, color: theme.textFaint }}>All inventory healthy. No predicted stockouts.</p>
+              </div>
+            ) : forecasting.filter(f => f.status !== 'HEALTHY').map(f => (
+              <div key={f.productId} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', border: `1px solid ${f.status === 'CRITICAL' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(251, 191, 36, 0.2)'}`, borderRadius: 10, background: f.status === 'CRITICAL' ? 'rgba(239, 68, 68, 0.05)' : 'transparent' }}>
+                <div style={{ fontSize: 18 }}>{f.status === 'CRITICAL' ? '⚠️' : '⏳'}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{f.name}</div>
+                  <div style={{ fontSize: 11, color: theme.textFaint }}>Stock: {f.currentStock} · Buying: {f.avgDailySales}/day</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: f.status === 'CRITICAL' ? '#ef4444' : '#fbbf24' }}>{f.daysRemaining === 999 ? '∞' : f.daysRemaining} days</div>
+                  <div style={{ fontSize: 10, color: theme.textFaint }}>left</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Recent Orders */}

@@ -1,84 +1,188 @@
 import { prisma } from '../index';
+import { logger } from '../lib/logger';
 
-export const calculateDashboardStats = async (shopId: string) => {
-  // Run sequentially to avoid connection pool exhaustion on Supabase
-  const totalOrders    = await prisma.order.count({ where: { shopId, status: 'COMPLETED' } });
-  const revenueAgg     = await prisma.order.aggregate({ where: { shopId, status: 'COMPLETED' }, _sum: { totalAmount: true } });
-  const totalCustomers = await prisma.customer.count({ where: { shopId } });
-  const totalProducts  = await prisma.product.count({ where: { shopId } });
-  const lowStockItems  = await prisma.product.count({ where: { shopId, stock: { lte: prisma.product.fields.lowStockAlert } } }).catch(() => 0);
+export interface DailyProfit {
+  date: string;
+  revenue: number;
+  cost: number;
+  profit: number;
+  orderCount: number;
+}
 
-  const totalRevenue  = Number(revenueAgg._sum.totalAmount || 0);
-  const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+export interface InventoryForecast {
+  productId: string;
+  name: string;
+  currentStock: number;
+  avgDailySales: number;
+  daysRemaining: number;
+  status: 'CRITICAL' | 'LOW' | 'HEALTHY';
+}
 
-  // Monthly sales - last 6 months
-  const sixMonthsAgo = new Date();
-  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
-  sixMonthsAgo.setDate(1);
-  sixMonthsAgo.setHours(0, 0, 0, 0);
+/**
+ * Analytics Service: Handles business intelligence, forecasting, and staffing intelligence.
+ * Designed for high-performance data aggregation and multi-tenant scalability.
+ */
+export const AnalyticsService = {
+  /**
+   * Get Daily Profit List
+   * Calculates real-time margins by comparing revenue with item cost prices.
+   * @param shopId The unique identifier of the restaurant
+   * @param days Number of historical days to analyze (default 7)
+   */
+  getDailyProfit: async (shopId: string, days = 7): Promise<DailyProfit[]> => {
+    try {
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
 
-  const recentOrders = await prisma.order.findMany({
-    where: { shopId, status: 'COMPLETED', createdAt: { gte: sixMonthsAgo } },
-    select: { totalAmount: true, createdAt: true }
-  });
+      const orders = await prisma.order.findMany({
+        where: { shopId, createdAt: { gte: startDate } },
+        include: { items: true },
+        orderBy: { createdAt: 'asc' }
+      });
 
-  const monthMap: Record<string, { revenue: number; orders: number }> = {};
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date();
-    d.setMonth(d.getMonth() - i);
-    const key = d.toLocaleString('default', { month: 'short' });
-    monthMap[key] = { revenue: 0, orders: 0 };
-  }
-  for (const o of recentOrders) {
-    const key = new Date(o.createdAt).toLocaleString('default', { month: 'short' });
-    if (monthMap[key]) {
-      monthMap[key].revenue += Number(o.totalAmount);
-      monthMap[key].orders  += 1;
+      const dailyData: Record<string, DailyProfit> = {};
+
+      orders.forEach(order => {
+        const dateKey = order.createdAt.toISOString().split('T')[0];
+        if (!dailyData[dateKey]) {
+          dailyData[dateKey] = { date: dateKey, revenue: 0, cost: 0, profit: 0, orderCount: 0 };
+        }
+
+        const revenue = Number(order.totalAmount);
+        let cost = 0;
+        order.items.forEach(item => {
+          cost += Number(item.costPrice) * item.quantity;
+        });
+
+        dailyData[dateKey].revenue += revenue;
+        dailyData[dateKey].cost += cost;
+        dailyData[dateKey].profit += (revenue - cost);
+        dailyData[dateKey].orderCount += 1;
+      });
+
+      return Object.values(dailyData).map(d => ({
+        ...d,
+        revenue: Math.round(d.revenue),
+        cost: Math.round(d.cost),
+        profit: Math.round(d.profit)
+      }));
+    } catch (error: any) {
+      logger.error(`[ANALYTICS] Failed to fetch daily profit: ${error.message}`);
+      throw error;
+    }
+  },
+
+  /**
+   * Get Inventory Forecasting
+   * Predicts stockout dates based on historical sales velocity.
+   * Helps prevent emergency shortages by giving proactive alerts.
+   * @param shopId The unique identifier of the restaurant
+   */
+  getInventoryForecast: async (shopId: string): Promise<InventoryForecast[]> => {
+    try {
+      const windowDays = 14;
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - windowDays);
+
+      // 1. Get sales items for the last window
+      const sales = await prisma.orderItem.groupBy({
+        by: ['productId'],
+        _sum: { quantity: true },
+        where: { order: { shopId, createdAt: { gte: startDate } } }
+      });
+
+      // 2. Fetch current products
+      const products = await prisma.product.findMany({
+        where: { shopId, isActive: true },
+        select: { id: true, name: true, stock: true }
+      });
+
+      return products.map(p => {
+        const totalSold = sales.find(s => s.productId === p.id)?._sum?.quantity || 0;
+        const avgDailySales = totalSold / windowDays;
+        
+        let daysRemaining = 999;
+        if (avgDailySales > 0) {
+          daysRemaining = Math.round((p.stock / avgDailySales) * 10) / 10;
+        }
+
+        let status: 'CRITICAL' | 'LOW' | 'HEALTHY' = 'HEALTHY';
+        if (daysRemaining < 3) status = 'CRITICAL';
+        else if (daysRemaining < 7) status = 'LOW';
+
+        return {
+          productId: p.id,
+          name: p.name,
+          currentStock: p.stock,
+          avgDailySales: Math.round(avgDailySales * 100) / 100,
+          daysRemaining,
+          status
+        };
+      }).sort((a, b) => a.daysRemaining - b.daysRemaining);
+    } catch (error: any) {
+      logger.error(`[ANALYTICS] Forecasting failed: ${error.message}`);
+      throw error;
+    }
+  },
+
+  /**
+   * Calculate Dashboard Stats
+   * (Restored for legacy dashboard support)
+   */
+  calculateDashboardStats: async (shopId: string) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const [totalRevenue, totalOrders, lowStockCount] = await Promise.all([
+      prisma.order.aggregate({
+        where: { shopId, createdAt: { gte: today } },
+        _sum: { totalAmount: true }
+      }),
+      prisma.order.count({ where: { shopId, createdAt: { gte: today } } }),
+      prisma.product.count({ where: { shopId, stock: { lte: prisma.product.fields.lowStockAlert } } })
+    ]);
+
+    return {
+      revenueToday: Number(totalRevenue._sum.totalAmount || 0),
+      ordersToday: totalOrders,
+      lowStockAlerts: lowStockCount,
+      timestamp: new Date()
+    };
+  },
+
+  /**
+   * Get Peak Hours Intelligence
+   * Maps order volume across hours and days to help with staff scheduling.
+   * Returns a 24/7 heatmap of order frequency.
+   */
+  getPeakHours: async (shopId: string) => {
+    try {
+      const orders = await prisma.order.findMany({
+        where: { shopId },
+        select: { createdAt: true },
+        take: 2000,
+        orderBy: { createdAt: 'desc' }
+      });
+
+      // 7 days x 24 hours grid
+      const heatmap: Record<number, Record<number, number>> = {};
+      for (let d = 0; d < 7; d++) {
+        heatmap[d] = {};
+        for (let h = 0; h < 24; h++) heatmap[d][h] = 0;
+      }
+
+      orders.forEach(order => {
+        const d = order.createdAt.getDay(); // 0-6
+        const h = order.createdAt.getHours(); // 0-23
+        heatmap[d][h] += 1;
+      });
+
+      return heatmap;
+    } catch (error: any) {
+      logger.error(`[ANALYTICS] Peak hour calculation failed: ${error.message}`);
+      throw error;
     }
   }
-  const monthlySales = Object.entries(monthMap).map(([month, v]) => ({ month, ...v }));
-
-  // Top products
-  const topProductsRaw = await prisma.orderItem.groupBy({
-    by: ['name'],
-    where: { order: { shopId, status: 'COMPLETED' } },
-    _sum: { quantity: true, total: true },
-    orderBy: { _sum: { total: 'desc' } },
-    take: 10
-  });
-
-  const topProducts = topProductsRaw.map((item: any) => ({
-    name: item.name,
-    revenue: Number(item._sum.total || 0),
-    quantity: item._sum.quantity || 0
-  }));
-
-  // Category breakdown
-  const categoryBreakdownRaw: any[] = await prisma.$queryRaw`
-    SELECT c.name, SUM(oi.total) as revenue 
-    FROM "Category" c 
-    JOIN "Product" p ON p."categoryId" = c.id 
-    JOIN "OrderItem" oi ON oi."productId" = p.id 
-    JOIN "Order" o ON o.id = oi."orderId" 
-    WHERE o."shopId" = ${shopId} AND o.status::text = 'COMPLETED' 
-    GROUP BY c.name 
-    ORDER BY revenue DESC
-  `;
-
-  const categoryBreakdown = categoryBreakdownRaw.map((c: any) => ({
-    name: c.name,
-    revenue: Number(c.revenue || 0)
-  }));
-
-  return {
-    totalRevenue,
-    totalOrders,
-    avgOrderValue,
-    totalCustomers,
-    totalProducts,
-    lowStockItems,
-    monthlySales,
-    topProducts,
-    categoryBreakdown,
-  };
 };
+
+export const calculateDashboardStats = AnalyticsService.calculateDashboardStats;

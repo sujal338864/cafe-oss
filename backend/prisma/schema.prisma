@@ -91,6 +91,8 @@ model Shop {
   plan        Plan      @default(STARTER)
   planExpiry  DateTime?
   isActive    Boolean   @default(true)
+  pricingEnabled Boolean @default(false)
+  pricingRules   Json?    @default("{}")
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -279,6 +281,8 @@ model Order {
   @@index([shopId, createdAt])
   @@index([shopId, status])
   @@index([shopId, customerId])
+  @@index([shopId, notes])
+  @@index([createdAt])
 }
 
 // ─────────────────────────────────────────────────────────────

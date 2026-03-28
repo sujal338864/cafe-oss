@@ -36,6 +36,44 @@ router.get('/dashboard', authenticate, asyncHandler(async (req: AuthRequest, res
   res.json(stats);
 }));
 
+/**
+ * GET /api/analytics/daily-profit
+ * Returns aggregated profit/revenue for the last N days.
+ */
+router.get('/daily-profit', authenticate, asyncHandler(async (req: AuthRequest, res) => {
+  const shopId = req.user!.shopId;
+  const days = parseInt(req.query.days as string) || 7;
+  
+  const { AnalyticsService } = await import('../services/analytics.service');
+  const profitList = await AnalyticsService.getDailyProfit(shopId, days);
+  
+  res.json({ profitList });
+}));
+
+/**
+ * GET /api/analytics/inventory-forecast
+ * Returns stockout predictions based on sales velocity.
+ */
+router.get('/inventory-forecast', authenticate, asyncHandler(async (req: AuthRequest, res) => {
+  const shopId = req.user!.shopId;
+  
+  const { AnalyticsService } = await import('../services/analytics.service');
+  const forecasting = await AnalyticsService.getInventoryForecast(shopId);
+  
+  res.json({ forecasting });
+}));
+
+/**
+ * GET /api/analytics/peak-hours
+ * Returns a 24/7 heatmap of order volume for staffing optimization.
+ * Helps owners decide when to schedule more or fewer staff members.
+ */
+router.get('/peak-hours', authenticate, asyncHandler(async (req: AuthRequest, res) => {
+  const shopId = req.user!.shopId;
+  const { AnalyticsService } = await import('../services/analytics.service');
+  const heatmap = await AnalyticsService.getPeakHours(shopId);
+  res.json({ heatmap });
+}));
 
 // Recent activity
 router.get('/recent', authenticate, asyncHandler(async (req: AuthRequest, res) => {
