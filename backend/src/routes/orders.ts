@@ -65,7 +65,7 @@ router.post(
           paidAmount: paymentStatus === 'PAID' ? totalAmount : 0,
           paymentMethod,
           paymentStatus,
-          status: 'PENDING',
+          status: 'PENDING' as any,
           notes,
           items: {
             create: items.map((item: any) => ({
@@ -132,15 +132,15 @@ router.post(
 
     // WhatsApp bill (non-critical)
     try {
-      if (order.customer?.phone && paymentStatus === 'PAID') {
+      if ((order as any).customer?.phone && paymentStatus === 'PAID') {
         const shop = await prisma.shop.findUnique({ where: { id: req.user!.shopId }, select: { name: true } });
         const updatedCustomer = (await prisma.customer.findUnique({ where: { id: customerId! } })) as any;
         const pointsEarned = Math.floor(Number(order.totalAmount) * POINTS_PER_RUPEE);
         await sendWhatsAppBill(
-          order.customer.phone,
+          (order as any).customer.phone,
           {
             invoiceNumber: order.invoiceNumber,
-            items: order.items.map((i: any) => ({ name: i.name, quantity: i.quantity, unitPrice: Number(i.unitPrice), total: Number(i.total) })),
+            items: (order as any).items.map((i: any) => ({ name: i.name, quantity: i.quantity, unitPrice: Number(i.unitPrice), total: Number(i.total) })),
             subtotal: Number(order.subtotal),
             taxAmount: Number(order.taxAmount),
             discountAmount: Number(order.discountAmount),
@@ -170,7 +170,7 @@ router.get(
     const orders = await prisma.order.findMany({
       where: {
         shopId: req.user!.shopId,
-        status: { in: ['PENDING', 'PREPARING', 'READY'] }
+        status: { in: ['PENDING', 'PREPARING', 'READY'] as any }
       },
       select: {
         id: true, invoiceNumber: true, status: true,
