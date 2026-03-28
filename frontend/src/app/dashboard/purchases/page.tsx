@@ -33,8 +33,8 @@ export default function PurchasesPage() {
     try {
       const [poRes, supRes, prodRes] = await Promise.allSettled([
         api.get('/api/purchases?limit=50'),
-        api.get('/api/suppliers?limit=100'),
-        api.get('/api/products?limit=200'),
+        api.get('/api/suppliers?limit=50'),
+        api.get('/api/products?limit=50'),
       ]);
       if (poRes.status   === 'fulfilled') setPurchases(poRes.value.data.purchases || []);
       if (supRes.status  === 'fulfilled') setSuppliers(supRes.value.data.suppliers || []);

@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
+import { useSocket } from '@/context/SocketContext';
 import api from '@/lib/api';
 
 const NAV = [
@@ -26,6 +27,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router    = useRouter();
   const { user, logout } = useAuth();
   const { theme, isDark, toggleTheme } = useTheme();
+  const { socket } = useSocket();
 
   // Low-stock badge
   const [lowStock,      setLowStock]      = useState(0);
@@ -50,13 +52,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     } catch {}
   }, []);
 
+  // Fetch ONCE on mount — then rely on WebSocket for instant updates (saves ~2GB/month)
   useEffect(() => {
     fetchLowStock();
     fetchNotifications();
-    // Refresh every 60 seconds
-    const interval = setInterval(() => { fetchLowStock(); fetchNotifications(); }, 60000);
-    return () => clearInterval(interval);
   }, [fetchLowStock, fetchNotifications]);
+
+  // WebSocket: instant push updates instead of polling (FASTER + zero egress)
+  useEffect(() => {
+    if (!socket) return;
+    const refresh = () => { fetchLowStock(); fetchNotifications(); };
+    socket.on('ORDER_CREATED', refresh);
+    socket.on('ORDER_UPDATED', refresh);
+    socket.on('NOTIFICATION', fetchNotifications);
+    return () => {
+      socket.off('ORDER_CREATED', refresh);
+      socket.off('ORDER_UPDATED', refresh);
+      socket.off('NOTIFICATION', fetchNotifications);
+    };
+  }, [socket, fetchLowStock, fetchNotifications]);
 
   const markAllRead = async () => {
     try {

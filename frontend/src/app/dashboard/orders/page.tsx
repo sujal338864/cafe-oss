@@ -36,7 +36,7 @@ export default function OrdersPage() {
   const load = async () => {
     setLoading(true); setError('');
     try {
-      const { data } = await api.get('/api/orders?limit=200');
+      const { data } = await api.get('/api/orders?limit=30');
       setOrders(data.orders || data.data || (Array.isArray(data) ? data : []));
     } catch { setError('Failed to load orders. Backend may be warming up.'); }
     finally { setLoading(false); }

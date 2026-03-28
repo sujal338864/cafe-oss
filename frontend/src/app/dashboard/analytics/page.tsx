@@ -28,8 +28,8 @@ export default function AnalyticsPage() {
     try {
       const [analyticsRes, expensesRes, ordersRes] = await Promise.allSettled([
         api.get('/api/analytics/dashboard'),
-        api.get('/api/expenses?limit=200'),
-        api.get('/api/orders?limit=200'),
+        api.get('/api/expenses?limit=50'),
+        api.get('/api/orders?limit=50'),
       ]);
       if (analyticsRes.status === 'fulfilled') setData(analyticsRes.value.data);
       if (expensesRes.status  === 'fulfilled') setExpenses(expensesRes.value.data.expenses || []);

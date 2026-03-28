@@ -162,6 +162,30 @@ router.post(
   })
 );
 
+// ── Lightweight Kitchen Display endpoint (minimal payload, saves ~1GB/month egress) ──
+router.get(
+  '/kitchen',
+  authenticate,
+  asyncHandler(async (req: AuthRequest, res) => {
+    const orders = await prisma.order.findMany({
+      where: {
+        shopId: req.user!.shopId,
+        status: { in: ['PENDING', 'PREPARING', 'READY'] }
+      },
+      select: {
+        id: true, invoiceNumber: true, status: true,
+        totalAmount: true, createdAt: true, paymentMethod: true,
+        paymentStatus: true, notes: true,
+        customer: { select: { name: true, phone: true } },
+        items: { select: { name: true, quantity: true } }
+      },
+      orderBy: { createdAt: 'asc' },
+      take: 50
+    });
+    res.json({ orders });
+  })
+);
+
 router.get(
   '/',
   authenticate,

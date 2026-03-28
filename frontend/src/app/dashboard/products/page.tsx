@@ -46,7 +46,7 @@ export default function ProductsPage() {
   const load = async () => {
     setLoading(true); setError('');
     try {
-      const { data } = await api.get('/api/products?limit=200');
+      const { data } = await api.get('/api/products?limit=50');
       setProducts(data.products || []);
     } catch (e) { setError('Failed to load products. Backend may be warming up.'); }
     finally { setLoading(false); }

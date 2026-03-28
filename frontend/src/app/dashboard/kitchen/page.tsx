@@ -39,12 +39,9 @@ export default function KitchenPage() {
 
   const load = useCallback(async () => {
     try {
-      const { data } = await api.get('/api/orders?limit=100');
-      const all = data.orders || data.data || [];
-      // Only show active kitchen orders (exclude COMPLETED/CANCELLED)
-      const kitchen = all.filter((o: Order) => 
-        ['PENDING', 'PREPARING', 'READY'].includes(o.status)
-      );
+      // Use the lightweight kitchen endpoint (~8KB vs ~100KB)
+      const { data } = await api.get('/api/orders/kitchen');
+      const kitchen = data.orders || [];
       // Ping if new orders arrived
       if (kitchen.filter((o: Order) => o.status === 'PENDING').length > prevCountRef.current) {
         try { audioRef.current?.play(); } catch {}
@@ -55,7 +52,8 @@ export default function KitchenPage() {
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { load(); const i = setInterval(load, 60000); return () => clearInterval(i); }, [load]);
+  // Fallback polling every 5 min — WebSocket handles instant updates
+  useEffect(() => { load(); const i = setInterval(load, 300000); return () => clearInterval(i); }, [load]);
 
   useEffect(() => {
     if (!socket) return;
