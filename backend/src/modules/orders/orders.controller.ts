@@ -190,3 +190,30 @@ export const resendWhatsApp = async (req: AuthRequest, res: Response) => {
 
   res.json({ sent: true, queued: true, phone: order.customer.phone });
 };
+
+// ── Kitchen Display ──
+
+export const getKitchenOrders = async (req: AuthRequest, res: Response) => {
+  const orders = await orderService.getKitchenOrders(req.user!.shopId);
+  res.json({ orders });
+};
+
+export const updateOrderStatus = async (req: AuthRequest, res: Response) => {
+  const { status } = req.body;
+  const validStatuses = ['PENDING', 'PREPARING', 'READY', 'COMPLETED', 'CANCELLED'];
+  if (!validStatuses.includes(status)) {
+    return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+  }
+
+  try {
+    const updated = await orderService.updateKitchenStatus(req.params.id, req.user!.shopId, status);
+    
+    try {
+      emitToShop(req.user!.shopId, 'ORDER_UPDATED', updated);
+    } catch (e) {}
+
+    res.json(updated);
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
+};

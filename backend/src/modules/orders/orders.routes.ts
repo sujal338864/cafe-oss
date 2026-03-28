@@ -27,6 +27,16 @@ router.get(
 );
 
 /**
+ * GET /api/orders/kitchen  — Kitchen Display endpoint
+ * MUST be before /:id or Express will match 'kitchen' as an id!
+ */
+router.get(
+  '/kitchen',
+  authenticate as any,
+  asyncHandler(orderController.getKitchenOrders)
+);
+
+/**
  * GET /api/orders/:id
  */
 router.get(
@@ -54,6 +64,15 @@ router.put(
   authorize('ADMIN', 'MANAGER'),
   idempotency,
   asyncHandler(orderController.updatePaymentStatus)
+);
+
+/**
+ * PUT /api/orders/:id/status
+ */
+router.put(
+  '/:id/status',
+  authenticate as any,
+  asyncHandler(orderController.updateOrderStatus)
 );
 
 /**

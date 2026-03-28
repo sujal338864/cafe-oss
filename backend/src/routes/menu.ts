@@ -175,15 +175,17 @@ router.post('/order', asyncHandler(async (req, res) => {
       paidAmount: paymentStatus === 'PAID' ? finalTotal : 0,
       paymentMethod: pm,
       paymentStatus: paymentStatus as any,
-      status: 'PENDING',
-      notes: (tableNumber ? 'Table: ' + tableNumber + '. ' : '') + (notes || ''),
+      status: 'COMPLETED',
+      notes: `[KITCHEN:PENDING] ${tableNumber ? 'Table: ' + tableNumber + '. ' : ''}${notes || ''}`,
       items: { create: orderItems },
     },
     include: { items: true },
   });
 
+  console.log(`[MENU API] Successfully saved Scanner Order ${invoiceNumber} into KITCHEN queue!`);
+
   // Broadcast to Kitchen Display System instantly
-  try { emitToShop(shop.id, 'ORDER_CREATED', order); } catch {}
+  try { emitToShop(shop.id, 'ORDER_CREATED', { ...order, status: 'PENDING' }); } catch {}
 
   // Deduct stock
   for (const item of items) {

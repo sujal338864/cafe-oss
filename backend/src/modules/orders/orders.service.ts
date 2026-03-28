@@ -52,7 +52,7 @@ export const createOrder = async (shopId: string, userId: string, data: any) => 
         paymentMethod,
         paymentStatus,
         status: 'COMPLETED',
-        notes,
+        notes: `[KITCHEN:PENDING] ${notes || ''}`,
         items: {
           create: items.map((item: any) => ({
             productId: item.productId,
@@ -189,4 +189,76 @@ export const updatePaymentStatus = async (orderId: string, shopId: string, payme
     },
     include: { items: true, customer: true }
   });
+};
+
+// ── Kitchen Display helpers ──
+
+export const getKitchenOrders = async (shopId: string) => {
+  // Catch BOTH:
+  // 1. POS orders tagged with [KITCHEN:PENDING/PREPARING/READY] in notes
+  // 2. Scanner/Menu orders that have status='PENDING' (no kitchen tag yet)
+  const dbOrders = await prisma.order.findMany({
+    where: {
+      shopId,
+      OR: [
+        { notes: { contains: '[KITCHEN:' } },
+        { status: { equals: 'PENDING' as any } },
+      ],
+      status: { not: 'CANCELLED' as any },
+    },
+    select: {
+      id: true, invoiceNumber: true, status: true,
+      totalAmount: true, createdAt: true, paymentMethod: true,
+      paymentStatus: true, notes: true,
+      customer: { select: { name: true, phone: true } },
+      items: { select: { name: true, quantity: true } }
+    },
+    orderBy: { createdAt: 'asc' },
+    take: 50
+  });
+
+  return dbOrders.map(o => {
+    const match = o.notes?.match(/\[KITCHEN:(PENDING|PREPARING|READY)\]/);
+    // Priority: [KITCHEN:X] tag > order.status field
+    let kitchenStatus: string;
+    if (match) {
+      kitchenStatus = match[1];
+    } else if ((o.status as string) === 'PENDING') {
+      kitchenStatus = 'PENDING'; // Scanner orders without tag
+    } else {
+      kitchenStatus = 'COMPLETED'; // Already done
+    }
+    return {
+      ...o,
+      status: kitchenStatus,
+      notes: o.notes?.replace(/\[KITCHEN:[A-Z]+\]\s*/, '')
+    };
+  }).filter(o => ['PENDING', 'PREPARING', 'READY'].includes(o.status));
+};
+
+export const updateKitchenStatus = async (orderId: string, shopId: string, status: string) => {
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, shopId }
+  });
+  if (!order) throw new Error('Order not found');
+
+  let rawNotes = order.notes || '';
+  rawNotes = rawNotes.replace(/\[KITCHEN:[A-Z]+\]\s*/, ''); // strip old tag
+  
+  let newNotes = rawNotes;
+  if (status === 'PENDING' || status === 'PREPARING' || status === 'READY') {
+    newNotes = `[KITCHEN:${status}] ${rawNotes}`;
+  }
+  // else COMPLETED: notes have no tag, so it won't show in kitchen
+
+  // Also update the order status field for scanner orders that used status='PENDING'
+  const orderStatus = (status === 'COMPLETED') ? 'COMPLETED' : order.status;
+
+  const updated = await prisma.order.update({
+    where: { id: orderId },
+    data: { notes: newNotes, status: orderStatus as any },
+    include: { items: true, customer: true }
+  });
+
+  return { ...updated, status, notes: rawNotes };
 };

@@ -65,8 +65,8 @@ router.post(
           paidAmount: paymentStatus === 'PAID' ? totalAmount : 0,
           paymentMethod,
           paymentStatus,
-          status: 'PENDING' as any,
-          notes,
+          status: 'COMPLETED',
+          notes: `[KITCHEN:PENDING] ` + (notes || ''),
           items: {
             create: items.map((item: any) => ({
               productId: item.productId,
@@ -116,7 +116,7 @@ router.post(
     }, { timeout: 15000 });
 
     // Broadcast to Kitchen Display System instantly
-    try { emitToShop(req.user!.shopId, 'ORDER_CREATED', order); } catch {}
+    try { emitToShop(req.user!.shopId, 'ORDER_CREATED', { ...order, status: 'PENDING' }); } catch {}
 
     // Low stock check (non-critical)
     try {
@@ -162,18 +162,19 @@ router.post(
   })
 );
 
-// ── Lightweight Kitchen Display endpoint (minimal payload, saves ~1GB/month egress) ──
+// ── Lightweight Kitchen Display endpoint (Uses Database Notes Fallback) ──
 router.get(
   '/kitchen',
   authenticate,
   asyncHandler(async (req: AuthRequest, res) => {
-    const orders = await prisma.order.findMany({
+    // 1. Fetch recent orders
+    const dbOrders = await prisma.order.findMany({
       where: {
         shopId: req.user!.shopId,
-        status: { in: ['PENDING', 'PREPARING', 'READY'] as any }
+        notes: { contains: '[KITCHEN:' }
       },
       select: {
-        id: true, invoiceNumber: true, status: true,
+        id: true, invoiceNumber: true,
         totalAmount: true, createdAt: true, paymentMethod: true,
         paymentStatus: true, notes: true,
         customer: { select: { name: true, phone: true } },
@@ -182,6 +183,17 @@ router.get(
       orderBy: { createdAt: 'asc' },
       take: 50
     });
+
+    // 2. Extract specific Kitchen status from notes string
+    const orders = dbOrders.map(o => {
+      const match = o.notes?.match(/\[KITCHEN:(PENDING|PREPARING|READY)\]/);
+      return {
+        ...o,
+        status: match ? match[1] : 'COMPLETED',
+        notes: o.notes?.replace(/\[KITCHEN:[A-Z]+\]\s*/, '')
+      };
+    }).filter(o => o.status !== 'COMPLETED');
+
     res.json({ orders });
   })
 );
@@ -333,7 +345,7 @@ router.put(
   authenticate,
   asyncHandler(async (req: AuthRequest, res) => {
     const { status } = req.body;
-    const validStatuses = ['PENDING', 'PREPARING', 'READY', 'COMPLETED'];
+    const validStatuses = ['PENDING', 'PREPARING', 'READY', 'COMPLETED', 'CANCELLED'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
     }
@@ -342,16 +354,25 @@ router.put(
     });
     if (!order) return res.status(404).json({ error: 'Order not found' });
 
+    let rawNotes = order.notes || '';
+    rawNotes = rawNotes.replace(/\[KITCHEN:[A-Z]+\]\s*/, ''); // strip old
+    let newNotes = rawNotes;
+    if (status === 'PENDING' || status === 'PREPARING' || status === 'READY') {
+      newNotes = `[KITCHEN:${status}] ${rawNotes}`;
+    }
+
     const updated = await prisma.order.update({
       where: { id: req.params.id },
-      data: { status },
+      data: { 
+        status: (status === 'COMPLETED' || status === 'CANCELLED') ? status as any : 'COMPLETED',
+        notes: newNotes 
+      },
       include: { items: true, customer: true }
     });
 
-    // Broadcast via WebSocket for real-time KDS + customer tracking
-    try { emitToShop(req.user!.shopId, 'ORDER_UPDATED', updated); } catch {}
-
-    res.json(updated);
+    const parsedOrder = { ...updated, status, notes: rawNotes };
+    try { emitToShop(req.user!.shopId, 'ORDER_UPDATED', parsedOrder); } catch {}
+    res.json(parsedOrder);
   })
 );
 
