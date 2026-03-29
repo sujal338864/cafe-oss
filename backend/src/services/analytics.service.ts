@@ -77,10 +77,10 @@ export const AnalyticsService = {
 
       return Object.values(dailyData).map(d => ({
         ...d,
-        revenue: Math.round(d.revenue),
-        cost: Math.round(d.cost),
-        expenses: Math.round(d.expenses),
-        profit: Math.round(d.revenue - d.cost - d.expenses)
+        revenue: Math.round(d.revenue * 100) / 100,
+        cost: Math.round(d.cost * 100) / 100,
+        expenses: Math.round(d.expenses * 100) / 100,
+        profit: Math.round((d.revenue - d.cost - d.expenses) * 100) / 100
       }));
     } catch (error: any) {
       logger.error(`[ANALYTICS] Failed to fetch daily profit: ${error.message}`);
@@ -348,12 +348,12 @@ export const AnalyticsService = {
       const netProfit = grossProfit - totalOpEx;
 
       return {
-        totalRevenue: Math.round(totalRevenue),
-        totalCOGS: Math.round(totalCOGS),
-        totalOpEx: Math.round(totalOpEx),
-        grossProfit: Math.round(grossProfit),
-        netProfit: Math.round(netProfit),
-        marginPercent: totalRevenue > 0 ? Math.round((netProfit / totalRevenue) * 100) : 0,
+        totalRevenue: Math.round(totalRevenue * 100) / 100,
+        totalCOGS: Math.round(totalCOGS * 100) / 100,
+        totalOpEx: Math.round(totalOpEx * 100) / 100,
+        grossProfit: Math.round(grossProfit * 100) / 100,
+        netProfit: Math.round(netProfit * 100) / 100,
+        marginPercent: totalRevenue > 0 ? Math.round((netProfit / totalRevenue) * 10000) / 100 : 0,
         daysAnalyzed: days
       };
     } catch (error: any) {

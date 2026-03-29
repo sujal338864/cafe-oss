@@ -7,7 +7,7 @@ import { addDashboardUpdateJob } from '../../jobs/queues/dashboard.queue';
 import { emitToShop } from '../../lib/socket';
 import { logger } from '../../lib/logger';
 
-const POINTS_PER_RUPEE = parseFloat(process.env.LOYALTY_POINTS_PER_RUPEE || '0.1');
+// Global points constant removed - now fetched per-shop from DB
 
 /**
  * POST /api/orders
@@ -21,6 +21,10 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
     
     // Core business logic (Atomic)
     const order = await orderService.createOrder(shopId, userId, req.body);
+    
+    // Fetch shop settings for dynamic side-effect calculations
+    const shop = await prisma.shop.findUnique({ where: { id: shopId } });
+    const LOYALTY_RATE = Number((shop as any)?.loyaltyRate || 0.1);
 
     // ==========================================
     // NON-CRITICAL SIDE EFFECTS (Post-Commit)
@@ -45,8 +49,8 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
           paymentMethod: order.paymentMethod,
           paymentStatus: order.paymentStatus,
         },
-        shopName: 'Our Shop', // In production, fetch from shop config
-        pointsEarned: Math.floor(Number(order.totalAmount) * POINTS_PER_RUPEE),
+        shopName: shop?.name || 'Our Shop',
+        pointsEarned: Math.floor(Number(order.totalAmount) * LOYALTY_RATE),
         currentLoyaltyPoints: order.customer?.loyaltyPoints
       }).catch(err => logger.warn(`[ORDER] WhatsApp job failed: ${err.message}`));
     }
@@ -54,7 +58,7 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
     // 2. Dashboard & Socket Notification
     addDashboardUpdateJob(shopId).catch(err => logger.warn(`[ORDER] Dashboard job failed: ${err.message}`));
     
-    const pointsEarned = req.body.customerId ? Math.floor(Number(order.totalAmount) * POINTS_PER_RUPEE) : 0;
+    const pointsEarned = req.body.customerId ? Math.floor(Number(order.totalAmount) * LOYALTY_RATE) : 0;
     emitToShop(shopId, 'ORDER_CREATED', { ...order, pointsEarned });
 
     // 3. Low Stock Check (Deferred)
@@ -153,7 +157,9 @@ export const updatePaymentStatus = async (req: AuthRequest, res: Response) => {
     if (paymentStatus === 'PAID') {
       try {
         if (updated.customerId) {
-          const pointsEarned = Math.floor(Number(updated.totalAmount) * POINTS_PER_RUPEE);
+          const shop = await prisma.shop.findUnique({ where: { id: updated.shopId } });
+          const LOYALTY_RATE = Number((shop as any)?.loyaltyRate || 0.1);
+          const pointsEarned = Math.floor(Number(updated.totalAmount) * LOYALTY_RATE);
           await prisma.customer.update({
             where: { id: updated.customerId },
             data: { loyaltyPoints: { increment: pointsEarned } } as any

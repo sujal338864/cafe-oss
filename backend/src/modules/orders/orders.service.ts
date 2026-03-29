@@ -1,8 +1,7 @@
 import { prisma } from '../../index';
 import { logger } from '../../lib/logger';
 
-const POINTS_PER_RUPEE = parseFloat(process.env.LOYALTY_POINTS_PER_RUPEE || '0.1');
-const POINTS_REDEEM_RATE = parseFloat(process.env.LOYALTY_REDEEM_RATE || '10');
+// Loyalty constants removed - now fetched dynamically per-shop inside transactions
 
 /**
  * Creates a new order with atomic stock deduction and loyalty points calculation.
@@ -16,11 +15,17 @@ const POINTS_REDEEM_RATE = parseFloat(process.env.LOYALTY_REDEEM_RATE || '10');
 export const createOrder = async (shopId: string, userId: string, data: any) => {
   const { customerId, items, discountAmount = 0, redeemPoints = 0, paymentMethod, paymentStatus, notes } = data;
 
-  const pointsDiscount = redeemPoints > 0 ? (redeemPoints / 100) * POINTS_REDEEM_RATE : 0;
-  const totalDiscount = discountAmount + pointsDiscount;
-
   try {
     return await prisma.$transaction(async (tx) => {
+      // 1. Fetch Shop Settings for loyalty rates
+      const shop = await tx.shop.findUnique({ where: { id: shopId } });
+      if (!shop) throw new Error('Shop configuration not found');
+      
+      const LOYALTY_RATE = Number((shop as any).loyaltyRate || 0.1);
+      const REDEEM_VALUE = Number((shop as any).redeemRate || 10);
+      
+      const pointsDiscount = redeemPoints > 0 ? (redeemPoints / REDEEM_VALUE) : 0;
+      const totalDiscount = discountAmount + pointsDiscount;
       // 1. Fetch products inside transaction to hold locks
       const products = await tx.product.findMany({
         where: { id: { in: items.map((i: any) => i.productId) } }
@@ -102,9 +107,11 @@ export const createOrder = async (shopId: string, userId: string, data: any) => 
         });
       }
 
-      // 4. Update customer loyalty points
+      // 4. Update customer loyalty points (Dynamic per-shop)
       if (customerId) {
-        const pointsEarned = Math.floor(totalAmount * POINTS_PER_RUPEE);
+        const shop = await tx.shop.findFirst({ where: { id: shopId } });
+        const LOYALTY_RATE = Number((shop as any)?.loyaltyRate || 0.1);
+        const pointsEarned = Math.floor(totalAmount * LOYALTY_RATE);
         await tx.customer.update({
           where: { id: customerId },
           data: {
