@@ -5,8 +5,7 @@ import { authenticate, authorize, asyncHandler, validateRequest, AuthRequest } f
 import { sendWhatsAppBill } from '../lib/whatsapp';
 import { emitToShop } from '../lib/socket';
 
-const POINTS_PER_RUPEE = parseFloat(process.env.LOYALTY_POINTS_PER_RUPEE || '0.1'); // 1 pt per Rs.10
-const POINTS_REDEEM_RATE = parseFloat(process.env.LOYALTY_REDEEM_RATE || '10');      // 100 pts = Rs.10 off
+// Loyalty constants removed, now using Shop settings from DB
 
 const router = Router();
 
@@ -35,8 +34,11 @@ router.post(
   asyncHandler(async (req: AuthRequest, res) => {
     const { customerId, items, discountAmount = 0, redeemPoints = 0, paymentMethod, paymentStatus, notes } = req.body;
 
-    // Points redemption → extra discount (100 pts = Rs.POINTS_REDEEM_RATE)
-    const pointsDiscount = redeemPoints > 0 ? (redeemPoints / 100) * POINTS_REDEEM_RATE : 0;
+    const shop = await prisma.shop.findUnique({ where: { id: req.user!.shopId }, select: { loyaltyRate: true, redeemRate: true } });
+    const loyaltyRate = shop?.loyaltyRate || 0.1;
+    const redeemRate = shop?.redeemRate || 10;
+
+    const pointsDiscount = redeemPoints > 0 ? (redeemPoints / redeemRate) : 0;
     const totalDiscount = discountAmount + pointsDiscount;
 
     let subtotal = 0;
@@ -101,7 +103,7 @@ router.post(
 
       // Update customer loyalty points
       if (customerId) {
-        const pointsEarned = Math.floor(totalAmount * POINTS_PER_RUPEE);
+        const pointsEarned = Math.floor(totalAmount * loyaltyRate);
         await tx.customer.update({
           where: { id: customerId },
           data: {
@@ -135,7 +137,7 @@ router.post(
       if ((order as any).customer?.phone && paymentStatus === 'PAID') {
         const shop = await prisma.shop.findUnique({ where: { id: req.user!.shopId }, select: { name: true } });
         const updatedCustomer = (await prisma.customer.findUnique({ where: { id: customerId! } })) as any;
-        const pointsEarned = Math.floor(Number(order.totalAmount) * POINTS_PER_RUPEE);
+        const pointsEarned = Math.floor(Number(order.totalAmount) * loyaltyRate);
         await sendWhatsAppBill(
           (order as any).customer.phone,
           {
@@ -157,7 +159,7 @@ router.post(
       console.warn('WhatsApp bill failed (non-critical):', e);
     }
 
-    const pointsEarned = customerId ? Math.floor(Number(order.totalAmount) * POINTS_PER_RUPEE) : 0;
+    const pointsEarned = customerId ? Math.floor(Number(order.totalAmount) * loyaltyRate) : 0;
     res.status(201).json({ ...order, pointsEarned });
   })
 );
@@ -301,9 +303,12 @@ router.put(
 
     // When marking PAID, award loyalty points + send WhatsApp
     if (paymentStatus === 'PAID' && order.paymentStatus !== 'PAID') {
+      const shop = await prisma.shop.findUnique({ where: { id: req.user!.shopId }, select: { name: true, loyaltyRate: true, redeemRate: true } });
+      const loyaltyRate = shop?.loyaltyRate || 0.1;
+
       try {
         if (order.customerId) {
-          const pointsEarned = Math.floor(Number(order.totalAmount) * POINTS_PER_RUPEE);
+          const pointsEarned = Math.floor(Number(order.totalAmount) * loyaltyRate);
           await prisma.customer.update({
             where: { id: order.customerId },
             data: { loyaltyPoints: { increment: pointsEarned } } as any
@@ -313,9 +318,8 @@ router.put(
 
       try {
         if (order.customer?.phone) {
-          const shop = await prisma.shop.findUnique({ where: { id: req.user!.shopId }, select: { name: true } });
           const customer = order.customerId ? (await prisma.customer.findUnique({ where: { id: order.customerId } })) as any : null;
-          const pointsEarned = Math.floor(Number(order.totalAmount) * POINTS_PER_RUPEE);
+          const pointsEarned = Math.floor(Number(order.totalAmount) * loyaltyRate);
           await sendWhatsAppBill(
             order.customer.phone,
             {
@@ -388,7 +392,8 @@ router.post(
     if (!order) return res.status(404).json({ error: 'Order not found' });
     if (!order.customer?.phone) return res.status(400).json({ error: 'Customer has no phone number' });
 
-    const shop = await prisma.shop.findUnique({ where: { id: req.user!.shopId }, select: { name: true } });
+    const shop = await prisma.shop.findUnique({ where: { id: req.user!.shopId }, select: { name: true, loyaltyRate: true } });
+    const loyaltyRate = shop?.loyaltyRate || 0.1;
     const customer = order.customerId ? (await prisma.customer.findUnique({ where: { id: order.customerId } })) as any : null;
 
     const sent = await sendWhatsAppBill(

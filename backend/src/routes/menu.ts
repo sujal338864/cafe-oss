@@ -10,8 +10,6 @@ import { generateInvoicePDF } from '../lib/invoice';
 import { applyPricingRules } from '../lib/pricing';
 import rateLimit from 'express-rate-limit';
 
-const POINTS_PER_RUPEE = parseFloat(process.env.LOYALTY_POINTS_PER_RUPEE || '0.1');
-const REDEEM_RATE = parseFloat(process.env.LOYALTY_REDEEM_RATE || '10');
 const MENU_CACHE_TTL = 300; // 5 minutes
 
 /**
@@ -60,7 +58,7 @@ router.get('/', menuLimiter, asyncHandler(async (req, res) => {
     const [shop, categories, products] = await Promise.all([
       prisma.shop.findUnique({
         where: { id: shopId },
-        select: { name: true, logoUrl: true, currency: true, pricingEnabled: true, pricingRules: true }
+        select: { name: true, logoUrl: true, currency: true, pricingEnabled: true, pricingRules: true, loyaltyRate: true, redeemRate: true }
       }),
       prisma.category.findMany({
         where: { shopId },
@@ -85,8 +83,8 @@ router.get('/', menuLimiter, asyncHandler(async (req, res) => {
       shop, 
       categories, 
       products: dynamicProducts,
-      loyaltyRate: POINTS_PER_RUPEE,
-      redeemRate: REDEEM_RATE
+      loyaltyRate: shop.loyaltyRate,
+      redeemRate: shop.redeemRate
     };
 
     // 3. Cache the result
@@ -175,6 +173,9 @@ router.post('/order', orderLimiter, asyncHandler(async (req, res) => {
     });
     if (!shop) return res.status(404).json({ error: 'Shop not found' });
     
+    const redeemRate = (shop as any).redeemRate || 10;
+    const loyaltyRate = (shop as any).loyaltyRate || 0.1;
+    
     const userId = shop.users[0]?.id;
     if (!userId) {
       logger.error(`[MENU] Shop ${shopId} has no active users to assign orders to.`);
@@ -223,7 +224,7 @@ router.post('/order', orderLimiter, asyncHandler(async (req, res) => {
 
     const taxAmount = orderItems.reduce((s: number, i: any) => s + i.total * (Number(i.taxRate) / 100), 0);
     const totalAmount = subtotal + taxAmount;
-    const pointsDiscount = Number(redeemPoints) / REDEEM_RATE;
+    const pointsDiscount = Number(redeemPoints) / (shop.redeemRate || 10);
     const finalTotal = Math.max(0, totalAmount - pointsDiscount);
 
     // Meta Generation
@@ -261,7 +262,7 @@ router.post('/order', orderLimiter, asyncHandler(async (req, res) => {
     emitToShop(shop.id, 'ORDER_CREATED', { ...order, status: 'PENDING' });
 
     // Stock & Loyalty updates (Deferred for performance)
-    updatePostOrderMetrics(shop.id, items, customerId, Number(redeemPoints), finalTotal, paymentStatus, customerPhone).catch(err => {
+    updatePostOrderMetrics(shop.id, items, customerId, Number(redeemPoints), finalTotal, paymentStatus, customerPhone, loyaltyRate).catch(err => {
       logger.warn(`[MENU] Deferred updates failed for ${invoiceNumber}: ${err.message}`);
     });
 
@@ -357,7 +358,8 @@ async function updatePostOrderMetrics(
   redeemPoints: number,
   finalTotal: number,
   paymentStatus: string,
-  customerPhone: string | null
+  customerPhone: string | null,
+  loyaltyRate: number
 ) {
   // 1. Stock Deduction & Low Stock Alert
   for (const item of items) {
@@ -374,7 +376,8 @@ async function updatePostOrderMetrics(
 
   // 2. Loyalty & WhatsApp
   if (customerId) {
-    const pointsEarned = paymentStatus === 'PAID' ? Math.floor(finalTotal * POINTS_PER_RUPEE) : 0;
+    const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { loyaltyRate: true, name: true } });
+    const pointsEarned = paymentStatus === 'PAID' ? Math.floor(finalTotal * loyaltyRate) : 0;
     await prisma.customer.update({
       where: { id: customerId },
       data: {

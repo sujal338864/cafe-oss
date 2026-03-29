@@ -7,7 +7,7 @@ type Category = { id: string; name: string; color?: string };
 type CartItem = Product & { qty: number; note: string };
 
 const fmt = (n: number) => '₹' + Number(n || 0).toLocaleString('en-IN');
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+const API = process.env.NEXT_PUBLIC_API_URL || 'https://cafe-oss.onrender.com';
 
 async function get(path: string) {
   const r = await fetch(API + path);
@@ -252,8 +252,8 @@ function MenuContent() {
   const inc = useCallback((id: string) => setCart(c => c.map(i => i.id === id ? { ...i, qty: i.qty + 1 } : i)), []);
   const setNote = useCallback((id: string, note: string) => setCart(c => c.map(i => i.id === id ? { ...i, note } : i)), []);
 
-  const subtotal = cart.reduce((s, i) => s + i.sellingPrice * i.qty, 0);
-  const tax = cart.reduce((s, i) => s + (i.sellingPrice * i.qty) * (i.taxRate / 100), 0);
+  const subtotal = cart.reduce((s, i) => s + (Number(i.sellingPrice) || 0) * i.qty, 0);
+  const tax = cart.reduce((s, i) => s + ((Number(i.sellingPrice) || 0) * i.qty) * ((Number(i.taxRate) || 0) / 100), 0);
   const REDEEM_RATE = redeemRate || 10;
   const total = subtotal + tax;
   const pointsDiscount = (pointsToRedeem / REDEEM_RATE) || 0;

@@ -30,10 +30,10 @@ router.put(
   '/profile',
   authenticate,
   asyncHandler(async (req: AuthRequest, res) => {
-    const { name, phone, email, address, currency } = req.body;
+    const { name, phone, email, address, currency, pricingEnabled, pricingRules, loyaltyRate, redeemRate } = req.body;
     const shop = await prisma.shop.update({
       where: { id: req.user!.shopId },
-      data: { name, phone, email, address, currency }
+      data: { name, phone, email, address, currency, pricingEnabled, pricingRules, loyaltyRate, redeemRate }
     });
 
     res.json(shop);
