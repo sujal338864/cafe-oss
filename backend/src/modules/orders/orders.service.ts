@@ -245,9 +245,9 @@ export const getKitchenOrders = async (shopId: string) => {
         shopId,
         OR: [
           { notes: { contains: '[KITCHEN:' } },
-          { status: { equals: 'PENDING' as any } },
+          { status: { in: ['PENDING', 'PREPARING', 'READY'] as any } },
         ],
-        status: { not: 'CANCELLED' as any },
+        status: { not: { in: ['CANCELLED', 'COMPLETED'] as any } }, // Exclude done orders
       },
       select: {
         id: true, invoiceNumber: true, status: true,
@@ -261,16 +261,19 @@ export const getKitchenOrders = async (shopId: string) => {
     });
 
     return dbOrders.map(o => {
+      // 1. Give precedence to the tag if it exists (for POS/Staff overrides)
       const match = o.notes?.match(/\[KITCHEN:(PENDING|PREPARING|READY)\]/);
-      // Priority: [KITCHEN:X] tag > order.status field
+      
       let kitchenStatus: string;
       if (match) {
         kitchenStatus = match[1];
-      } else if ((o.status as string) === 'PENDING') {
-        kitchenStatus = 'PENDING'; // Scanner orders without tag
+      } else if (['PENDING', 'PREPARING', 'READY'].includes(o.status as string)) {
+        // 2. Use the main order status (for Online Scanner orders)
+        kitchenStatus = o.status as string;
       } else {
-        kitchenStatus = 'COMPLETED'; // Already done
+        kitchenStatus = 'COMPLETED';
       }
+
       return {
         ...o,
         status: kitchenStatus,
