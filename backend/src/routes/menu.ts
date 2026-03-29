@@ -81,7 +81,13 @@ router.get('/', menuLimiter, asyncHandler(async (req, res) => {
 
     // 2.5 Apply Dynamic Pricing Rules
     const dynamicProducts = applyPricingRules(products, shop);
-    const payload = { shop, categories, products: dynamicProducts };
+    const payload = { 
+      shop, 
+      categories, 
+      products: dynamicProducts,
+      loyaltyRate: POINTS_PER_RUPEE,
+      redeemRate: REDEEM_RATE
+    };
 
     // 3. Cache the result
     await setCache(cacheKey, payload, MENU_CACHE_TTL);

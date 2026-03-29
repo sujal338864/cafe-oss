@@ -173,6 +173,8 @@ function MenuContent() {
   const [loyaltyPoints, setLoyaltyPoints] = useState(0);
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
   const [recommendations, setRecommendations] = useState<Product[]>([]);
+  const [loyaltyRate, setLoyaltyRate] = useState(0.1);
+  const [redeemRate, setRedeemRate] = useState(10);
 
   useEffect(() => {
     if ((step === 'cart' || step === 'info') && shopId) {
@@ -232,6 +234,8 @@ function MenuContent() {
       setAllCategories(data.categories || []);
       setShopName(data.shop?.name || 'Our Menu');
       setPricingEnabled(!!data.shop?.pricingEnabled);
+      if (data.loyaltyRate) setLoyaltyRate(data.loyaltyRate);
+      if (data.redeemRate) setRedeemRate(data.redeemRate);
       // Check if any product has an active rule to show the banner
       const firstActive = (data.products || []).find((p: Product) => p.activeRule);
       if (firstActive) setActivePromo(firstActive.activeRule);
@@ -250,10 +254,11 @@ function MenuContent() {
 
   const subtotal = cart.reduce((s, i) => s + i.sellingPrice * i.qty, 0);
   const tax = cart.reduce((s, i) => s + (i.sellingPrice * i.qty) * (i.taxRate / 100), 0);
-  const REDEEM_RATE = 10;
+  const REDEEM_RATE = redeemRate || 10;
   const total = subtotal + tax;
   const pointsDiscount = (pointsToRedeem / REDEEM_RATE) || 0;
   const finalTotal = Math.max(0, total - pointsDiscount);
+  const pointsEarned = Math.floor(finalTotal * loyaltyRate);
 
   const cats = ['All', ...allCategories.map(c => c.name)];
   const catMap = Object.fromEntries(allCategories.map(c => [c.id, c.name]));
@@ -429,8 +434,19 @@ function MenuContent() {
         {/* Your Details */}
         <div style={{ fontSize: 12, fontWeight: 700, color: '#888', textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 8 }}>Your Details</div>
         <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10, marginBottom: 20 }}>
+          {loyaltyPoints > 0 && name && (
+            <div style={{ padding: '4px 12px', background: '#f0fdf4', borderRadius: 8, fontSize: 13, color: '#16a34a', fontWeight: 600, display: 'flex', justifyContent: 'space-between' }}>
+              <span>Welcome back, {name}! 👋</span>
+              <span>⭐ {loyaltyPoints} pts</span>
+            </div>
+          )}
           <input value={name} onChange={e => setName(e.target.value)} placeholder="Your name *" style={inp} />
-          <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="Mobile (get bill on WhatsApp)" type="tel" style={inp} />
+          <div style={{ position: 'relative' }}>
+            <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="Mobile (get bill on WhatsApp)" type="tel" style={inp} />
+            <div style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: '#16a34a', fontWeight: 700 }}>
+              {pointsEarned > 0 ? `+${pointsEarned} PTS` : '⭐ EARN POINTS'}
+            </div>
+          </div>
           <input value={table} onChange={e => setTable(e.target.value)} placeholder="Table number (optional)" style={inp} />
           <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Special requests..." rows={2} style={{ ...inp, resize: 'none' as const, fontFamily: 'inherit' }} />
         </div>
