@@ -37,6 +37,20 @@ router.get('/dashboard', authenticate, asyncHandler(async (req: AuthRequest, res
 }));
 
 /**
+ * GET /api/analytics/financial-summary
+ * Returns the true P&L (Profit & Loss) after subtracting COGS and OpEx.
+ */
+router.get('/financial-summary', authenticate, asyncHandler(async (req: AuthRequest, res) => {
+  const shopId = req.user!.shopId;
+  const days = parseInt(req.query.days as string) || 30;
+
+  const { AnalyticsService } = await import('../services/analytics.service');
+  const summary = await AnalyticsService.getFinancialSummary(shopId, days);
+
+  res.json({ summary });
+}));
+
+/**
  * GET /api/analytics/daily-profit
  * Returns aggregated profit/revenue for the last N days.
  */

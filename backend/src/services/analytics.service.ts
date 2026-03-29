@@ -5,7 +5,8 @@ export interface DailyProfit {
   date: string;
   revenue: number;
   cost: number;
-  profit: number;
+  expenses: number;
+  profit: number; // Net Profit (Revenue - Cost - Expenses)
   orderCount: number;
 }
 
@@ -34,18 +35,24 @@ export const AnalyticsService = {
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - days);
 
-      const orders = await prisma.order.findMany({
-        where: { shopId, createdAt: { gte: startDate } },
-        include: { items: true },
-        orderBy: { createdAt: 'asc' }
-      });
+      const [orders, expenses] = await Promise.all([
+        prisma.order.findMany({
+          where: { shopId, createdAt: { gte: startDate } },
+          include: { items: true },
+          orderBy: { createdAt: 'asc' }
+        }),
+        prisma.expense.findMany({
+          where: { shopId, date: { gte: startDate } }
+        })
+      ]);
 
       const dailyData: Record<string, DailyProfit> = {};
 
+      // 1. Process Orders
       orders.forEach(order => {
         const dateKey = order.createdAt.toISOString().split('T')[0];
         if (!dailyData[dateKey]) {
-          dailyData[dateKey] = { date: dateKey, revenue: 0, cost: 0, profit: 0, orderCount: 0 };
+          dailyData[dateKey] = { date: dateKey, revenue: 0, cost: 0, expenses: 0, profit: 0, orderCount: 0 };
         }
 
         const revenue = Number(order.totalAmount);
@@ -56,15 +63,24 @@ export const AnalyticsService = {
 
         dailyData[dateKey].revenue += revenue;
         dailyData[dateKey].cost += cost;
-        dailyData[dateKey].profit += (revenue - cost);
         dailyData[dateKey].orderCount += 1;
+      });
+
+      // 2. Process Expenses
+      expenses.forEach(exp => {
+        const dateKey = exp.date.toISOString().split('T')[0];
+        if (!dailyData[dateKey]) {
+          dailyData[dateKey] = { date: dateKey, revenue: 0, cost: 0, expenses: 0, profit: 0, orderCount: 0 };
+        }
+        dailyData[dateKey].expenses += Number(exp.amount);
       });
 
       return Object.values(dailyData).map(d => ({
         ...d,
         revenue: Math.round(d.revenue),
         cost: Math.round(d.cost),
-        profit: Math.round(d.profit)
+        expenses: Math.round(d.expenses),
+        profit: Math.round(d.revenue - d.cost - d.expenses)
       }));
     } catch (error: any) {
       logger.error(`[ANALYTICS] Failed to fetch daily profit: ${error.message}`);
@@ -259,6 +275,58 @@ export const AnalyticsService = {
       return heatmap;
     } catch (error: any) {
       logger.error(`[ANALYTICS] Peak hour calculation failed: ${error.message}`);
+      throw error;
+    }
+  },
+
+  /**
+   * Get Financial Summary (P&L)
+   * Unified view of Revenue, COGS, and OpEx for total financial transparency.
+   */
+  getFinancialSummary: async (shopId: string, days = 30) => {
+    try {
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+
+      const [orders, expenses] = await Promise.all([
+        prisma.order.findMany({
+          where: { shopId, createdAt: { gte: startDate }, status: { not: 'CANCELLED' as any } },
+          include: { items: true }
+        }),
+        prisma.expense.findMany({
+          where: { shopId, date: { gte: startDate } }
+        })
+      ]);
+
+      let totalRevenue = 0;
+      let totalCOGS = 0;
+      let totalOpEx = 0;
+
+      orders.forEach(o => {
+        totalRevenue += Number(o.totalAmount);
+        o.items.forEach(i => {
+          totalCOGS += Number(i.costPrice) * i.quantity;
+        });
+      });
+
+      expenses.forEach(e => {
+        totalOpEx += Number(e.amount);
+      });
+
+      const grossProfit = totalRevenue - totalCOGS;
+      const netProfit = grossProfit - totalOpEx;
+
+      return {
+        totalRevenue: Math.round(totalRevenue),
+        totalCOGS: Math.round(totalCOGS),
+        totalOpEx: Math.round(totalOpEx),
+        grossProfit: Math.round(grossProfit),
+        netProfit: Math.round(netProfit),
+        marginPercent: totalRevenue > 0 ? Math.round((netProfit / totalRevenue) * 100) : 0,
+        daysAnalyzed: days
+      };
+    } catch (error: any) {
+      logger.error(`[ANALYTICS] Financial summary failed: ${error.message}`);
       throw error;
     }
   }

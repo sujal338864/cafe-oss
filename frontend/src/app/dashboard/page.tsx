@@ -18,6 +18,7 @@ export default function DashboardPage() {
   const [profitList, setProfitList] = useState<any[]>([]);
   const [forecasting, setForecasting] = useState<any[]>([]);
   const [heatmap, setHeatmap] = useState<any>(null);
+  const [financialSummary, setFinancialSummary] = useState<any>(null);
 
   // AI Insights State
   const [aiInsight, setAiInsight] = useState<string>('');
@@ -57,12 +58,13 @@ export default function DashboardPage() {
     setLoading(true);
     setError('');
     try {
-      const [statsRes, ordersRes, profitRes, forecastRes, heatmapRes] = await Promise.allSettled([
+      const [statsRes, ordersRes, profitRes, forecastRes, heatmapRes, financialRes] = await Promise.allSettled([
         api.get('/api/analytics/dashboard'),
         api.get('/api/orders?limit=10'),
         api.get('/api/analytics/daily-profit'),
         api.get('/api/analytics/inventory-forecast'),
         api.get('/api/analytics/peak-hours'),
+        api.get('/api/analytics/financial-summary'),
       ]);
       if (statsRes.status === 'fulfilled') setStats(statsRes.value.data);
       if (ordersRes.status === 'fulfilled') {
@@ -72,6 +74,7 @@ export default function DashboardPage() {
       if (profitRes.status === 'fulfilled') setProfitList(profitRes.value.data.profitList || []);
       if (forecastRes.status === 'fulfilled') setForecasting(forecastRes.value.data.forecasting || []);
       if (heatmapRes.status === 'fulfilled') setHeatmap(heatmapRes.value.data.heatmap || null);
+      if (financialRes.status === 'fulfilled') setFinancialSummary(financialRes.value.data.summary || null);
       
       // If both failed, show error
       if (statsRes.status === 'rejected' && ordersRes.status === 'rejected') {
@@ -203,14 +206,14 @@ export default function DashboardPage() {
       {/* Stat Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14 }}>
         <div style={card}>
-          <div style={{ fontSize: 12, color: theme.textFaint, fontWeight: 600, marginBottom: 8, textTransform: 'uppercase' }}>Revenue Today</div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: theme.text, marginBottom: 4 }}>{fmt(todayRevenue)}</div>
-          <div style={{ fontSize: 12, color: '#10b981', fontWeight: 600 }}>{todayOrders.length} orders today</div>
+          <div style={{ fontSize: 12, color: theme.textFaint, fontWeight: 600, marginBottom: 8, textTransform: 'uppercase' }}>Net Profit (30d)</div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: '#10b981', marginBottom: 4 }}>{fmt(financialSummary?.netProfit)}</div>
+          <div style={{ fontSize: 12, color: theme.textFaint, fontWeight: 600 }}>After {fmt(financialSummary?.totalOpEx)} expenses</div>
         </div>
         <div style={card}>
-          <div style={{ fontSize: 12, color: theme.textFaint, fontWeight: 600, marginBottom: 8, textTransform: 'uppercase' }}>Total Revenue</div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: theme.text, marginBottom: 4 }}>{fmt(totalRevenue)}</div>
-          <div style={{ fontSize: 12, color: '#3b82f6', fontWeight: 600 }}>{totalOrders} orders total</div>
+          <div style={{ fontSize: 12, color: theme.textFaint, fontWeight: 600, marginBottom: 8, textTransform: 'uppercase' }}>Daily Margin</div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: theme.text, marginBottom: 4 }}>{fmt(todayRevenue - (todayOrders.reduce((s,o) => s + (Number(o.totalAmount)*0.4),0) ))}</div>
+          <div style={{ fontSize: 12, color: '#3b82f6', fontWeight: 600 }}>{todayOrders.length} orders today</div>
         </div>
         <div style={card}>
           <div style={{ fontSize: 12, color: theme.textFaint, fontWeight: 600, marginBottom: 8, textTransform: 'uppercase' }}>Total Products</div>
@@ -309,13 +312,13 @@ export default function DashboardPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {profitList.length === 0 ? <p style={{ fontSize: 13, color: theme.textFaint }}>No sales yet this week.</p> : profitList.map(p => (
               <div key={p.date} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: 'rgba(0,0,0,0.02)', borderRadius: 10 }}>
-                <div>
+                <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{new Date(p.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</div>
-                  <div style={{ fontSize: 11, color: theme.textFaint }}>{p.orderCount} Orders</div>
+                  <div style={{ fontSize: 11, color: theme.textFaint }}>{p.orderCount} Orders {p.expenses > 0 && `· ${fmt(p.expenses)} opEx`}</div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: '#4ade80' }}>+{fmt(p.profit)}</div>
-                  <div style={{ fontSize: 10, color: theme.textFaint }}>Margin: {p.revenue > 0 ? Math.round((p.profit / p.revenue) * 100) : 0}%</div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: p.profit >= 0 ? '#4ade80' : '#ef4444' }}>{p.profit >= 0 ? '+' : ''}{fmt(p.profit)}</div>
+                  <div style={{ fontSize: 10, color: theme.textFaint }}>Net Margin: {p.revenue > 0 ? Math.round((p.profit / p.revenue) * 100) : 0}%</div>
                 </div>
               </div>
             ))}
