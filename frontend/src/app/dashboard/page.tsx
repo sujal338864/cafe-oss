@@ -5,7 +5,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { useSocket } from '@/context/SocketContext';
 import api from '@/lib/api';
 
-const fmt = (n: any) => 'Rs.' + Number(n || 0).toLocaleString('en-IN');
+const fmt = (n: any) => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function DashboardPage() {
   const { user } = useAuth();

@@ -147,13 +147,13 @@ export const AnalyticsService = {
    */
   calculateDashboardStats: async (shopId: string) => {
     try {
-      // 0. Today's Bounds (Robust timezone-aware window)
-      // We take current time, move it to shop's TZ or at least a 24h window
-      const today = new Date();
-      today.setUTCHours(0, 0, 0, 0); // Start of UTC day is a safe bet for IST/Asia overlaps
-      // But even better: let's go back 18 hours from now to ensure we catch 'Today' starting in IST
-      const safeToday = new Date(Date.now() - (18 * 60 * 60 * 1000));
-      safeToday.setHours(0,0,0,0);
+      // 0. Today's Bounds (Asia/Kolkata / IST aware)
+      const now = new Date();
+      const istOffset = 5.5 * 60 * 60 * 1000;
+      const istNow = new Date(now.getTime() + istOffset);
+      const startOfIstToday = new Date(istNow);
+      startOfIstToday.setUTCHours(0, 0, 0, 0); 
+      const safeToday = new Date(startOfIstToday.getTime() - istOffset);
 
       const sixMonthsAgo = new Date();
       sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
@@ -235,7 +235,7 @@ export const AnalyticsService = {
       }));
 
       const totalRevenue = Number(revenueResult._sum.totalAmount || 0);
-      const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+      const avgOrderValue = totalOrders > 0 ? Math.round((totalRevenue / totalOrders) * 100) / 100 : 0;
 
       // 1. Format Top Products
       const topProducts = topProductsData.map(p => ({

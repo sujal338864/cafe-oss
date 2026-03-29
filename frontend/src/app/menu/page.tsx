@@ -6,8 +6,8 @@ type Product = { id: string; name: string; sellingPrice: number; description?: s
 type Category = { id: string; name: string; color?: string };
 type CartItem = Product & { qty: number; note: string };
 
-const fmt = (n: number) => '₹' + Number(n || 0).toLocaleString('en-IN');
-const API = process.env.NEXT_PUBLIC_API_URL || 'https://cafe-oss.onrender.com';
+const fmt = (n: number) => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
 async function get(path: string) {
   const r = await fetch(API + path);
@@ -107,9 +107,9 @@ const RecommendationRow = ({ items, onAdd }: { items: Product[], onAdd: (p: Prod
       </div>
       <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 8, scrollbarWidth: 'none' }}>
         {items.map(p => (
-          <div key={p.id} style={{ 
-            flexShrink: 0, width: 140, background: '#fff', borderRadius: 16, border: '1px solid rgba(0,0,0,0.06)', 
-            padding: 10, position: 'relative', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' 
+          <div key={p.id} style={{
+            flexShrink: 0, width: 140, background: '#fff', borderRadius: 16, border: '1px solid rgba(0,0,0,0.06)',
+            padding: 10, position: 'relative', boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
           }}>
             <div style={{ width: '100%', height: 80, borderRadius: 10, background: '#f8f8f8', marginBottom: 8, overflow: 'hidden' }}>
               {p.imageUrl ? (
@@ -121,10 +121,10 @@ const RecommendationRow = ({ items, onAdd }: { items: Product[], onAdd: (p: Prod
             <div style={{ fontWeight: 700, fontSize: 12, color: '#111', lineHeight: 1.2, height: 28, overflow: 'hidden' }}>{p.name}</div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
               <span style={{ fontWeight: 800, fontSize: 13, color: '#111' }}>{fmt(p.sellingPrice)}</span>
-              <button 
+              <button
                 onClick={() => onAdd(p)}
-                style={{ 
-                  background: '#16a34a', border: 'none', color: '#fff', width: 28, height: 28, 
+                style={{
+                  background: '#16a34a', border: 'none', color: '#fff', width: 28, height: 28,
                   borderRadius: 8, fontSize: 18, fontWeight: 700, cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center'
                 }}
@@ -181,7 +181,7 @@ function MenuContent() {
       const cartIds = cart.map(i => i.id).join(',');
       get(`/api/menu/recommendations?shopId=${shopId}&cartItemIds=${cartIds}`)
         .then(d => setRecommendations(d.recommendations || []))
-        .catch(() => {});
+        .catch(() => { });
     }
   }, [step, shopId, cart.length]);
 
@@ -213,7 +213,7 @@ function MenuContent() {
       try {
         const d = await get(`/api/menu/order/${result.id}/status`);
         setResult(r => r ? { ...r, paymentStatus: d.paymentStatus || r.paymentStatus, status: d.status || r.status } : r);
-      } catch {}
+      } catch { }
     }, 15000);
     return () => clearInterval(interval);
   }, [step, result?.id, result?.paymentStatus, result?.status]);
@@ -223,7 +223,7 @@ function MenuContent() {
       const data = await get(`/api/menu/customer?phone=${digits}&shopId=${shopId}`);
       if (data.loyaltyPoints) setLoyaltyPoints(data.loyaltyPoints);
       if (data.name && !name.trim()) setName(data.name);
-    } catch {}
+    } catch { }
   };
 
   const load = async () => {
@@ -252,8 +252,8 @@ function MenuContent() {
   const inc = useCallback((id: string) => setCart(c => c.map(i => i.id === id ? { ...i, qty: i.qty + 1 } : i)), []);
   const setNote = useCallback((id: string, note: string) => setCart(c => c.map(i => i.id === id ? { ...i, note } : i)), []);
 
-  const subtotal = cart.reduce((s, i) => s + (Number(i.sellingPrice) || 0) * i.qty, 0);
-  const tax = cart.reduce((s, i) => s + ((Number(i.sellingPrice) || 0) * i.qty) * ((Number(i.taxRate) || 0) / 100), 0);
+  const subtotal = cart.reduce((s, i) => s + i.sellingPrice * i.qty, 0);
+  const tax = cart.reduce((s, i) => s + (i.sellingPrice * i.qty) * (i.taxRate / 100), 0);
   const REDEEM_RATE = redeemRate || 10;
   const total = subtotal + tax;
   const pointsDiscount = (pointsToRedeem / REDEEM_RATE) || 0;
@@ -521,7 +521,7 @@ function MenuContent() {
               <span>Total</span><span>{fmt(total)}</span>
             </div>
             <div style={{ marginTop: 20 }}>
-                <RecommendationRow items={recommendations} onAdd={addToCart} />
+              <RecommendationRow items={recommendations} onAdd={addToCart} />
             </div>
           </>
         )}
@@ -564,10 +564,10 @@ function MenuContent() {
 
         {/* Dynamic Pricing Banner */}
         {pricingEnabled && activePromo && (
-          <div style={{ 
-            marginTop: 14, padding: '10px 14px', background: 'linear-gradient(90deg, #16a34a, #22c55e)', 
+          <div style={{
+            marginTop: 14, padding: '10px 14px', background: 'linear-gradient(90deg, #16a34a, #22c55e)',
             borderRadius: 12, color: '#fff', display: 'flex', alignItems: 'center', gap: 10,
-            animation: 'pulse 2s infinite ease-in-out' 
+            animation: 'pulse 2s infinite ease-in-out'
           }}>
             <span style={{ fontSize: 20 }}>⚡</span>
             <div>

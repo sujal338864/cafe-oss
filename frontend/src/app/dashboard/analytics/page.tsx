@@ -8,8 +8,8 @@ import {
   ComposedChart, Area
 } from 'recharts';
 
-const fmt  = (n: any) => 'Rs.' + Number(n || 0).toLocaleString('en-IN');
-const fmtK = (n: any) => { const v = Number(n || 0); return v >= 1000 ? 'Rs.' + (v/1000).toFixed(1) + 'k' : fmt(v); };
+const fmt  = (n: any) => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtK = (n: any) => { const v = Number(n || 0); return v >= 1000 ? '₹' + (v/1000).toFixed(1) + 'k' : fmt(v); };
 
 const COLORS = ['#7c3aed','#3b82f6','#10b981','#f59e0b','#ef4444','#ec4899','#06b6d4','#84cc16'];
 
@@ -19,6 +19,7 @@ export default function AnalyticsPage() {
   const [expenses, setExpenses] = useState<any[]>([]);
   const [orders,   setOrders]   = useState<any[]>([]);
   const [loading,  setLoading]  = useState(true);
+  const [financial, setFinancial] = useState<any>(null);
   const [tab,      setTab]      = useState<'revenue'|'profit'|'categories'|'products'>('revenue');
   const [showInfo, setShowInfo] = useState<{ title: string, breakdown: any[], resultLabel: string, finalValue: number } | null>(null);
 
@@ -27,10 +28,11 @@ export default function AnalyticsPage() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [analyticsRes, expensesRes, ordersRes] = await Promise.allSettled([
+      const [analyticsRes, expensesRes, ordersRes, financialRes] = await Promise.allSettled([
         api.get('/api/analytics/dashboard'),
         api.get('/api/expenses?limit=50'),
         api.get('/api/orders?limit=50'),
+        api.get('/api/analytics/financial-summary'),
       ]);
       if (analyticsRes.status === 'fulfilled') setData(analyticsRes.value.data);
       if (expensesRes.status  === 'fulfilled') setExpenses(expensesRes.value.data.expenses || []);
@@ -38,6 +40,7 @@ export default function AnalyticsPage() {
         const d = ordersRes.value.data;
         setOrders(d.orders || d.data || []);
       }
+      if (financialRes.status === 'fulfilled') setFinancial(financialRes.value.data.summary || null);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
@@ -56,11 +59,10 @@ export default function AnalyticsPage() {
     profit: m.profit || 0,
   }));
 
-  const todayStr    = new Date().toDateString();
-  const todayOrders = orders.filter(o => new Date(o.createdAt).toDateString() === todayStr);
-  const todayRev    = todayOrders.reduce((s, o) => s + Number(o.totalAmount || 0), 0);
-  const totalExpenses = expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
-  const estimatedProfit = Number(data.totalRevenue || 0) - totalExpenses;
+  const todayRev    = Number(data?.todayRevenue || 0);
+  const totalExpenses = Number(financial?.totalOpEx || 0);
+  const totalCOGS     = Number(financial?.totalCOGS || 0);
+  const estimatedProfit = Number(financial?.netProfit || 0);
 
   const methodMap: Record<string, number> = {};
   orders.forEach(o => { methodMap[o.paymentMethod] = (methodMap[o.paymentMethod] || 0) + Number(o.totalAmount || 0); });
@@ -124,18 +126,18 @@ export default function AnalyticsPage() {
         />
         <StatCard 
           title="Est. Net Profit (Total)" 
-          value={fmt(data?.totalRevenue - (totalExpenses + (data?.totalOrders * 10)))} 
-          sub="Post-COGS & OpEx Estimate"
+          value={fmt(estimatedProfit)} 
+          sub="Post-COGS & OpEx Ledger"
           color="#10b981"
           info={{ 
             title: "Total Profit Calculation",
             breakdown: [
-              { label: "Historical Revenue", value: data?.totalRevenue, type: 'pos' },
-              { label: "Operating Expenses", value: -totalExpenses, type: 'neg' },
-              { label: "Est. Item Costs", value: -(data?.totalOrders * 10), type: 'neg' }
+              { label: "Historical Revenue", value: financial?.totalRevenue, type: 'pos' },
+              { label: "Operating Expenses (OpEx)", value: -totalExpenses, type: 'neg' },
+              { label: "Cost of Goods (COGS)", value: -totalCOGS, type: 'neg' }
             ],
-            resultLabel: "Estimated Take-Home",
-            finalValue: data?.totalRevenue - totalExpenses - (data?.totalOrders * 10)
+            resultLabel: "Take-Home Net Profit",
+            finalValue: estimatedProfit
           }}
         />
         <StatCard 
