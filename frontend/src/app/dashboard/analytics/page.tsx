@@ -20,6 +20,7 @@ export default function AnalyticsPage() {
   const [orders,   setOrders]   = useState<any[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [tab,      setTab]      = useState<'revenue'|'profit'|'categories'|'products'>('revenue');
+  const [showInfo, setShowInfo] = useState<{ title: string, breakdown: any[], resultLabel: string, finalValue: number } | null>(null);
 
   useEffect(() => { loadAll(); }, []);
 
@@ -49,16 +50,10 @@ export default function AnalyticsPage() {
   const topProducts:    any[] = data.topProducts      || [];
   const categoryData:   any[] = data.categoryBreakdown || [];
 
-  const monthlyExpenses: Record<string, number> = {};
-  expenses.forEach(e => {
-    const key = new Date(e.date || e.createdAt).toLocaleString('default', { month: 'short' });
-    monthlyExpenses[key] = (monthlyExpenses[key] || 0) + Number(e.amount || 0);
-  });
-
   const enrichedMonthly = monthlySales.map(m => ({
     ...m,
-    expenses: monthlyExpenses[m.month] || 0,
-    profit:   (m.revenue || 0) - (monthlyExpenses[m.month] || 0),
+    cogs: m.cogs || 0,
+    profit: m.profit || 0,
   }));
 
   const todayStr    = new Date().toDateString();
@@ -72,12 +67,32 @@ export default function AnalyticsPage() {
   const methodData = Object.entries(methodMap).map(([name, value]) => ({ name, value }));
 
   const tt = { contentStyle: { background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 9, color: theme.text, fontSize: 12 } };
-  const card = { background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14 };
+  const cardStyle: React.CSSProperties = {
+    background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 20, padding: '24px',
+    boxShadow: '0 10px 40px rgba(0,0,0,0.04)', position: 'relative', overflow: 'hidden'
+  };
+
+  const StatCard = ({ title, value, sub, color, info }: any) => (
+    <div style={cardStyle}>
+      <div style={{ position: 'absolute', top: 0, left: 0, width: 5, height: '100%', background: color }} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+        <div style={{ fontSize: 11, color: theme.textFaint, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.5 }}>{title}</div>
+        {info && (
+          <button onClick={() => setShowInfo(info)} style={{ background: 'rgba(0,0,0,0.05)', border: 'none', color: theme.textFaint, width: 22, height: 22, borderRadius: '50%', cursor: 'pointer', fontSize: 12, fontWeight: 800 }}>ℹ</button>
+        )}
+      </div>
+      <div style={{ fontSize: 26, fontWeight: 900, color: theme.text, marginBottom: 8 }}>{value}</div>
+      <div style={{ fontSize: 13, color: color, fontWeight: 700 }}>{sub}</div>
+    </div>
+  );
+
   const tabBtn = (tb: typeof tab, label: string) => (
     <button onClick={() => setTab(tb)} style={{
-      padding: '7px 16px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer', border: 'none',
-      background: tab === tb ? 'linear-gradient(135deg,#7c3aed,#3b82f6)' : theme.hover,
+      padding: '10px 20px', borderRadius: 12, fontWeight: 700, fontSize: 13, cursor: 'pointer', border: 'none',
+      background: tab === tb ? 'linear-gradient(135deg,#7c3aed,#3b82f6)' : theme.card,
       color: tab === tb ? 'white' : theme.textMuted,
+      boxShadow: tab === tb ? '0 8px 20px rgba(124, 58, 237, 0.3)' : 'none',
+      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
     }}>{label}</button>
   );
 
@@ -94,35 +109,82 @@ export default function AnalyticsPage() {
       </div>
 
       {/* KPI Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
-        {[
-          { label: 'Revenue Today',  val: fmt(todayRev),                    sub: `${todayOrders.length} orders`,          color: '#3b82f6' },
-          { label: 'Total Revenue',  val: fmt(data.totalRevenue || 0),       sub: `${data.totalOrders || 0} orders total`, color: '#a78bfa' },
-          { label: 'Total Expenses', val: fmt(totalExpenses),                sub: `${expenses.length} records`,           color: '#ef4444' },
-          { label: 'Est. Profit',    val: fmt(Math.max(0, estimatedProfit)), sub: estimatedProfit >= 0 ? '▲ Profit' : '▼ Loss', color: estimatedProfit >= 0 ? '#10b981' : '#ef4444' },
-        ].map(({ label, val, sub, color }) => (
-          <div key={label} style={{ ...card, padding: '16px 20px' }}>
-            <div style={{ fontSize: 11, color: theme.textFaint, fontWeight: 700, textTransform: 'uppercase', marginBottom: 6 }}>{label}</div>
-            <div style={{ fontSize: 22, fontWeight: 800, color }}>{val}</div>
-            <div style={{ fontSize: 11, color: theme.textFaint, marginTop: 4 }}>{sub}</div>
-          </div>
-        ))}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+        <StatCard 
+          title="Revenue Today" 
+          value={fmt(data?.todayRevenue)} 
+          sub={`${data?.todayOrdersCount || 0} orders today`}
+          color="#3b82f6"
+          info={{ 
+            title: "Today's Revenue Math",
+            breakdown: [{ label: "Factual Day Sales", value: data?.todayRevenue, type: 'pos' }],
+            resultLabel: "Gross Sales",
+            finalValue: data?.todayRevenue
+          }}
+        />
+        <StatCard 
+          title="Est. Net Profit (Total)" 
+          value={fmt(data?.totalRevenue - (totalExpenses + (data?.totalOrders * 10)))} 
+          sub="Post-COGS & OpEx Estimate"
+          color="#10b981"
+          info={{ 
+            title: "Total Profit Calculation",
+            breakdown: [
+              { label: "Historical Revenue", value: data?.totalRevenue, type: 'pos' },
+              { label: "Operating Expenses", value: -totalExpenses, type: 'neg' },
+              { label: "Est. Item Costs", value: -(data?.totalOrders * 10), type: 'neg' }
+            ],
+            resultLabel: "Estimated Take-Home",
+            finalValue: data?.totalRevenue - totalExpenses - (data?.totalOrders * 10)
+          }}
+        />
+        <StatCard 
+          title="Operating Expenses" 
+          val={fmt(totalExpenses)} 
+          value={fmt(totalExpenses)}
+          sub={`${expenses.length} expense logs`}
+          color="#ef4444"
+          info={{ 
+            title: "Expense Ledger",
+            breakdown: expenses.slice(0, 5).map(e => ({ label: e.description || e.category, value: -e.amount, type: 'neg' })),
+            resultLabel: "Total OpEx Spend",
+            finalValue: totalExpenses
+          }}
+        />
+        <StatCard 
+          title="Inventory Assets" 
+          value={data?.totalProducts} 
+          sub={`${data?.lowStockItems} low stock items`}
+          color="#a78bfa"
+        />
       </div>
 
-      {/* Secondary KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
-        {[
-          { label: 'Avg Order Value', val: fmt(data.avgOrderValue || 0), color: '#f59e0b' },
-          { label: 'Total Customers', val: data.totalCustomers || 0,      color: '#ec4899' },
-          { label: 'Total Products',  val: data.totalProducts  || 0,      color: '#06b6d4' },
-          { label: 'Low Stock',       val: data.lowStockItems  || 0,      color: data.lowStockItems > 0 ? '#ef4444' : '#10b981' },
-        ].map(({ label, val, color }) => (
-          <div key={label} style={{ ...card, padding: '14px 18px' }}>
-            <div style={{ fontSize: 11, color: theme.textFaint, fontWeight: 700, textTransform: 'uppercase', marginBottom: 6 }}>{label}</div>
-            <div style={{ fontSize: 20, fontWeight: 800, color }}>{val}</div>
+      {/* ℹ️ Math Modal */}
+      {showInfo && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
+          <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 28, padding: 32, width: '100%', maxWidth: 440, boxShadow: '0 30px 60px rgba(0,0,0,0.3)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+              <h3 style={{ fontSize: 20, fontWeight: 900, color: theme.text, margin: 0 }}>{showInfo.title}</h3>
+              <button onClick={() => setShowInfo(null)} style={{ background: 'none', border: 'none', color: theme.textFaint, fontSize: 28, cursor: 'pointer' }}>×</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 24 }}>
+              {showInfo.breakdown.map((item: any, idx: number) => (
+                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: 14, color: theme.textMuted }}>{item.label}</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: item.type === 'neg' ? '#ef4444' : theme.text }}>
+                    {fmt(item.value)}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ background: 'rgba(124, 58, 237, 0.05)', border: '2px solid rgba(124, 58, 237, 0.2)', borderRadius: 20, padding: 24, textAlign: 'center' }}>
+              <div style={{ fontSize: 12, color: '#7c3aed', fontWeight: 800, textTransform: 'uppercase', marginBottom: 6, letterSpacing: 1 }}>{showInfo.resultLabel}</div>
+              <div style={{ fontSize: 32, fontWeight: 900, color: '#7c3aed' }}>{fmt(showInfo.finalValue)}</div>
+            </div>
+            <button onClick={() => setShowInfo(null)} style={{ width: '100%', background: 'linear-gradient(135deg,#7c3aed,#3b82f6)', color: 'white', border: 'none', padding: 16, borderRadius: 16, marginTop: 24, fontWeight: 800, cursor: 'pointer', boxShadow: '0 8px 20px rgba(124, 58, 237, 0.2)' }}>Got it, thank you!</button>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 8 }}>
@@ -134,15 +196,25 @@ export default function AnalyticsPage() {
 
       {/* Revenue Tab */}
       {tab === 'revenue' && enrichedMonthly.length > 0 && (
-        <div style={{ ...card, padding: '20px' }}>
-          <div style={{ fontWeight: 700, fontSize: 14, color: theme.text, marginBottom: 16 }}>Monthly Revenue</div>
-          <ResponsiveContainer width="100%" height={280}>
+        <div style={{ ...cardStyle }}>
+          <div style={{ fontWeight: 800, fontSize: 16, color: theme.text, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>📈 Monthly Growth Velocity</span>
+            <span style={{ fontSize: 11, background: 'rgba(124, 58, 237, 0.1)', color: '#7c3aed', padding: '4px 10px', borderRadius: 8, fontWeight: 700 }}>LIVE</span>
+          </div>
+          <ResponsiveContainer width="100%" height={320}>
             <ComposedChart data={enrichedMonthly}>
-              <XAxis dataKey="month" tick={{ fill: theme.textFaint, fontSize: 12 }} axisLine={false} tickLine={false} />
-              <YAxis tickFormatter={fmtK} tick={{ fill: theme.textFaint, fontSize: 11 }} axisLine={false} tickLine={false} width={70} />
-              <Tooltip {...tt} formatter={(v: any) => fmt(v)} />
-              <Area type="monotone" dataKey="revenue" fill="#7c3aed22" stroke="#7c3aed" strokeWidth={2} name="Revenue" />
-              <Bar dataKey="orders" fill="#3b82f633" name="Orders" />
+              <defs>
+                <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#7c3aed" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <XAxis dataKey="month" tick={{ fill: theme.textFaint, fontSize: 12, fontWeight: 600 }} axisLine={false} tickLine={false} dy={10} />
+              <YAxis tickFormatter={fmtK} tick={{ fill: theme.textFaint, fontSize: 11, fontWeight: 600 }} axisLine={false} tickLine={false} width={70} />
+              <Tooltip {...tt} cursor={{ stroke: '#7c3aed44', strokeWidth: 2 }} formatter={(v: any) => fmt(v)} />
+              <Area type="monotone" dataKey="revenue" fill="url(#colorRev)" stroke="#7c3aed" strokeWidth={4} name="Revenue" />
+              <Bar dataKey="orders" fill="#3b82f633" name="Orders" radius={[4,4,0,0]} barSize={20} />
+              <Line type="monotone" dataKey="profit" stroke="#10b981" strokeWidth={3} dot={{ fill: '#10b981', r: 4 }} name="Net Margin" />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -150,22 +222,22 @@ export default function AnalyticsPage() {
 
       {/* Profit vs Expenses Tab */}
       {tab === 'profit' && (
-        <div style={{ ...card, padding: '20px' }}>
-          <div style={{ fontWeight: 700, fontSize: 14, color: theme.text, marginBottom: 16 }}>Revenue vs Expenses vs Profit</div>
+        <div style={{ ...cardStyle }}>
+          <div style={{ fontWeight: 800, fontSize: 16, color: theme.text, marginBottom: 20 }}>Factual P&L Pulse 💹</div>
           {enrichedMonthly.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={enrichedMonthly} barGap={4}>
-                <XAxis dataKey="month" tick={{ fill: theme.textFaint, fontSize: 12 }} axisLine={false} tickLine={false} />
-                <YAxis tickFormatter={fmtK} tick={{ fill: theme.textFaint, fontSize: 11 }} axisLine={false} tickLine={false} width={70} />
-                <Tooltip {...tt} formatter={(v: any) => fmt(v)} />
-                <Legend wrapperStyle={{ color: theme.textMuted, fontSize: 12 }} />
-                <Bar dataKey="revenue"  fill="#7c3aed" name="Revenue"  radius={[4,4,0,0]} />
-                <Bar dataKey="expenses" fill="#ef444466" name="Expenses" radius={[4,4,0,0]} />
-                <Bar dataKey="profit"   fill="#10b981" name="Profit"   radius={[4,4,0,0]} />
+            <ResponsiveContainer width="100%" height={320}>
+              <BarChart data={enrichedMonthly} barGap={8}>
+                <XAxis dataKey="month" tick={{ fill: theme.textFaint, fontSize: 12, fontWeight: 600 }} axisLine={false} tickLine={false} dy={10} />
+                <YAxis tickFormatter={fmtK} tick={{ fill: theme.textFaint, fontSize: 11, fontWeight: 600 }} axisLine={false} tickLine={false} width={70} />
+                <Tooltip {...tt} cursor={{ fill: 'rgba(0,0,0,0.02)' }} formatter={(v: any) => fmt(v)} />
+                <Legend wrapperStyle={{ paddingTop: 20, color: theme.textMuted, fontSize: 12, fontWeight: 700 }} />
+                <Bar dataKey="revenue"  fill="#7c3aed" name="Revenue"  radius={[6,6,0,0]} />
+                <Bar dataKey="cogs"     fill="#3b82f6" name="Item Costs (COGS)" radius={[6,6,0,0]} opacity={0.7} />
+                <Bar dataKey="profit"   fill="#10b981" name="Net Profit"   radius={[6,6,0,0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div style={{ padding: 40, textAlign: 'center', color: theme.textFaint }}>No monthly data yet.</div>
+            <div style={{ padding: 60, textAlign: 'center', color: theme.textFaint }}>No monthly data yet.</div>
           )}
         </div>
       )}
@@ -175,30 +247,30 @@ export default function AnalyticsPage() {
         <div style={{ display: 'grid', gridTemplateColumns: categoryData.length ? '1fr 1fr' : '1fr', gap: 16 }}>
           {categoryData.length > 0 ? (
             <>
-              <div style={{ ...card, padding: '20px' }}>
-                <div style={{ fontWeight: 700, fontSize: 14, color: theme.text, marginBottom: 16 }}>Revenue by Category</div>
+              <div style={{ ...cardStyle }}>
+                <div style={{ fontWeight: 800, fontSize: 16, color: theme.text, marginBottom: 20 }}>Revenue by Category 🥧</div>
                 <ResponsiveContainer width="100%" height={260}>
                   <PieChart>
-                    <Pie data={categoryData} dataKey="revenue" nameKey="name" cx="50%" cy="50%" outerRadius={100} label={({ name, percent }: any) => `${name} ${(percent*100).toFixed(0)}%`} labelLine={false}>
-                      {categoryData.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    <Pie data={categoryData} dataKey="revenue" nameKey="name" cx="50%" cy="50%" outerRadius={100} innerRadius={60} paddingAngle={5} label={({ name, percent }: any) => `${name} ${(percent*100).toFixed(0)}%`} labelLine={false}>
+                      {categoryData.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} stroke="none" />)}
                     </Pie>
                     <Tooltip {...tt} formatter={(v: any) => fmt(v)} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
-              <div style={{ ...card, padding: '20px' }}>
-                <div style={{ fontWeight: 700, fontSize: 14, color: theme.text, marginBottom: 14 }}>Category Breakdown</div>
+              <div style={{ ...cardStyle }}>
+                <div style={{ fontWeight: 800, fontSize: 16, color: theme.text, marginBottom: 20 }}>Category Strength</div>
                 {categoryData.map((c: any, i: number) => {
                   const total = categoryData.reduce((s: number, x: any) => s + x.revenue, 0);
                   const pct = total > 0 ? (c.revenue / total) * 100 : 0;
                   return (
-                    <div key={i} style={{ marginBottom: 12 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                        <span style={{ fontSize: 13, color: theme.text, fontWeight: 600 }}>{c.name}</span>
-                        <span style={{ fontSize: 12, color: COLORS[i % COLORS.length], fontWeight: 700 }}>{fmt(c.revenue)}</span>
+                    <div key={i} style={{ marginBottom: 16 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                        <span style={{ fontSize: 13, color: theme.text, fontWeight: 700 }}>{c.name}</span>
+                        <span style={{ fontSize: 12, color: COLORS[i % COLORS.length], fontWeight: 800 }}>{fmt(c.revenue)}</span>
                       </div>
-                      <div style={{ height: 6, background: theme.hover, borderRadius: 99 }}>
-                        <div style={{ height: '100%', width: `${pct}%`, background: COLORS[i % COLORS.length], borderRadius: 99, transition: 'width .4s' }} />
+                      <div style={{ height: 8, background: theme.hover, borderRadius: 99, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${pct}%`, background: COLORS[i % COLORS.length], borderRadius: 99, transition: 'width 0.6s ease-out' }} />
                       </div>
                     </div>
                   );
@@ -206,28 +278,28 @@ export default function AnalyticsPage() {
               </div>
             </>
           ) : (
-            <div style={{ ...card, padding: 40, textAlign: 'center', color: theme.textFaint }}>No category data yet.</div>
+            <div style={{ ...cardStyle , padding: 60, textAlign: 'center', color: theme.textFaint }}>No category data yet.</div>
           )}
           {methodData.length > 0 && (
-            <div style={{ ...card, padding: '20px', gridColumn: '1 / -1' }}>
-              <div style={{ fontWeight: 700, fontSize: 14, color: theme.text, marginBottom: 16 }}>Revenue by Payment Method</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <ResponsiveContainer width="100%" height={200}>
+            <div style={{ ...cardStyle , gridColumn: '1 / -1' }}>
+              <div style={{ fontWeight: 800, fontSize: 16, color: theme.text, marginBottom: 20 }}>Revenue by Payment Method 💳</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 24 }}>
+                <ResponsiveContainer width="100%" height={240}>
                   <PieChart>
-                    <Pie data={methodData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}>
+                    <Pie data={methodData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} innerRadius={70}>
                       {methodData.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                     </Pie>
                     <Tooltip {...tt} formatter={(v: any) => fmt(v)} />
                   </PieChart>
                 </ResponsiveContainer>
-                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 10 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 14 }}>
                   {methodData.map((m, i) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div style={{ width: 10, height: 10, borderRadius: '50%', background: COLORS[i % COLORS.length] }} />
-                        <span style={{ fontSize: 13, color: theme.text }}>{m.name}</span>
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderRadius: 12, background: 'rgba(0,0,0,0.02)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{ width: 12, height: 12, borderRadius: '50%', background: COLORS[i % COLORS.length] }} />
+                        <span style={{ fontSize: 14, color: theme.text, fontWeight: 600 }}>{m.name}</span>
                       </div>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: COLORS[i % COLORS.length] }}>{fmt(m.value)}</span>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: COLORS[i % COLORS.length] }}>{fmt(m.value)}</span>
                     </div>
                   ))}
                 </div>
@@ -239,46 +311,90 @@ export default function AnalyticsPage() {
 
       {/* Top Products Tab */}
       {tab === 'products' && (
-        <div style={{ ...card, overflow: 'hidden' }}>
-          <div style={{ padding: '14px 20px', borderBottom: `1px solid ${theme.border}`, fontWeight: 700, fontSize: 14, color: theme.text }}>
-            Top {topProducts.length} Products by Revenue
-          </div>
+        <div style={{ ...cardStyle }}>
+          <div style={{ fontWeight: 800, fontSize: 16, color: theme.text, marginBottom: 20 }}>🥇 Top Sellers by Gross Revenue</div>
           {topProducts.length === 0 ? (
-            <div style={{ padding: 36, textAlign: 'center', color: theme.textFaint }}>No product sales data yet.</div>
+            <div style={{ padding: 60, textAlign: 'center', color: theme.textFaint }}>No product sales data yet.</div>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: `1px solid ${theme.border}` }}>
-                  {['#', 'Product', 'Units Sold', 'Revenue', 'Share'].map(h => (
-                    <th key={h} style={{ padding: '9px 16px', textAlign: 'left', fontSize: 11, color: theme.textFaint, fontWeight: 700, textTransform: 'uppercase' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {topProducts.map((p: any, i: number) => {
-                  const maxRev = topProducts[0]?.revenue || 1;
-                  const pct = (p.revenue / maxRev) * 100;
-                  return (
-                    <tr key={i} style={{ borderBottom: `1px solid ${theme.border}` }}>
-                      <td style={{ padding: '11px 16px', fontWeight: 800, color: i < 3 ? ['#f59e0b','#94a3b8','#b45309'][i] : theme.textFaint, fontSize: 14 }}>
-                        {i < 3 ? ['🥇','🥈','🥉'][i] : `#${i+1}`}
-                      </td>
-                      <td style={{ padding: '11px 16px', fontWeight: 600, color: theme.text, fontSize: 13 }}>{p.name}</td>
-                      <td style={{ padding: '11px 16px', fontSize: 13, color: theme.textMuted }}>{p.quantity}</td>
-                      <td style={{ padding: '11px 16px', fontWeight: 700, color: '#a78bfa' }}>{fmt(p.revenue)}</td>
-                      <td style={{ padding: '11px 16px', minWidth: 120 }}>
-                        <div style={{ height: 6, background: theme.hover, borderRadius: 99 }}>
-                          <div style={{ height: '100%', width: `${pct}%`, background: COLORS[i % COLORS.length], borderRadius: 99 }} />
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: `1px solid ${theme.border}` }}>
+                    {['#', 'Product', 'Units Sold', 'Revenue', 'Contribution'].map(h => (
+                      <th key={h} style={{ padding: '16px', textAlign: 'left', fontSize: 11, color: theme.textFaint, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1.5 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {topProducts.map((p: any, i: number) => {
+                    const maxRev = topProducts[0]?.revenue || 1;
+                    const pct = (p.revenue / maxRev) * 100;
+                    return (
+                      <tr key={i} style={{ borderBottom: `1px solid ${theme.border}`, transition: 'background 0.2s', cursor: 'default' }}>
+                        <td style={{ padding: '16px', fontWeight: 900, color: i < 3 ? ['#f59e0b','#94a3b8','#b45309'][i] : theme.textFaint, fontSize: 15 }}>
+                          {i < 3 ? ['🥇','🥈','🥉'][i] : `#${i+1}`}
+                        </td>
+                        <td style={{ padding: '16px' }}>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: theme.text }}>{p.name}</div>
+                          <div style={{ fontSize: 11, color: theme.textFaint }}>Product ID: {p.productId?.slice(-6)}</div>
+                        </td>
+                        <td style={{ padding: '16px', fontSize: 14, fontWeight: 600, color: theme.textMuted }}>{p.quantity}</td>
+                        <td style={{ padding: '16px', fontWeight: 800, color: '#7c3aed', fontSize: 14 }}>{fmt(p.revenue)}</td>
+                        <td style={{ padding: '16px', minWidth: 160 }}>
+                          <div style={{ height: 8, background: theme.hover, borderRadius: 99, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${pct}%`, background: `linear-gradient(90deg, ${COLORS[i % COLORS.length]}, ${COLORS[(i+1) % COLORS.length]})`, borderRadius: 99 }} />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       )}
+
+      {/* 🏢 Strategic Growth Intelligence Module */}
+      <div style={{ ...cardStyle, background: 'linear-gradient(135deg, #0f172a, #1e293b)', border: 'none', color: '#fff', marginTop: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+          <div>
+            <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 4 }}>Expansion Intelligence</div>
+            <h3 style={{ fontSize: 20, fontWeight: 900, margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>Strategic Expansion Pulse 💹</h3>
+          </div>
+          <div style={{ background: '#10b98122', border: '1px solid #10b98144', color: '#10b981', padding: '8px 16px', borderRadius: 12, fontSize: 13, fontWeight: 800 }}>
+            Operational Health: {data?.totalRevenue > 50000 ? 'EXCELLENT' : 'STABLE'}
+          </div>
+        </div>
+        
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 32 }}>
+          <div>
+            <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 10, fontWeight: 600 }}>Expansion Readiness</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: data?.totalRevenue > 50000 ? '#4ade80' : '#fbbf24' }}>
+              {data?.totalRevenue > 50000 ? '✅ PRIME FOR BRANCH #2' : '⌛ STRENGTHEN CORE UNIT'}
+            </div>
+            <p style={{ fontSize: 12, color: '#64748b', marginTop: 8, lineHeight: 1.6 }}>
+              {data?.totalRevenue > 50000 
+                ? 'Your volume sustains multi-unit scalability. Recommend exploring cloud kitchen expansion.'
+                : 'Focus on increasing Average Order Value by 10% before physical expansion.'}
+            </p>
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 10, fontWeight: 600 }}>Capital Reserve Strategy</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: '#fff' }}>{fmt(data?.totalRevenue * 0.12)} /mo</div>
+            <p style={{ fontSize: 12, color: '#64748b', marginTop: 8, lineHeight: 1.6 }}>
+              Recommended savings to weather operational volatility based on your current burn rate.
+            </p>
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 10, fontWeight: 600 }}>Customer Loyalty Vector</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: '#3b82f6' }}>{Math.round((data?.totalOrders / (data?.totalCustomers || 1)) * 10) / 10}x Visits</div>
+            <p style={{ fontSize: 12, color: '#64748b', marginTop: 8, lineHeight: 1.6 }}>
+              Average frequency per customer. Ideal benchmark for scaling is 2.5x monthly.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

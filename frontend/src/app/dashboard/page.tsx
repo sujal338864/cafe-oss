@@ -120,9 +120,10 @@ export default function DashboardPage() {
   const avgOrderValue  = Number(stats?.avgOrderValue  ?? 0);
 
   // Today's revenue: calculate from orders fetched (createdAt = today)
-  const todayStr = new Date().toDateString();
-  const todayOrders  = orders.filter(o => new Date(o.createdAt).toDateString() === todayStr);
-  const todayRevenue = todayOrders.reduce((s, o) => s + Number(o.totalAmount ?? 0), 0);
+  // Today's stats are now fully calculated on the server for timezone accuracy
+  const todayRevenue = Number(stats?.todayRevenue ?? 0);
+  const todayCogs    = Number(stats?.todayCogs ?? 0);
+  const todayCount   = Number(stats?.todayOrdersCount ?? 0);
 
   const h = new Date().getHours();
   const greeting = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
@@ -239,17 +240,17 @@ export default function DashboardPage() {
         />
         <StatCard 
           title="Today's Margin" 
-          value={fmt(stats?.todayRevenue - stats?.todayCogs)} 
-          sub={`${stats?.todayOrdersCount || 0} orders today`}
+          value={fmt(todayRevenue - todayCogs)} 
+          sub={`${todayCount} orders today`}
           color="#3b82f6"
           info={{ 
             title: "Today's Margin Breakdown",
             breakdown: [
-              { label: "Today's Revenue", value: stats?.todayRevenue, type: 'pos' },
-              { label: "Today's Item Costs", value: -stats?.todayCogs, type: 'neg' }
+              { label: "Today's Revenue", value: todayRevenue, type: 'pos' },
+              { label: "Today's Item Costs", value: -todayCogs, type: 'neg' }
             ],
             resultLabel: "Today's Gross Margin",
-            finalValue: (stats?.todayRevenue - stats?.todayCogs)
+            finalValue: (todayRevenue - todayCogs)
           }}
         />
         <StatCard 

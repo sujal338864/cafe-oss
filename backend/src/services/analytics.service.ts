@@ -147,8 +147,13 @@ export const AnalyticsService = {
    */
   calculateDashboardStats: async (shopId: string) => {
     try {
+      // 0. Today's Bounds (Robust timezone-aware window)
+      // We take current time, move it to shop's TZ or at least a 24h window
       const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      today.setUTCHours(0, 0, 0, 0); // Start of UTC day is a safe bet for IST/Asia overlaps
+      // But even better: let's go back 18 hours from now to ensure we catch 'Today' starting in IST
+      const safeToday = new Date(Date.now() - (18 * 60 * 60 * 1000));
+      safeToday.setHours(0,0,0,0);
 
       const sixMonthsAgo = new Date();
       sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
@@ -172,25 +177,25 @@ export const AnalyticsService = {
         }),
         prisma.order.count({ where: { shopId, status: { not: 'CANCELLED' as any } } }),
         prisma.customer.count({ where: { shopId } }),
-        prisma.product.count({ where: { shopId, isActive: true } }),
-        prisma.product.count({ where: { shopId, isActive: true, stock: { lte: prisma.product.fields.lowStockAlert } } }),
+        prisma.product.count({ where: { shopId } }),
+        prisma.product.count({ where: { shopId, stock: { lte: prisma.product.fields.lowStockAlert } } }),
         // 5. Today's orders for factual margin
         prisma.order.findMany({
-          where: { shopId, createdAt: { gte: today }, status: { not: 'CANCELLED' as any } },
+          where: { shopId, createdAt: { gte: safeToday }, status: { not: 'CANCELLED' as any } },
           include: { items: true }
         }),
         // 6. Top Products
         prisma.orderItem.groupBy({
           by: ['productId', 'name'],
-          _sum: { quantity: true },
-          where: { order: { shopId } },
-          orderBy: { _sum: { quantity: 'desc' } },
+          _sum: { quantity: true, total: true },
+          where: { order: { shopId, status: { not: 'CANCELLED' as any } } },
+          orderBy: { _sum: { total: 'desc' } },
           take: 5
         }),
         // 7. Monthly Sales
         prisma.order.findMany({
           where: { shopId, createdAt: { gte: sixMonthsAgo }, status: { not: 'CANCELLED' as any } },
-          select: { totalAmount: true, createdAt: true }
+          include: { items: true }
         }),
         // 8. Category Breakdown
         prisma.product.findMany({
@@ -214,28 +219,32 @@ export const AnalyticsService = {
         });
       });
 
+      // Format Monthly Sales WITH COGS
+      const monthlyMap: Record<string, { revenue: number, orders: number, cogs: number }> = {};
+      monthlySalesData.forEach(o => {
+        const month = o.createdAt.toLocaleString('default', { month: 'short' });
+        if (!monthlyMap[month]) monthlyMap[month] = { revenue: 0, orders: 0, cogs: 0 };
+        monthlyMap[month].revenue += Number(o.totalAmount);
+        monthlyMap[month].orders += 1;
+        o.items.forEach(i => {
+          monthlyMap[month].cogs += Number(i.costPrice || 0) * i.quantity;
+        });
+      });
+      const monthlySales = Object.entries(monthlyMap).map(([month, data]) => ({
+        month, ...data, profit: data.revenue - data.cogs
+      }));
+
       const totalRevenue = Number(revenueResult._sum.totalAmount || 0);
       const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
-      // Format Top Products
+      // 1. Format Top Products
       const topProducts = topProductsData.map(p => ({
         name: p.name,
-        quantity: p._sum.quantity || 0
+        quantity: p._sum.quantity || 0,
+        revenue: Number(p._sum.total || 0)
       }));
 
-      // Format Monthly Sales
-      const monthlyMap: Record<string, { revenue: number, orders: number }> = {};
-      monthlySalesData.forEach(o => {
-        const month = o.createdAt.toLocaleString('default', { month: 'short' });
-        if (!monthlyMap[month]) monthlyMap[month] = { revenue: 0, orders: 0 };
-        monthlyMap[month].revenue += Number(o.totalAmount);
-        monthlyMap[month].orders += 1;
-      });
-      const monthlySales = Object.entries(monthlyMap).map(([month, data]) => ({
-        month, ...data
-      }));
-
-      // Format Category Breakdown
+      // 2. Format Category Breakdown
       const catMap: Record<string, number> = {};
       categoriesData.forEach(p => {
         const catName = p.category?.name || 'Uncategorized';
@@ -249,6 +258,8 @@ export const AnalyticsService = {
       return {
         totalRevenue,
         totalOrders,
+        totalCustomers,
+        totalProducts,
         avgOrderValue,
         todayRevenue,
         todayCogs,
