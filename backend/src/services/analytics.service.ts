@@ -156,22 +156,30 @@ export const AnalyticsService = {
       const [
         revenueResult,
         totalOrders,
+        totalCustomers,
+        totalProducts,
         lowStockItems,
+        todayOrdersData,
         topProductsData,
         monthlySalesData,
         categoriesData
       ] = await Promise.all([
-        // 1. Revenue & Orders (Historical total for insights)
+        // 1. Revenue & Orders (Historical total)
         prisma.order.aggregate({
           where: { shopId, status: { not: 'CANCELLED' as any } },
           _sum: { totalAmount: true },
           _count: { id: true }
         }),
-        // 2. Orders (Already included in above but keep it explicit if needed)
         prisma.order.count({ where: { shopId, status: { not: 'CANCELLED' as any } } }),
-        // 3. Low Stock Items
-        prisma.product.count({ where: { shopId, stock: { lte: prisma.product.fields.lowStockAlert } } }),
-        // 4. Top Products
+        prisma.customer.count({ where: { shopId } }),
+        prisma.product.count({ where: { shopId, isActive: true } }),
+        prisma.product.count({ where: { shopId, isActive: true, stock: { lte: prisma.product.fields.lowStockAlert } } }),
+        // 5. Today's orders for factual margin
+        prisma.order.findMany({
+          where: { shopId, createdAt: { gte: today }, status: { not: 'CANCELLED' as any } },
+          include: { items: true }
+        }),
+        // 6. Top Products
         prisma.orderItem.groupBy({
           by: ['productId', 'name'],
           _sum: { quantity: true },
@@ -179,12 +187,12 @@ export const AnalyticsService = {
           orderBy: { _sum: { quantity: 'desc' } },
           take: 5
         }),
-        // 5. Monthly Sales
+        // 7. Monthly Sales
         prisma.order.findMany({
           where: { shopId, createdAt: { gte: sixMonthsAgo }, status: { not: 'CANCELLED' as any } },
           select: { totalAmount: true, createdAt: true }
         }),
-        // 6. Category Breakdown
+        // 8. Category Breakdown
         prisma.product.findMany({
           where: { shopId },
           select: { 
@@ -196,6 +204,15 @@ export const AnalyticsService = {
           }
         })
       ]);
+
+      let todayRevenue = 0;
+      let todayCogs = 0;
+      todayOrdersData.forEach(o => {
+        todayRevenue += Number(o.totalAmount);
+        o.items.forEach(i => {
+          todayCogs += Number(i.costPrice || 0) * i.quantity;
+        });
+      });
 
       const totalRevenue = Number(revenueResult._sum.totalAmount || 0);
       const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
@@ -233,6 +250,9 @@ export const AnalyticsService = {
         totalRevenue,
         totalOrders,
         avgOrderValue,
+        todayRevenue,
+        todayCogs,
+        todayOrdersCount: todayOrdersData.length,
         lowStockItems,
         topProducts,
         monthlySales,

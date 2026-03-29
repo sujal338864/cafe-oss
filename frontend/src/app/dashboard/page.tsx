@@ -19,6 +19,7 @@ export default function DashboardPage() {
   const [forecasting, setForecasting] = useState<any[]>([]);
   const [heatmap, setHeatmap] = useState<any>(null);
   const [financialSummary, setFinancialSummary] = useState<any>(null);
+  const [showInfo, setShowInfo] = useState<{ title: string, breakdown: any[], resultLabel: string, finalValue: number } | null>(null);
 
   // AI Insights State
   const [aiInsight, setAiInsight] = useState<string>('');
@@ -127,8 +128,23 @@ export default function DashboardPage() {
   const greeting = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
 
   const card: React.CSSProperties = {
-    background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '18px 20px',
+    background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 16, padding: '20px 24px',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.03)', position: 'relative', overflow: 'hidden'
   };
+
+  const StatCard = ({ title, value, sub, color, info }: any) => (
+    <div style={card}>
+      <div style={{ position: 'absolute', top: 0, left: 0, width: 4, height: '100%', background: color }} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+        <div style={{ fontSize: 11, color: theme.textFaint, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1 }}>{title}</div>
+        {info && (
+          <button onClick={() => setShowInfo(info)} style={{ background: 'rgba(0,0,0,0.05)', border: 'none', color: theme.textFaint, width: 22, height: 22, borderRadius: '50%', cursor: 'pointer', fontSize: 12, fontWeight: 800 }}>ℹ</button>
+        )}
+      </div>
+      <div style={{ fontSize: 28, fontWeight: 900, color: theme.text, marginBottom: 6 }}>{value}</div>
+      <div style={{ fontSize: 12, color: color, fontWeight: 600 }}>{sub}</div>
+    </div>
+  );
 
   if (loading) return (
     <div style={{ color: theme.textMuted, padding: 40, textAlign: 'center' }}>
@@ -204,28 +220,91 @@ export default function DashboardPage() {
       )}
 
       {/* Stat Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14 }}>
-        <div style={card}>
-          <div style={{ fontSize: 12, color: theme.textFaint, fontWeight: 600, marginBottom: 8, textTransform: 'uppercase' }}>Net Profit (30d)</div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: '#10b981', marginBottom: 4 }}>{fmt(financialSummary?.netProfit)}</div>
-          <div style={{ fontSize: 12, color: theme.textFaint, fontWeight: 600 }}>After {fmt(financialSummary?.totalOpEx)} expenses</div>
-        </div>
-        <div style={card}>
-          <div style={{ fontSize: 12, color: theme.textFaint, fontWeight: 600, marginBottom: 8, textTransform: 'uppercase' }}>Daily Margin</div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: theme.text, marginBottom: 4 }}>{fmt(todayRevenue - (todayOrders.reduce((s,o) => s + (Number(o.totalAmount)*0.4),0) ))}</div>
-          <div style={{ fontSize: 12, color: '#3b82f6', fontWeight: 600 }}>{todayOrders.length} orders today</div>
-        </div>
-        <div style={card}>
-          <div style={{ fontSize: 12, color: theme.textFaint, fontWeight: 600, marginBottom: 8, textTransform: 'uppercase' }}>Total Products</div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: theme.text, marginBottom: 4 }}>{totalProducts}</div>
-          <div style={{ fontSize: 12, color: '#a78bfa', fontWeight: 600 }}>{lowStockItems} low stock</div>
-        </div>
-        <div style={card}>
-          <div style={{ fontSize: 12, color: theme.textFaint, fontWeight: 600, marginBottom: 8, textTransform: 'uppercase' }}>Customers</div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: theme.text, marginBottom: 4 }}>{totalCustomers}</div>
-          <div style={{ fontSize: 12, color: '#f59e0b', fontWeight: 600 }}>Avg order {fmt(avgOrderValue)}</div>
-        </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
+        <StatCard 
+          title="Net Profit (30d)" 
+          value={fmt(financialSummary?.netProfit)} 
+          sub={`Take-home after expenses`}
+          color="#10b981"
+          info={{ 
+            title: '30-Day Net Profit Breakdown',
+            breakdown: [
+              { label: 'Total Sales Revenue', value: financialSummary?.totalRevenue, type: 'pos' },
+              { label: 'Cost of Items (COGS)', value: -financialSummary?.totalCOGS, type: 'neg' },
+              { label: 'Operating Expenses (OpEx)', value: -financialSummary?.totalOpEx, type: 'neg' }
+            ],
+            resultLabel: 'True Net Profit',
+            finalValue: financialSummary?.netProfit
+          }}
+        />
+        <StatCard 
+          title="Today's Margin" 
+          value={fmt(stats?.todayRevenue - stats?.todayCogs)} 
+          sub={`${stats?.todayOrdersCount || 0} orders today`}
+          color="#3b82f6"
+          info={{ 
+            title: "Today's Margin Breakdown",
+            breakdown: [
+              { label: "Today's Revenue", value: stats?.todayRevenue, type: 'pos' },
+              { label: "Today's Item Costs", value: -stats?.todayCogs, type: 'neg' }
+            ],
+            resultLabel: "Today's Gross Margin",
+            finalValue: (stats?.todayRevenue - stats?.todayCogs)
+          }}
+        />
+        <StatCard 
+          title="Avg Order Value" 
+          value={fmt(avgOrderValue)} 
+          sub="Spending per visit"
+          color="#f59e0b"
+          info={{ 
+            title: 'Avg Order Calculation',
+            breakdown: [
+              { label: 'Total Historical Revenue', value: totalRevenue, type: 'pos' },
+              { label: 'Total Historical Orders', value: totalOrders, type: 'div' }
+            ],
+            resultLabel: 'Avg Value per Order',
+            finalValue: avgOrderValue
+          }}
+        />
+        <StatCard 
+          title="Total Inventory" 
+          value={totalProducts} 
+          sub={`${lowStockItems} low stock items`}
+          color="#a78bfa"
+        />
       </div>
+
+      {/* ℹ️ Math Transparency Modal */}
+      {showInfo && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
+          <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 24, padding: 32, width: '100%', maxWidth: 440, boxShadow: '0 20px 50px rgba(0,0,0,0.2)', animation: 'fadeUp 0.3s ease-out' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 800, color: theme.text, margin: 0 }}>{showInfo.title}</h3>
+              <button onClick={() => setShowInfo(null)} style={{ background: 'none', border: 'none', color: theme.textFaint, fontSize: 24, cursor: 'pointer' }}>×</button>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 24 }}>
+              {showInfo.breakdown.map((item: any, idx: number) => (
+                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: 14, color: theme.textMuted }}>{item.label}</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: item.type === 'neg' ? '#ef4444' : item.type === 'div' ? '#3b82f6' : theme.text }}>
+                    {item.type === 'div' ? `÷ ${item.value}` : fmt(item.value)}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ background: 'rgba(16, 185, 129, 0.05)', border: '1.5px dashed #10b98166', borderRadius: 16, padding: 20, textAlign: 'center' }}>
+              <div style={{ fontSize: 12, color: '#10b981', fontWeight: 800, textTransform: 'uppercase', marginBottom: 6 }}>{showInfo.resultLabel}</div>
+              <div style={{ fontSize: 28, fontWeight: 900, color: '#10b981' }}>{fmt(showInfo.finalValue)}</div>
+              <div style={{ marginTop: 10, fontSize: 11, color: theme.textFaint, fontStyle: 'italic' }}>Calculation based on factual data from your ledger.</div>
+            </div>
+
+            <button onClick={() => setShowInfo(null)} style={{ width: '100%', background: '#111', color: '#fff', border: 'none', padding: 14, borderRadius: 14, marginTop: 20, fontWeight: 700, cursor: 'pointer' }}>Close Transparency View</button>
+          </div>
+        </div>
+      )}
 
       {/* AI Insights Panel */}
       <div style={{ ...card, background: 'linear-gradient(135deg, rgba(124, 58, 237, 0.05), rgba(59, 130, 246, 0.05))', borderColor: '#7c3aed44' }}>
@@ -299,6 +378,47 @@ export default function DashboardPage() {
             </div>
             <div style={{ marginLeft: 'auto', fontSize: 11, color: theme.text, fontWeight: 600, background: 'rgba(124, 58, 237, 0.05)', padding: '4px 10px', borderRadius: 8 }}>
               💡 Recommendation: Schedule +1 staff during dark purple zones.
+            </div>
+          </div>
+        </div>
+
+        {/* 🏢 Business Expansion Intelligence */}
+        <div style={{ ...card, background: 'linear-gradient(135deg, #1e293b, #0f172a)', border: 'none', color: '#fff', gridColumn: '1 / -1' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+            <div>
+              <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Business expansion pulse</div>
+              <h3 style={{ fontSize: 18, fontWeight: 800, margin: 0 }}>Strategic Growth Index 🚀</h3>
+            </div>
+            <div style={{ background: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa', padding: '6px 12px', borderRadius: 10, fontSize: 12, fontWeight: 700 }}>
+              Confidence Rate: {financialSummary?.marginPercent || 0}%
+            </div>
+          </div>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 30 }}>
+            <div>
+              <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 8 }}>Operational Health</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: (financialSummary?.marginPercent || 0) > 15 ? '#4ade80' : '#fbbf24' }}>
+                {(financialSummary?.marginPercent || 0) > 15 ? '✅ PRIME FOR SCALE' : '⌛ OPTIMIZE MARGINS FIRST'}
+              </div>
+              <p style={{ fontSize: 11, color: '#64748b', marginTop: 6, lineHeight: 1.5 }}>
+                {(financialSummary?.marginPercent || 0) > 15 
+                  ? 'Your net margins are healthy enough to sustain a second location or franchise expansion.'
+                  : 'Focus on reducing OpEx or increasing ticket size by 10% before physical expansion.'}
+              </p>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 8 }}>Capital Reserve Suggestion</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>{fmt(totalRevenue * 0.15)}</div>
+              <p style={{ fontSize: 11, color: '#64748b', marginTop: 6, lineHeight: 1.5 }}>
+                Estimated rainy-day fund needed for 3 months of operations based on current burn rate.
+              </p>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 8 }}>Expansion Strategy</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#60a5fa' }}>Multi-Chain Architecture</div>
+              <p style={{ fontSize: 11, color: '#64748b', marginTop: 6, lineHeight: 1.5 }}>
+                Leverage CafeOS Multi-Tenant features to sync inventory across multiple hubs seamlessly.
+              </p>
             </div>
           </div>
         </div>
