@@ -130,24 +130,103 @@ export const AnalyticsService = {
    * (Restored for legacy dashboard support)
    */
   calculateDashboardStats: async (shopId: string) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
 
-    const [totalRevenue, totalOrders, lowStockCount] = await Promise.all([
-      prisma.order.aggregate({
-        where: { shopId, createdAt: { gte: today } },
-        _sum: { totalAmount: true }
-      }),
-      prisma.order.count({ where: { shopId, createdAt: { gte: today } } }),
-      prisma.product.count({ where: { shopId, stock: { lte: prisma.product.fields.lowStockAlert } } })
-    ]);
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-    return {
-      revenueToday: Number(totalRevenue._sum.totalAmount || 0),
-      ordersToday: totalOrders,
-      lowStockAlerts: lowStockCount,
-      timestamp: new Date()
-    };
+      const [
+        revenueResult,
+        totalOrders,
+        lowStockItems,
+        topProductsData,
+        monthlySalesData,
+        categoriesData
+      ] = await Promise.all([
+        // 1. Revenue & Orders (Historical total for insights)
+        prisma.order.aggregate({
+          where: { shopId, status: { not: 'CANCELLED' as any } },
+          _sum: { totalAmount: true },
+          _count: { id: true }
+        }),
+        // 2. Orders (Already included in above but keep it explicit if needed)
+        prisma.order.count({ where: { shopId, status: { not: 'CANCELLED' as any } } }),
+        // 3. Low Stock Items
+        prisma.product.count({ where: { shopId, stock: { lte: prisma.product.fields.lowStockAlert } } }),
+        // 4. Top Products
+        prisma.orderItem.groupBy({
+          by: ['productId', 'name'],
+          _sum: { quantity: true },
+          where: { order: { shopId } },
+          orderBy: { _sum: { quantity: 'desc' } },
+          take: 5
+        }),
+        // 5. Monthly Sales
+        prisma.order.findMany({
+          where: { shopId, createdAt: { gte: sixMonthsAgo }, status: { not: 'CANCELLED' as any } },
+          select: { totalAmount: true, createdAt: true }
+        }),
+        // 6. Category Breakdown
+        prisma.product.findMany({
+          where: { shopId },
+          select: { 
+            category: { select: { name: true } },
+            orderItems: {
+              where: { order: { status: { not: 'CANCELLED' as any } } },
+              select: { total: true }
+            }
+          }
+        })
+      ]);
+
+      const totalRevenue = Number(revenueResult._sum.totalAmount || 0);
+      const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+      // Format Top Products
+      const topProducts = topProductsData.map(p => ({
+        name: p.name,
+        quantity: p._sum.quantity || 0
+      }));
+
+      // Format Monthly Sales
+      const monthlyMap: Record<string, { revenue: number, orders: number }> = {};
+      monthlySalesData.forEach(o => {
+        const month = o.createdAt.toLocaleString('default', { month: 'short' });
+        if (!monthlyMap[month]) monthlyMap[month] = { revenue: 0, orders: 0 };
+        monthlyMap[month].revenue += Number(o.totalAmount);
+        monthlyMap[month].orders += 1;
+      });
+      const monthlySales = Object.entries(monthlyMap).map(([month, data]) => ({
+        month, ...data
+      }));
+
+      // Format Category Breakdown
+      const catMap: Record<string, number> = {};
+      categoriesData.forEach(p => {
+        const catName = p.category?.name || 'Uncategorized';
+        const revenue = p.orderItems.reduce((sum, item) => sum + Number(item.total), 0);
+        catMap[catName] = (catMap[catName] || 0) + revenue;
+      });
+      const categoryBreakdown = Object.entries(catMap).map(([name, revenue]) => ({
+        name, revenue
+      }));
+
+      return {
+        totalRevenue,
+        totalOrders,
+        avgOrderValue,
+        lowStockItems,
+        topProducts,
+        monthlySales,
+        categoryBreakdown,
+        timestamp: new Date()
+      };
+    } catch (error: any) {
+      logger.error(`[ANALYTICS] Stats calculation failed: ${error.message}`);
+      throw error;
+    }
   },
 
   /**
