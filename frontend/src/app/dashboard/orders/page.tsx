@@ -22,13 +22,20 @@ function exportCSV(orders: any[]) {
 export default function OrdersPage() {
   const { theme } = useTheme();
   const queryClient = useQueryClient();
+  const [limit, setLimit] = useState(2000);
+  const [sortDir, setSortDir] = useState('desc');
   const { data: orderData, isLoading: loading, error: queryError } = useQuery({
-    queryKey: ['orders'],
-    queryFn: () => api.get('/api/orders?limit=1000').then(res => res.data.orders || res.data.data || (Array.isArray(res.data) ? res.data : [])),
-    staleTime: 60000, // 1 min
+    queryKey: ['orders', limit, sortDir],
+    queryFn: () => api.get(`/api/orders?limit=${limit}&sort=${sortDir}`).then(res => ({
+      orders: res.data.orders || [],
+      totalCount: res.data.totalCount || res.data.pagination?.total || 0
+    })),
+    staleTime: 5000, 
   });
-  const orders = orderData || [];
-  const error = queryError ? 'Failed to load orders' : '';
+  const orders = orderData?.orders || [];
+  const totalCount = orderData?.totalCount || 0;
+  const targetUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001') + '/api/orders';
+  const error = queryError ? (queryError as any).message || 'Failed to load orders' : '';
 
   const [search,   setSearch]   = useState('');
   const [status,   setStatus]   = useState('ALL');
@@ -42,7 +49,7 @@ export default function OrdersPage() {
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       // Auto-open invoice for printing
-      const url = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000') + `/api/menu/order/${id}/invoice`;
+      const url = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001') + `/api/menu/order/${id}/invoice`;
       window.open(url, '_blank');
     }
   });
@@ -77,10 +84,15 @@ export default function OrdersPage() {
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
         <div>
           <h2 style={{ fontSize:20, fontWeight:800, color:theme.text }}>Orders</h2>
-          <p style={{ fontSize:13, color:theme.textFaint, marginTop:3 }}>{filtered.length} orders{filtered.length!==orders.length?` (of ${orders.length})`:''}</p>
+          <p style={{ fontSize:13, color:theme.textFaint, marginTop:3 }}>
+            Showing {filtered.length} of <b style={{color:'#7c3aed'}}>{totalCount} total records</b>
+          </p>
         </div>
         <div style={{ display:'flex', gap:8 }}>
-          <button onClick={() => queryClient.invalidateQueries({ queryKey: ['orders'] })} style={{ background:theme.hover, border:'1px solid '+theme.border, color:theme.textMuted, padding:'9px 16px', borderRadius:10, fontWeight:600, fontSize:12, cursor:'pointer' }}>Refresh</button>
+          <button onClick={() => { queryClient.invalidateQueries({ queryKey:['orders'] }); setLimit(5000); }} 
+            style={{ background:'#7c3aed', color:'white', border:'none', padding:'9px 16px', borderRadius:10, fontWeight:700, fontSize:12, cursor:'pointer' }}>
+            🔄 Sync All
+          </button>
           <button onClick={() => exportCSV(filtered)} style={{ background:theme.hover, border:'1px solid '+theme.border, color:theme.textMuted, padding:'9px 16px', borderRadius:10, fontWeight:700, fontSize:12, cursor:'pointer' }}>Export CSV</button>
         </div>
       </div>
@@ -118,8 +130,14 @@ export default function OrdersPage() {
         <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={inp} />
         <span style={{color:theme.textFaint,fontSize:12}}>to</span>
         <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={inp} />
-        {(search||status!=='ALL'||method!=='ALL'||dateFrom||dateTo) && (
-          <button onClick={()=>{setSearch('');setStatus('ALL');setMethod('ALL');setDateFrom('');setDateTo('');}}
+        
+        <select value={sortDir} onChange={e=>setSortDir(e.target.value)} style={inp}>
+          <option value="desc">Newest First</option>
+          <option value="asc">Oldest First (1 to 186...)</option>
+        </select>
+
+        {(search||status!=='ALL'||method!=='ALL'||dateFrom||dateTo||sortDir!=='desc') && (
+          <button onClick={()=>{setSearch('');setStatus('ALL');setMethod('ALL');setDateFrom('');setDateTo('');setSortDir('desc');}}
             style={{background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.2)',color:'#ef4444',padding:'8px 14px',borderRadius:9,fontSize:12,cursor:'pointer',fontWeight:600}}>
             Clear
           </button>
@@ -128,7 +146,16 @@ export default function OrdersPage() {
 
       <div style={{...card, overflow:'hidden'}}>
         {loading ? <div style={{padding:40,textAlign:'center',color:theme.textFaint}}><div>Loading orders...</div><div style={{fontSize:11,marginTop:8}}>If this takes long, the backend is warming up.</div></div>
-        : error && orders.length === 0 ? <div style={{padding:40,textAlign:'center'}}><div style={{fontSize:14,color:'#ef4444',marginBottom:12}}>{error}</div><button onClick={() => queryClient.invalidateQueries({ queryKey: ['orders'] })} style={{background:'#7c3aed',color:'white',border:'none',padding:'8px 20px',borderRadius:8,fontWeight:700,cursor:'pointer'}}>Retry</button></div>
+        : error ? (
+          <div style={{padding:40,textAlign:'center'}}>
+            <div style={{fontSize:16,color:'#ef4444',fontWeight:700,marginBottom:8}}>Connection Error</div>
+            <div style={{fontSize:13,color:theme.text,marginBottom:16}}>
+              {error}<br/>
+              <span style={{fontSize:11,color:theme.textFaint}}>URL: {targetUrl}</span>
+            </div>
+            <button onClick={() => queryClient.invalidateQueries({ queryKey: ['orders'] })} style={{background:'#7c3aed',color:'white',border:'none',padding:'9px 24px',borderRadius:10,fontWeight:700,cursor:'pointer'}}>Retry Connection</button>
+          </div>
+        )
         : filtered.length===0 ? <div style={{padding:40,textAlign:'center',color:theme.textFaint}}>No orders match filters.</div>
         : (
           <table style={{width:'100%',borderCollapse:'collapse'}}>
@@ -212,6 +239,18 @@ export default function OrdersPage() {
               })}
             </tbody>
           </table>
+        )}
+        {filtered.length > 0 && orders.length >= limit && (
+          <div style={{padding:'20px', display:'flex', justifyContent:'center', gap:12, borderTop:'1px solid '+theme.border}}>
+            <button onClick={() => setLimit(l => l + 100)} 
+              style={{background:theme.hover, border:'1px solid '+theme.border, color:theme.text, padding:'10px 24px', borderRadius:10, fontWeight:600, fontSize:13, cursor:'pointer'}}>
+              Load More
+            </button>
+            <button onClick={() => setLimit(50000)} 
+              style={{background:'rgba(124,58,237,0.1)', border:'1px solid rgba(124,58,237,0.3)', color:'#7c3aed', padding:'10px 24px', borderRadius:10, fontWeight:700, fontSize:13, cursor:'pointer'}}>
+              See All Orders
+            </button>
+          </div>
         )}
       </div>
     </div>

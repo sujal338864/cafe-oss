@@ -27,7 +27,7 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
       return;
     }
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001';
     console.log(`[Socket] Connecting to ${apiUrl} for shop ${user.shopId}`);
 
     const newSocket = io(apiUrl, {

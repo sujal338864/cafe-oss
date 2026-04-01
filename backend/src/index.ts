@@ -32,7 +32,7 @@ export const prisma = extendedPrisma;
 const app: Express = express();
 app.use(metricsCollector);
 app.use(requestLogger);
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.SHOP_OS_PORT || 4001;
 
 // Centralized logger imported from src/lib/logger above
 
@@ -59,7 +59,14 @@ app.use(cors({
 
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(compression());
-app.use(morgan('combined', { stream: { write: (msg) => logger.info(msg.trim()) } }));
+app.use(morgan('combined', { 
+  skip: (req, res) => {
+    const is304 = res.statusCode === 304;
+    const isNoisePath = req.originalUrl?.includes('/api/notifications') || req.originalUrl?.includes('/api/shop/profile');
+    return is304 && isNoisePath;
+  },
+  stream: { write: (msg) => logger.info(msg.trim()) } 
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 

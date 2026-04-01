@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001';
 
 interface User { id: string; name: string; email: string; role: string; shopId?: string; }
 interface Shop { id: string; name: string; plan: string; }

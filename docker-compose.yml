@@ -35,13 +35,13 @@ services:
     environment:
       DATABASE_URL: "postgresql://shopos:shopos_dev_password@postgres:5432/shopos"
       JWT_SECRET: "dev-secret-key-min-32-characters-long"
-      PORT: 4000
+      PORT: 4001
       NODE_ENV: development
       FRONTEND_URL: "http://localhost:3000"
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       RUN_WORKERS: "false"
     ports:
-      - "4000:4000"
+      - "4001:4001"
     depends_on:
       postgres:
         condition: service_healthy
@@ -78,7 +78,7 @@ services:
       dockerfile: Dockerfile
     container_name: shopos-web
     environment:
-      NEXT_PUBLIC_API_URL: "http://localhost:4000"
+      NEXT_PUBLIC_API_URL: "http://localhost:4001"
     ports:
       - "3000:3000"
     depends_on:

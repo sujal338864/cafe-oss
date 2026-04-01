@@ -142,6 +142,7 @@ export const getOrders = async (shopId: string, filters: {
   customerId?: string;
   status?: string;
   paymentStatus?: string;
+  sort?: 'asc' | 'desc';
 }) => {
   const where: any = {
     shopId,
@@ -158,7 +159,7 @@ export const getOrders = async (shopId: string, filters: {
       prisma.order.findMany({
         where, skip: filters.skip, take: filters.take,
         include: { customer: true, items: true, user: { select: { name: true } } },
-        orderBy: { createdAt: 'desc' }
+        orderBy: { createdAt: filters.sort || 'desc' }
       }),
       prisma.order.count({ where })
     ]);

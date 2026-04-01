@@ -78,10 +78,11 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
  */
 export const getOrders = async (req: AuthRequest, res: Response) => {
   try {
-    const { page = '1', limit = '20', startDate, endDate, customerId, status, paymentStatus } = req.query;
+    const { page = '1', limit = '20', startDate, endDate, customerId, status, paymentStatus, sort } = req.query;
     const pageNum = Math.max(1, parseInt(page as string) || 1);
-    const limitNum = Math.min(100, parseInt(limit as string) || 20);
+    const limitNum = Math.min(100000, parseInt(limit as string) || 20);
     const skip = (pageNum - 1) * limitNum;
+    console.log(`[ORDER_LIST] Shop: ${req.user!.shopId}, Limit: ${limitNum}, Skip: ${skip}, Sort: ${sort}`);
 
     const { orders, total } = await orderService.getOrders(req.user!.shopId, {
       skip,
@@ -90,11 +91,13 @@ export const getOrders = async (req: AuthRequest, res: Response) => {
       endDate: endDate as string,
       customerId: customerId as string,
       status: status as string,
-      paymentStatus: paymentStatus as string
+      paymentStatus: paymentStatus as string,
+      sort: sort as 'asc' | 'desc'
     });
 
     return res.json({ 
       orders, 
+      totalCount: total,
       pagination: { 
         total, 
         page: pageNum, 
