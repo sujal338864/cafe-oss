@@ -1,3 +1,5 @@
+"use client";
+
 import { useEffect, useState, useMemo } from 'react';
 import api from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
