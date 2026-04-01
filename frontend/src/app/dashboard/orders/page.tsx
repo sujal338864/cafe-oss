@@ -24,7 +24,7 @@ export default function OrdersPage() {
   const queryClient = useQueryClient();
   const { data: orderData, isLoading: loading, error: queryError } = useQuery({
     queryKey: ['orders'],
-    queryFn: () => api.get('/api/orders?limit=100').then(res => res.data.orders || res.data.data || (Array.isArray(res.data) ? res.data : [])),
+    queryFn: () => api.get('/api/orders?limit=1000').then(res => res.data.orders || res.data.data || (Array.isArray(res.data) ? res.data : [])),
     staleTime: 60000, // 1 min
   });
   const orders = orderData || [];

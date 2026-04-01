@@ -36,7 +36,7 @@ export default function ProductsPage() {
   // Queries
   const { data: productsData, isLoading: productsLoading } = useQuery({
     queryKey: ['products'],
-    queryFn: () => api.get('/api/products?limit=100').then(r => r.data)
+    queryFn: () => api.get('/api/products?limit=1000').then(r => r.data)
   });
   const { data: catsData } = useQuery({
     queryKey: ['categories'],

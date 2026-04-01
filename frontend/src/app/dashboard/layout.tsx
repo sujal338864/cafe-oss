@@ -35,16 +35,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [showNotifs, setShowNotifs] = useState(false);
 
   // Queries
-  const { data: dashboardData } = useQuery({ 
-    queryKey: ['dashboard_stats'], 
-    queryFn: () => api.get('/api/analytics/dashboard').then(r => r.data) 
+  const { data: megaData } = useQuery({ 
+    queryKey: ['mega_dashboard'], 
+    queryFn: () => api.get('/api/analytics/dashboard-mega').then(r => r.data),
+    staleTime: 5000 // 5s stale time for layout
   });
   const { data: notifData } = useQuery({ 
     queryKey: ['notifications'], 
     queryFn: () => api.get('/api/notifications?limit=20').then(r => r.data) 
   });
 
-  const lowStock = Number(dashboardData?.lowStockItems || 0);
+  const lowStock = Number(megaData?.stats?.lowStockItems || 0);
   const notifications = notifData?.notifications || [];
   const unreadCount = notifications.filter((n: any) => !n.isRead).length;
 
@@ -54,7 +55,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     if (!socket) return;
     const refresh = () => {
-      queryClient.invalidateQueries({ queryKey: ['dashboard_stats'] });
+      queryClient.invalidateQueries({ queryKey: ['mega_dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
     };
     socket.on('ORDER_CREATED', refresh);

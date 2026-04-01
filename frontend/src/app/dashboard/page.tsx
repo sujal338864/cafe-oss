@@ -16,12 +16,12 @@ export default function DashboardPage() {
   const [showInfo, setShowInfo] = useState<{ title: string, breakdown: any[], resultLabel: string, finalValue: number } | null>(null);
 
   // Queries
-  const { data: statsData, isLoading: statsLoading } = useQuery({ queryKey: ['dashboard_stats'], queryFn: () => api.get('/api/analytics/dashboard').then(r => r.data) });
-  const { data: ordersData } = useQuery({ queryKey: ['recent_orders'], queryFn: () => api.get('/api/analytics/recent').then(r => r.data) });
-  const { data: profitData } = useQuery({ queryKey: ['daily_profit'], queryFn: () => api.get('/api/analytics/daily-profit').then(r => r.data) });
-  const { data: forecastData } = useQuery({ queryKey: ['inventory_forecast'], queryFn: () => api.get('/api/analytics/inventory-forecast').then(r => r.data) });
-  const { data: heatmapData } = useQuery({ queryKey: ['peak_hours'], queryFn: () => api.get('/api/analytics/peak-hours').then(r => r.data) });
-  const { data: financialData } = useQuery({ queryKey: ['financial_summary'], queryFn: () => api.get('/api/analytics/financial-summary').then(r => r.data) });
+  // Single Consolidated Mega-Query (The Performance Nuclear Option)
+  const { data: megaData, isLoading: megaLoading } = useQuery({ 
+    queryKey: ['mega_dashboard'], 
+    queryFn: () => api.get('/api/analytics/dashboard-mega').then(r => r.data) 
+  });
+
   const { data: aiData, isLoading: aiLoading } = useQuery({ 
     queryKey: ['ai_insights'], 
     queryFn: () => api.get('/api/ai/insights').then(r => r.data).catch(e => {
@@ -31,23 +31,12 @@ export default function DashboardPage() {
     staleTime: 3600000 // 1 hour for AI
   });
 
-  const [sparking, setSparking] = useState(false);
-  const handleSparkDemo = async () => {
-    setSparking(true);
-    try {
-      await api.post('/api/shop/demo-data');
-      queryClient.invalidateQueries();
-    } catch (e) { alert('Failed to load demo data'); }
-    finally { setSparking(false); }
-  };
 
   useEffect(() => {
+
     if (socket) {
       const handleEvent = () => {
-        // Only invalidate specific dashboard keys, NOT everything (prevents loops)
-        queryClient.invalidateQueries({ queryKey: ['dashboard_stats'] });
-        queryClient.invalidateQueries({ queryKey: ['recent_orders'] });
-        queryClient.invalidateQueries({ queryKey: ['financial_summary'] });
+        queryClient.invalidateQueries({ queryKey: ['mega_dashboard'] });
       };
       socket.on('ORDER_CREATED', handleEvent);
       socket.on('ORDER_UPDATED', handleEvent);
@@ -60,12 +49,12 @@ export default function DashboardPage() {
     }
   }, [socket, queryClient]);
 
-  const stats = statsData;
-  const orders = ordersData?.orders || [];
-  const profitList = profitData?.profitList || [];
-  const forecasting = forecastData?.forecasting || [];
-  const heatmap = heatmapData?.heatmap || null;
-  const financialSummary = financialData?.summary || null;
+  const stats = megaData?.stats;
+  const orders = megaData?.recentOrders?.orders || [];
+  const profitList = megaData?.profitList?.profitList || [];
+  const forecasting = megaData?.forecasting?.forecasting || [];
+  const heatmap = megaData?.heatmap?.heatmap || null;
+  const financialSummary = megaData?.financialSummary?.summary || null;
   const aiInsight = aiData?.insight || '';
 
   const [mounted, setMounted] = useState(false);
@@ -77,8 +66,10 @@ export default function DashboardPage() {
   const totalProducts  = Number(stats?.totalProducts  ?? 0);
   const lowStockItems  = Number(stats?.lowStockItems  ?? 0);
   const avgOrderValue  = Number(stats?.avgOrderValue  ?? 0);
+  const totalInventoryValue = Number(stats?.totalInventoryValue ?? 0);
   const todayRevenue = Number(stats?.todayRevenue ?? 0);
   const todayCogs    = Number(stats?.todayCogs ?? 0);
+  const todayMargin  = Number(stats?.todayMargin ?? 0);
   const todayCount   = Number(stats?.todayOrdersCount ?? 0);
 
   if (!mounted) return null;
@@ -107,7 +98,7 @@ export default function DashboardPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {statsLoading && (
+      {megaLoading && (
         <div style={{ color: theme.textMuted, padding: 10, textAlign: 'center', fontSize: 12, background: 'rgba(0,0,0,0.02)', borderRadius: 10 }}>
           Refreshing metrics...
         </div>
@@ -136,37 +127,13 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Onboarding Checklist */}
-      {totalProducts === 0 && (
-        <div style={{ ...card, background: 'rgba(245, 158, 11, 0.05)', borderColor: '#f59e0b44', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <span style={{ fontSize: 18 }}>🎯</span>
-            <div style={{ fontWeight: 800, fontSize: 15, color: theme.text }}>Getting Started Checklist</div>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: theme.text }}>
-              <span style={{ color: '#10b981' }}>✅</span>
-              <span style={{ textDecoration: 'line-through', color: theme.textMuted }}>Create Account</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: theme.text }}>
-              <span>⭕</span>
-              <span>Add your first product <a href="/dashboard/products" style={{ color: '#7c3aed', fontWeight: 600, textDecoration: 'none' }}>Go to Products →</a></span>
-            </div>
-          </div>
-          <div style={{ marginTop: 16, borderTop: `1px solid ${theme.border}`, paddingTop: 12 }}>
-            <button onClick={handleSparkDemo} disabled={sparking} style={{ background: '#7c3aed', color: 'white', border: 'none', padding: '8px 16px', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: sparking ? 'not-allowed' : 'pointer' }}>
-              {sparking ? '🚀 Sparking...' : '🚀 Spark Demo Data'}
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Stat Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
         <StatCard title="Net Profit (30d)" value={fmt(financialSummary?.netProfit)} sub="Take-home after expenses" color="#10b981" info={{ title: '30-Day Net Profit Breakdown', breakdown: [{ label: 'Total Sales Revenue', value: financialSummary?.totalRevenue, type: 'pos' }, { label: 'Cost of Items (COGS)', value: -financialSummary?.totalCOGS, type: 'neg' }, { label: 'Operating Expenses (OpEx)', value: -financialSummary?.totalOpEx, type: 'neg' }], resultLabel: 'True Net Profit', finalValue: financialSummary?.netProfit }} />
-        <StatCard title="Today's Margin" value={fmt(todayRevenue - todayCogs)} sub={`${todayCount} orders today`} color="#3b82f6" info={{ title: "Today's Margin Breakdown", breakdown: [{ label: "Today's Revenue", value: todayRevenue, type: 'pos' }, { label: "Today's Item Costs", value: -todayCogs, type: 'neg' }], resultLabel: "Today's Gross Margin", finalValue: (todayRevenue - todayCogs) }} />
+        <StatCard title="Today's Margin" value={fmt(todayMargin)} sub={`${todayCount} orders today`} color="#3b82f6" info={{ title: "Today's Margin Breakdown", breakdown: [{ label: "Today's Revenue", value: todayRevenue, type: 'pos' }, { label: "Today's Item Costs", value: -todayCogs, type: 'neg' }], resultLabel: "Today's Gross Margin", finalValue: todayMargin }} />
         <StatCard title="Avg Order Value" value={fmt(avgOrderValue)} sub="Spending per visit" color="#f59e0b" info={{ title: 'Avg Order Calculation', breakdown: [{ label: 'Total Historical Revenue', value: totalRevenue, type: 'pos' }, { label: 'Total Historical Orders', value: totalOrders, type: 'div' }], resultLabel: 'Avg Value per Order', finalValue: avgOrderValue }} />
-        <StatCard title="Total Inventory" value={totalProducts} sub={`${lowStockItems} low stock items`} color="#a78bfa" />
+        <StatCard title="Total Inventory" value={fmt(totalInventoryValue)} sub={`${lowStockItems} low stock items`} color="#a78bfa" />
       </div>
 
       {showInfo && (

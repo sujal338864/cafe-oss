@@ -27,6 +27,31 @@ router.get('/dashboard', authenticate, asyncHandler(async (req: AuthRequest, res
 }));
 
 /**
+ * GET /api/analytics/mega-dashboard
+ * The "Nuclear Option" for performance. Returns EVERYTHING in one call.
+ */
+router.get('/dashboard-mega', authenticate, asyncHandler(async (req: AuthRequest, res) => {
+  const shopId = req.user!.shopId;
+  const cacheKey = `mega_dashboard:${shopId}`;
+
+  const cached = await getCache(cacheKey);
+  if (cached) return res.json(cached);
+
+  const { AnalyticsService } = await import('../services/analytics.service');
+  
+  // 30s timeout — never hang forever
+  const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Dashboard timeout after 30s')), 30000));
+  try {
+    const data = await Promise.race([AnalyticsService.getMegaDashboardData(shopId), timeout]);
+    await setCache(cacheKey, data, 10);
+    res.json(data);
+  } catch (err: any) {
+    console.error(`[MEGA-DASHBOARD] Error: ${err.message}`);
+    res.status(200).json({ stats: { totalRevenue: 0, totalOrders: 0, totalCustomers: 0, totalProducts: 0, lowStockItems: 0, avgOrderValue: 0, totalInventoryValue: 0, todayRevenue: 0, todayMargin: 0, todayOrdersCount: 0 }, recentOrders: { orders: [] }, profitList: { profitList: [] }, forecasting: { forecasting: [] }, heatmap: { heatmap: null }, financialSummary: { summary: null }, timestamp: new Date(), error: err.message });
+  }
+}));
+
+/**
  * GET /api/analytics/financial-summary
  * Returns the true P&L (Profit & Loss) after subtracting COGS and OpEx.
  */
