@@ -1,10 +1,15 @@
-'use client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import api from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 const fmt = (n: any) => 'Rs.' + Number(n || 0).toLocaleString('en-IN');
 const COLORS = ['#7c3aed','#2563eb','#059669','#d97706','#dc2626','#0891b2','#7c3aed','#db2777'];
+function optImg(url?: string, w = 120) {
+  if (!url) return '';
+  if (url.includes('cloudinary.com')) return url.replace('/upload/', `/upload/f_auto,q_auto,w_${w}/`);
+  return url;
+}
 
 function exportCSV(products: any[]) {
   const rows = [
@@ -24,12 +29,24 @@ function exportCSV(products: any[]) {
 
 export default function ProductsPage() {
   const { theme } = useTheme();
-  const [products,     setProducts]     = useState<any[]>([]);
-  const [categories,   setCategories]   = useState<any[]>([]);
+  const queryClient = useQueryClient();
+  
+  // Queries
+  const { data: productsData, isLoading: productsLoading } = useQuery({
+    queryKey: ['products'],
+    queryFn: () => api.get('/api/products?limit=100').then(r => r.data)
+  });
+  const { data: catsData } = useQuery({
+    queryKey: ['categories'],
+    queryFn: () => api.get('/api/categories').then(r => r.data)
+  });
+
+  const products = productsData?.products || [];
+  const categories = catsData?.categories || catsData || [];
+
   const [search,       setSearch]       = useState('');
   const [catFilter,    setCatFilter]    = useState('');
   const [stockFilter,  setStockFilter]  = useState('ALL');
-  const [loading,      setLoading]      = useState(true);
   const [showModal,    setShowModal]    = useState(false);
   const [editing,      setEditing]      = useState<any>(null);
   const [form,         setForm]         = useState({
@@ -40,24 +57,6 @@ export default function ProductsPage() {
   const [imagePreview, setImagePreview] = useState('');
   const [saving,       setSaving]       = useState(false);
   const [error,        setError]        = useState('');
-
-  useEffect(() => { load(); loadCats(); }, []);
-
-  const load = async () => {
-    setLoading(true); setError('');
-    try {
-      const { data } = await api.get('/api/products?limit=50');
-      setProducts(data.products || []);
-    } catch (e) { setError('Failed to load products. Backend may be warming up.'); }
-    finally { setLoading(false); }
-  };
-
-  const loadCats = async () => {
-    try {
-      const { data } = await api.get('/api/categories');
-      setCategories(data.categories || data || []);
-    } catch (e) { console.error(e); }
-  };
 
   const openAdd = () => {
     setEditing(null);
@@ -121,7 +120,8 @@ export default function ProductsPage() {
       };
       if (editing) await api.put(`/api/products/${editing.id}`, body);
       else         await api.post('/api/products', body);
-      setShowModal(false); load();
+      setShowModal(false);
+      queryClient.invalidateQueries({ queryKey: ['products'] });
     } catch (e: any) {
       setError(e.response?.data?.error || e.response?.data?.details?.[0]?.message || 'Save failed');
     } finally { setSaving(false); }
@@ -129,8 +129,10 @@ export default function ProductsPage() {
 
   const remove = async (id: string) => {
     if (!confirm('Delete this product?')) return;
-    try { await api.delete(`/api/products/${id}`); load(); }
-    catch (e: any) { alert(e.response?.data?.error || 'Cannot delete'); }
+    try { 
+      await api.delete(`/api/products/${id}`); 
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+    } catch (e: any) { alert(e.response?.data?.error || 'Cannot delete'); }
   };
 
   // Filters
@@ -215,7 +217,7 @@ export default function ProductsPage() {
       {/* Products table */}
       <div style={{ ...card, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
-          {loading ? (
+          {productsLoading ? (
             <div style={{ padding: 40, textAlign: 'center', color: theme.textFaint }}>
               <div>Loading products...</div>
               <div style={{ fontSize: 11, color: theme.textFaint, marginTop: 8 }}>If this takes long, the backend is warming up (Render free tier).</div>
@@ -223,7 +225,7 @@ export default function ProductsPage() {
           ) : error && products.length === 0 ? (
             <div style={{ padding: 40, textAlign: 'center' }}>
               <div style={{ fontSize: 14, color: '#ef4444', marginBottom: 12 }}>{error}</div>
-              <button onClick={load} style={{ background: '#7c3aed', color: 'white', border: 'none', padding: '8px 20px', borderRadius: 8, fontWeight: 700, cursor: 'pointer' }}>Retry</button>
+              <button onClick={() => queryClient.invalidateQueries({ queryKey: ['products'] })} style={{ background: '#7c3aed', color: 'white', border: 'none', padding: '8px 20px', borderRadius: 8, fontWeight: 700, cursor: 'pointer' }}>Retry</button>
             </div>
           ) : filtered.length === 0 ? (
             <div style={{ padding: 36, textAlign: 'center', color: theme.textFaint }}>
@@ -257,7 +259,7 @@ export default function ProductsPage() {
                       onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
                       <td style={{ padding: '10px 12px' }}>
                         {p.imageUrl
-                          ? <img src={p.imageUrl} alt="" style={{ width: 38, height: 38, borderRadius: 8, objectFit: 'cover' }} />
+                          ? <img src={optImg(p.imageUrl, 80)} alt="" style={{ width: 38, height: 38, borderRadius: 8, objectFit: 'cover' }} />
                           : <div style={{ width: 38, height: 38, borderRadius: 8, background: COLORS[idx % COLORS.length] + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 15, color: COLORS[idx % COLORS.length] }}>
                               {p.name[0].toUpperCase()}
                             </div>
@@ -277,7 +279,7 @@ export default function ProductsPage() {
                       <td style={{ padding: '10px 12px', fontSize: 13, color: theme.textMuted }}>{fmt(p.costPrice)}</td>
                       <td style={{ padding: '10px 12px', fontWeight: 700, fontSize: 13, color: theme.text }}>{fmt(p.sellingPrice)}</td>
                       <td style={{ padding: '10px 12px', fontSize: 12, color: Number(p.taxRate) > 0 ? '#f59e0b' : theme.textFaint }}>
-                        {Number(p.taxRate) > 0 ? `%` : '0%'}
+                        {Number(p.taxRate) > 0 ? `${p.taxRate}%` : '0%'}
                       </td>
                       <td style={{ padding: '10px 12px', fontWeight: 700, color: '#10b981' }}>{margin}%</td>
                       <td style={{ padding: '10px 12px', fontWeight: 700, color: isOut ? '#ef4444' : isLow ? '#f59e0b' : theme.text }}>

@@ -1,7 +1,7 @@
-'use client';
 import { useEffect, useState, useMemo } from 'react';
 import api from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 const fmt = (n: any) => 'Rs.' + Number(n || 0).toLocaleString('en-IN');
 const STC: any = { PAID:{bg:'rgba(16,185,129,.14)',color:'#10b981'}, PARTIAL:{bg:'rgba(245,158,11,.14)',color:'#f59e0b'}, UNPAID:{bg:'rgba(239,68,68,.14)',color:'#ef4444'} };
@@ -19,42 +19,34 @@ function exportCSV(orders: any[]) {
 
 export default function OrdersPage() {
   const { theme } = useTheme();
-  const [orders,   setOrders]   = useState<any[]>([]);
-  const [loading,  setLoading]  = useState(true);
+  const queryClient = useQueryClient();
+  const { data: orderData, isLoading: loading, error: queryError } = useQuery({
+    queryKey: ['orders'],
+    queryFn: () => api.get('/api/orders?limit=100').then(res => res.data.orders || res.data.data || (Array.isArray(res.data) ? res.data : [])),
+    staleTime: 60000, // 1 min
+  });
+  const orders = orderData || [];
+  const error = queryError ? 'Failed to load orders' : '';
+
   const [search,   setSearch]   = useState('');
   const [status,   setStatus]   = useState('ALL');
   const [method,   setMethod]   = useState('ALL');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo,   setDateTo]   = useState('');
   const [expanded, setExpanded] = useState<string|null>(null);
-  const [updating, setUpdating] = useState<string|null>(null);
 
-  const [error,    setError]    = useState('');
-
-  useEffect(() => { load(); }, []);
-
-  const load = async () => {
-    setLoading(true); setError('');
-    try {
-      const { data } = await api.get('/api/orders?limit=30');
-      setOrders(data.orders || data.data || (Array.isArray(data) ? data : []));
-    } catch { setError('Failed to load orders. Backend may be warming up.'); }
-    finally { setLoading(false); }
-  };
-
-  const markPaid = async (id: string) => {
-    setUpdating(id);
-    try {
-      await api.put(`/api/orders/${id}/payment`, { paymentStatus: 'PAID' });
-      setOrders(prev => prev.map(o => o.id === id ? { ...o, paymentStatus: 'PAID' } : o));
-      
+  const mutation = useMutation({
+    mutationFn: (id: string) => api.put(`/api/orders/${id}/payment`, { paymentStatus: 'PAID' }),
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
       // Auto-open invoice for printing
       const url = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000') + `/api/menu/order/${id}/invoice`;
       window.open(url, '_blank');
-    } catch (e: any) {
-      alert(e.response?.data?.error || 'Failed to update');
-    } finally { setUpdating(null); }
-  };
+    }
+  });
+
+  const markPaid = (id: string) => mutation.mutate(id);
+  const updating = mutation.isPending ? mutation.variables : null;
 
   const filtered = useMemo(() => orders.filter(o => {
     if (status !== 'ALL' && o.paymentStatus !== status) return false;
@@ -86,7 +78,7 @@ export default function OrdersPage() {
           <p style={{ fontSize:13, color:theme.textFaint, marginTop:3 }}>{filtered.length} orders{filtered.length!==orders.length?` (of ${orders.length})`:''}</p>
         </div>
         <div style={{ display:'flex', gap:8 }}>
-          <button onClick={load} style={{ background:theme.hover, border:'1px solid '+theme.border, color:theme.textMuted, padding:'9px 16px', borderRadius:10, fontWeight:600, fontSize:12, cursor:'pointer' }}>Refresh</button>
+          <button onClick={() => queryClient.invalidateQueries({ queryKey: ['orders'] })} style={{ background:theme.hover, border:'1px solid '+theme.border, color:theme.textMuted, padding:'9px 16px', borderRadius:10, fontWeight:600, fontSize:12, cursor:'pointer' }}>Refresh</button>
           <button onClick={() => exportCSV(filtered)} style={{ background:theme.hover, border:'1px solid '+theme.border, color:theme.textMuted, padding:'9px 16px', borderRadius:10, fontWeight:700, fontSize:12, cursor:'pointer' }}>Export CSV</button>
         </div>
       </div>
@@ -134,7 +126,7 @@ export default function OrdersPage() {
 
       <div style={{...card, overflow:'hidden'}}>
         {loading ? <div style={{padding:40,textAlign:'center',color:theme.textFaint}}><div>Loading orders...</div><div style={{fontSize:11,marginTop:8}}>If this takes long, the backend is warming up.</div></div>
-        : error && orders.length === 0 ? <div style={{padding:40,textAlign:'center'}}><div style={{fontSize:14,color:'#ef4444',marginBottom:12}}>{error}</div><button onClick={load} style={{background:'#7c3aed',color:'white',border:'none',padding:'8px 20px',borderRadius:8,fontWeight:700,cursor:'pointer'}}>Retry</button></div>
+        : error && orders.length === 0 ? <div style={{padding:40,textAlign:'center'}}><div style={{fontSize:14,color:'#ef4444',marginBottom:12}}>{error}</div><button onClick={() => queryClient.invalidateQueries({ queryKey: ['orders'] })} style={{background:'#7c3aed',color:'white',border:'none',padding:'8px 20px',borderRadius:8,fontWeight:700,cursor:'pointer'}}>Retry</button></div>
         : filtered.length===0 ? <div style={{padding:40,textAlign:'center',color:theme.textFaint}}>No orders match filters.</div>
         : (
           <table style={{width:'100%',borderCollapse:'collapse'}}>

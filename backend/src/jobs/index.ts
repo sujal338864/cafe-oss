@@ -4,6 +4,7 @@ import { whatsappProcessor } from './processors/whatsapp.processor';
 import { dashboardProcessor } from './processors/dashboard.processor';
 import { aiInsightsProcessor } from './processors/ai.processor';
 import { analyticsAggregationProcessor } from './processors/analytics.processor';
+import { logRedisError } from '../lib/redis';
 
 /**
  * Initialize all Background Workers on server boot
@@ -16,6 +17,7 @@ export const startWorkers = () => {
     connection: redisConnection,
     concurrency: Number(process.env.QUEUE_CONCURRENCY_WHATSAPP || 2)
   });
+  whatsappWorker.on('error', (err) => logRedisError('QueueWhatsApp', err));
 
   whatsappWorker.on('completed', (job) => {
     console.log(`[Queue] Job completed: ${job.name} (${job.id})`);
@@ -32,6 +34,7 @@ export const startWorkers = () => {
     connection: redisConnection,
     concurrency: Number(process.env.QUEUE_CONCURRENCY_DASHBOARD || 1)
   });
+  dashboardWorker.on('error', (err) => logRedisError('QueueDashboard', err));
 
   dashboardWorker.on('completed', (job) => {
     console.log(`[Queue] Dashboard Job completed for shop: ${job.data.shopId}`);
@@ -48,6 +51,7 @@ export const startWorkers = () => {
     connection: redisConnection,
     concurrency: Number(process.env.QUEUE_CONCURRENCY_AI || 1)
   });
+  aiWorker.on('error', (err) => logRedisError('QueueAI', err));
 
   aiWorker.on('completed', (job) => {
     console.log(`[Queue] AI Insight completed for shop: ${job.data.shopId}`);
@@ -64,12 +68,14 @@ export const startWorkers = () => {
     connection: redisConnection,
     concurrency: 1
   });
+  analyticsWorker.on('error', (err) => logRedisError('QueueAnalytics', err));
 
   // Schedule Cron Job (Runs every 1 hour)
   const analyticsQueue = new Queue('analytics_aggregate_queue', { 
     connection: redisConnection,
     defaultJobOptions: { removeOnComplete: true, attempts: 2 }
   });
+  analyticsQueue.on('error', (err) => logRedisError('QueueAnalyticsObj', err));
   analyticsQueue.add('periodic_agg', {}, {
     repeat: { every: 3600000 } // Every 1 hour in ms ⏰
   }).catch(e => console.error('[Queue] Failed to schedule analytics cron:', e));

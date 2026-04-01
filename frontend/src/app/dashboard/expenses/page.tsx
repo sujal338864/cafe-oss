@@ -1,7 +1,7 @@
-'use client';
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 const fmt = (n: any) => 'Rs.' + Number(n || 0).toLocaleString('en-IN');
 
@@ -19,58 +19,53 @@ const CATEGORY_OPTIONS = [
 
 export default function ExpensesPage() {
   const { theme } = useTheme();
-  const [expenses,  setExpenses]  = useState<any[]>([]);
-  const [loading,   setLoading]   = useState(true);
+  const queryClient = useQueryClient();
+  const { data: expData, isLoading: loading, error: queryError } = useQuery({
+    queryKey: ['expenses'],
+    queryFn: () => api.get('/api/expenses').then(res => res.data.expenses || res.data || []),
+    staleTime: 60000, 
+  });
+  const expenses = expData || [];
+
   const [showModal, setShowModal] = useState(false);
   const [form,      setForm]      = useState({
     category:    'OTHER',
     amount:      '',
     description: '',
-    date:        '',   // optional - backend defaults to now()
+    date:        '',   
   });
-  const [saving, setSaving] = useState(false);
-  const [error,  setError]  = useState('');
+  const [localError, setLocalError] = useState('');
 
-  useEffect(() => { load(); }, []);
-
-  const load = async () => {
-    try {
-      const { data } = await api.get('/api/expenses');
-      setExpenses(data.expenses || data || []);
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
-  };
-
-  const save = async () => {
-    if (!form.amount) { setError('Amount is required'); return; }
-    if (Number(form.amount) <= 0) { setError('Amount must be greater than 0'); return; }
-    setSaving(true); setError('');
-    try {
-      // Send EXACTLY what the backend schema expects:
-      // category (enum), amount (number), description (optional), date (optional ISO string)
-      const payload: any = {
-        category: form.category,
-        amount:   Number(form.amount),
-      };
-      if (form.description) payload.description = form.description;
-      if (form.date)        payload.date = new Date(form.date).toISOString();
-
-      await api.post('/api/expenses', payload);
+  const saveMutation = useMutation({
+    mutationFn: (payload: any) => api.post('/api/expenses', payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
       setShowModal(false);
       setForm({ category: 'OTHER', amount: '', description: '', date: '' });
-      load();
-    } catch (e: any) {
-      const msg = e.response?.data?.error || e.response?.data?.message;
-      // Show zod validation errors if present
-      const details = e.response?.data?.details;
-      setError(details ? JSON.stringify(details) : (msg || 'Failed to save'));
-    } finally { setSaving(false); }
+      setLocalError('');
+    }
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/api/expenses/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['expenses'] })
+  });
+
+  const saving = saveMutation.isPending;
+  const displayError = (queryError ? 'Failed to load' : '') || (saveMutation.error as any)?.response?.data?.error || localError;
+
+  const save = async () => {
+    if (!form.amount) { setLocalError('Amount is required'); return; }
+    if (Number(form.amount) <= 0) { setLocalError('Amount must be greater than 0'); return; }
+    const payload: any = { category: form.category, amount: Number(form.amount) };
+    if (form.description) payload.description = form.description;
+    if (form.date) payload.date = new Date(form.date).toISOString();
+    saveMutation.mutate(payload);
   };
 
   const del = async (id: string) => {
     if (!confirm('Delete this expense?')) return;
-    try { await api.delete(`/api/expenses/${id}`); load(); }
-    catch { alert('Failed to delete'); }
+    deleteMutation.mutate(id);
   };
 
   const total = expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
@@ -96,7 +91,7 @@ export default function ExpensesPage() {
             {expenses.length} records · Total: {fmt(total)}
           </p>
         </div>
-        <button onClick={() => { setShowModal(true); setError(''); }}
+        <button onClick={() => { setShowModal(true); setLocalError(''); }}
           style={{ background: 'linear-gradient(135deg,#7c3aed,#3b82f6)', border: 'none', color: 'white', padding: '10px 20px', borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
           + Add Expense
         </button>
@@ -171,8 +166,8 @@ export default function ExpensesPage() {
               <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', color: theme.textMuted, cursor: 'pointer', fontSize: 22, lineHeight: 1 }}>×</button>
             </div>
 
-            {error && (
-              <div style={{ background: 'rgba(239,68,68,0.1)', borderRadius: 8, padding: '10px 14px', color: '#ef4444', fontSize: 13, marginBottom: 14 }}>{error}</div>
+            {displayError && (
+              <div style={{ background: 'rgba(239,68,68,0.1)', borderRadius: 8, padding: '10px 14px', color: '#ef4444', fontSize: 13, marginBottom: 14 }}>{displayError}</div>
             )}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>

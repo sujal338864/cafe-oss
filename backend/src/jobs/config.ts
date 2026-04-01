@@ -2,26 +2,32 @@ import { RedisOptions } from 'ioredis';
 import { URL } from 'url';
 
 /**
- * Global Redis connection configuration for BullMQ
+ * Universal Redis connection configuration:
+ * 1. Supports local (host/port)
+ * 2. Supports Production REDIS_URL (rediss://, username, password)
  */
-const connectionOptions: RedisOptions = {
+let connectionOptions: RedisOptions = {
   host: process.env.REDIS_HOST || '127.0.0.1',
   port: parseInt(process.env.REDIS_PORT || '6379'),
   password: process.env.REDIS_PASSWORD || undefined,
   maxRetriesPerRequest: null, // Critical requirement for BullMQ
+  lazyConnect: true, 
+  retryStrategy: (times) => Math.min(times * 200, 3000), 
 };
 
-// Parse REDIS_URL on Production (Render) environments safely
 if (process.env.REDIS_URL) {
   try {
-    const parsed = new URL(process.env.REDIS_URL);
-    connectionOptions.host = parsed.hostname;
-    connectionOptions.port = parseInt(parsed.port || '6379');
-    if (parsed.password) {
-      connectionOptions.password = decodeURIComponent(parsed.password);
-    }
+    const url = new URL(process.env.REDIS_URL);
+    connectionOptions = {
+      ...connectionOptions,
+      host: url.hostname,
+      port: parseInt(url.port || '6379'),
+      username: url.username || undefined,
+      password: url.password ? decodeURIComponent(url.password) : undefined,
+      tls: url.protocol === 'rediss:' ? { rejectUnauthorized: false } : undefined,
+    };
   } catch (e) {
-    console.error('[Redis] Failed to parse REDIS_URL config:', e);
+    console.error('[Redis] Invalid REDIS_URL format:', e);
   }
 }
 

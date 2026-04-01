@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { AuthProvider } from '@/context/AuthContext';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { SocketProvider } from '@/context/SocketContext';
+import { QueryProvider } from '@/context/QueryContext';
 import './globals.css';
 export const metadata: Metadata = {
   title: 'Shop OS',
@@ -12,11 +13,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body style={{ margin:0, padding:0 }}>
-        <ThemeProvider>
-          <AuthProvider>
-            <SocketProvider>{children}</SocketProvider>
-          </AuthProvider>
-        </ThemeProvider>
+        <QueryProvider>
+          <ThemeProvider>
+            <AuthProvider>
+              <SocketProvider>{children}</SocketProvider>
+            </AuthProvider>
+          </ThemeProvider>
+        </QueryProvider>
       </body>
     </html>
   );

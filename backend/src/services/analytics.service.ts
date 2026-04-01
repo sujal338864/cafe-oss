@@ -38,7 +38,7 @@ export const AnalyticsService = {
       const [orders, expenses] = await Promise.all([
         prisma.order.findMany({
           where: { shopId, createdAt: { gte: startDate } },
-          include: { items: true },
+          select: { totalAmount: true, createdAt: true, items: { select: { costPrice: true, quantity: true } } },
           orderBy: { createdAt: 'asc' }
         }),
         prisma.expense.findMany({
@@ -182,7 +182,7 @@ export const AnalyticsService = {
         // 5. Today's orders for factual margin
         prisma.order.findMany({
           where: { shopId, createdAt: { gte: safeToday }, status: { not: 'CANCELLED' as any } },
-          include: { items: true }
+          select: { totalAmount: true, items: { select: { costPrice: true, quantity: true } } }
         }),
         // 6. Top Products
         prisma.orderItem.groupBy({
@@ -195,7 +195,7 @@ export const AnalyticsService = {
         // 7. Monthly Sales
         prisma.order.findMany({
           where: { shopId, createdAt: { gte: sixMonthsAgo }, status: { not: 'CANCELLED' as any } },
-          include: { items: true }
+          select: { totalAmount: true, createdAt: true, items: { select: { costPrice: true, quantity: true } } }
         }),
         // 8. Category Breakdown
         prisma.product.findMany({
@@ -322,7 +322,7 @@ export const AnalyticsService = {
       const [orders, expenses] = await Promise.all([
         prisma.order.findMany({
           where: { shopId, createdAt: { gte: startDate }, status: { not: 'CANCELLED' as any } },
-          include: { items: true }
+          select: { totalAmount: true, items: { select: { costPrice: true, quantity: true } } }
         }),
         prisma.expense.findMany({
           where: { shopId, date: { gte: startDate } }

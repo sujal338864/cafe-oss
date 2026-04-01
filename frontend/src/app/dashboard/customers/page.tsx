@@ -1,15 +1,23 @@
-'use client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import api from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 const fmt = (n: any) => 'Rs.' + Number(n || 0).toLocaleString('en-IN');
 
 export default function CustomersPage() {
   const { theme } = useTheme();
-  const [customers,  setCustomers]  = useState<any[]>([]);
-  const [loading,    setLoading]    = useState(true);
-  const [search,     setSearch]     = useState('');
+  const queryClient = useQueryClient();
+
+  // Queries
+  const { data: customersData, isLoading: loading } = useQuery({
+    queryKey: ['customers'],
+    queryFn: () => api.get('/api/customers').then(r => r.data)
+  });
+
+  const customers = customersData?.customers || customersData || [];
+
+  const [search,       setSearch]       = useState('');
   const [showModal,  setShowModal]  = useState(false);
   const [editing,    setEditing]    = useState<any>(null);
   const [form,       setForm]       = useState({ name: '', phone: '', email: '', address: '' });
@@ -20,16 +28,6 @@ export default function CustomersPage() {
   const [historyCustomer, setHistoryCustomer] = useState<any>(null);
   const [history,         setHistory]         = useState<any[]>([]);
   const [historyLoading,  setHistoryLoading]  = useState(false);
-
-  useEffect(() => { load(); }, []);
-
-  const load = async () => {
-    try {
-      const { data } = await api.get('/api/customers');
-      setCustomers(data.customers || data || []);
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
-  };
 
   const openAdd = () => {
     setEditing(null);
@@ -50,7 +48,7 @@ export default function CustomersPage() {
     setHistory([]);
     setHistoryLoading(true);
     try {
-      const { data } = await api.get(`/api/orders?customerId=${customer.id}&limit=50`);
+      const { data } = await api.get(`/api/analytics/recent?customerId=${customer.id}&limit=50`);
       setHistory(data.orders || data.data || (Array.isArray(data) ? data : []));
     } catch (e) { console.error(e); }
     finally { setHistoryLoading(false); }
@@ -71,7 +69,7 @@ export default function CustomersPage() {
         await api.post('/api/customers', payload);
       }
       setShowModal(false);
-      load();
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
     } catch (e: any) {
       setError(e.response?.data?.error || 'Failed to save');
     } finally { setSaving(false); }
@@ -79,7 +77,10 @@ export default function CustomersPage() {
 
   const del = async (id: string) => {
     if (!confirm('Delete this customer?')) return;
-    try { await api.delete(`/api/customers/${id}`); load(); }
+    try { 
+      await api.delete(`/api/customers/${id}`); 
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+    }
     catch (e: any) { alert(e.response?.data?.error || 'Failed to delete'); }
   };
 

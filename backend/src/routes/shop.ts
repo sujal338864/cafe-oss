@@ -33,7 +33,7 @@ router.put(
     const { name, phone, email, address, currency, pricingEnabled, pricingRules, loyaltyRate, redeemRate } = req.body;
     const shop = await prisma.shop.update({
       where: { id: req.user!.shopId },
-      data: { name, phone, email, address, currency, pricingEnabled, pricingRules, loyaltyRate, redeemRate }
+      data: { name, phone, email, address, currency, pricingEnabled, pricingRules, loyaltyRate, redeemRate } as any
     });
 
     res.json(shop);

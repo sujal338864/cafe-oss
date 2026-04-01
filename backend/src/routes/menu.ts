@@ -58,8 +58,8 @@ router.get('/', menuLimiter, asyncHandler(async (req, res) => {
     const [shop, categories, products] = await Promise.all([
       prisma.shop.findUnique({
         where: { id: shopId },
-        select: { name: true, logoUrl: true, currency: true, pricingEnabled: true, pricingRules: true, loyaltyRate: true, redeemRate: true }
-      }),
+        select: { name: true, logoUrl: true, pricingEnabled: true, pricingRules: true, loyaltyRate: true, redeemRate: true } as any
+      }) as any,
       prisma.category.findMany({
         where: { shopId },
         select: { id: true, name: true, color: true },
@@ -83,8 +83,8 @@ router.get('/', menuLimiter, asyncHandler(async (req, res) => {
       shop, 
       categories, 
       products: dynamicProducts,
-      loyaltyRate: shop.loyaltyRate,
-      redeemRate: shop.redeemRate
+      loyaltyRate: (shop as any).loyaltyRate,
+      redeemRate: (shop as any).redeemRate
     };
 
     // 3. Cache the result
@@ -121,7 +121,7 @@ router.get('/recommendations', menuLimiter, asyncHandler(async (req, res) => {
     const popularIds = popularData.map(d => d.productId);
 
     // 2. Fetch Products (prioritizing high-margin/popular)
-    const products = await prisma.product.findMany({
+      const products = await prisma.product.findMany({
       where: { 
         shopId, 
         isActive: true, 
@@ -130,7 +130,7 @@ router.get('/recommendations', menuLimiter, asyncHandler(async (req, res) => {
       },
       select: { 
         id: true, name: true, sellingPrice: true, costPrice: true, 
-        imageUrl: true, description: true, stock: true 
+        imageUrl: true
       },
       take: 20
     });
@@ -197,7 +197,10 @@ router.post('/order', orderLimiter, asyncHandler(async (req, res) => {
 
     // Pricing & Validation
     const productIds = items.map((i: any) => i.productId);
-    const dbProducts = await prisma.product.findMany({ where: { id: { in: productIds } } });
+    const dbProducts = await prisma.product.findMany({ 
+      where: { id: { in: productIds } },
+      select: { id: true, name: true, sellingPrice: true, costPrice: true, taxRate: true, categoryId: true }
+    });
 
     let subtotal = 0;
     // Apply Pricing Rules for backend Price protection
@@ -224,7 +227,7 @@ router.post('/order', orderLimiter, asyncHandler(async (req, res) => {
 
     const taxAmount = orderItems.reduce((s: number, i: any) => s + i.total * (Number(i.taxRate) / 100), 0);
     const totalAmount = subtotal + taxAmount;
-    const pointsDiscount = Number(redeemPoints) / (shop.redeemRate || 10);
+    const pointsDiscount = Number(redeemPoints) / ((shop as any).redeemRate || 10);
     const finalTotal = Math.max(0, totalAmount - pointsDiscount);
 
     // Meta Generation
@@ -250,8 +253,8 @@ router.post('/order', orderLimiter, asyncHandler(async (req, res) => {
         paidAmount: paymentStatus === 'PAID' ? finalTotal : 0,
         paymentMethod: pm,
         paymentStatus: paymentStatus as any,
-        status: 'PENDING' as any, // Public orders always start as PENDING in kitchen
-        notes: `[KITCHEN:PENDING] ${tableNumber ? 'Table: ' + tableNumber + '. ' : ''}${notes || ''}`,
+        status: 'PENDING' as any,
+        notes: (tableNumber ? 'Table: ' + tableNumber + '. ' : '') + (notes || ''),
         items: { create: orderItems },
       },
       include: { items: true },
@@ -376,7 +379,7 @@ async function updatePostOrderMetrics(
 
   // 2. Loyalty & WhatsApp
   if (customerId) {
-    const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { loyaltyRate: true, name: true } });
+    const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { loyaltyRate: true, name: true } as any }) as any;
     const pointsEarned = paymentStatus === 'PAID' ? Math.floor(finalTotal * loyaltyRate) : 0;
     await prisma.customer.update({
       where: { id: customerId },

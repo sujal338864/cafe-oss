@@ -54,7 +54,12 @@ router.get(
         where,
         skip,
         take: limitNum,
-        include: { category: true },
+        select: {
+          id: true, name: true, sku: true, barcode: true,
+          sellingPrice: true, costPrice: true, stock: true,
+          lowStockAlert: true, unit: true, imageUrl: true,
+          taxRate: true, category: { select: { id: true, name: true } }
+        },
         orderBy: { name: 'asc' }
       }),
       prisma.product.count({ where })

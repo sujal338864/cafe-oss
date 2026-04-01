@@ -1,69 +1,67 @@
-'use client';
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 const fmt = (n: any) => 'Rs.' + Number(n || 0).toLocaleString('en-IN');
 
 export default function SuppliersPage() {
   const { theme } = useTheme();
-  const [suppliers, setSuppliers] = useState<any[]>([]);
-  const [loading,   setLoading]   = useState(true);
+  const queryClient = useQueryClient();
+  const { data: supData, isLoading: loading, error: queryError } = useQuery({
+    queryKey: ['suppliers'],
+    queryFn: () => api.get('/api/suppliers').then(res => res.data.suppliers || res.data || []),
+    staleTime: 300000, // 5 min
+  });
+  const suppliers = supData || [];
+
   const [showModal, setShowModal] = useState(false);
   const [editing,   setEditing]   = useState<any>(null);
-  // ── EXACT fields the backend schema accepts ──────────────────────────────
-  // z.object({ name, phone?, email?, address?, gstNumber? })
-  // NO contactPerson field — that caused "Validation failed"
   const [form, setForm] = useState({ name: '', phone: '', email: '', address: '', gstNumber: '' });
-  const [saving, setSaving] = useState(false);
-  const [error,  setError]  = useState('');
+  const [localError, setLocalError] = useState('');
 
-  useEffect(() => { load(); }, []);
+  const saveMutation = useMutation({
+    mutationFn: (payload: any) => editing ? api.put(`/api/suppliers/${editing.id}`, payload) : api.post('/api/suppliers', payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      setShowModal(false);
+      setLocalError('');
+    }
+  });
 
-  const load = async () => {
-    try {
-      const { data } = await api.get('/api/suppliers');
-      setSuppliers(data.suppliers || data || []);
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
-  };
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/api/suppliers/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['suppliers'] })
+  });
+
+  const saving = saveMutation.isPending;
+  const displayError = (queryError ? 'Failed to load' : '') || (saveMutation.error as any)?.response?.data?.error || localError;
 
   const openAdd = () => {
     setEditing(null);
     setForm({ name: '', phone: '', email: '', address: '', gstNumber: '' });
-    setError(''); setShowModal(true);
+    setLocalError(''); setShowModal(true);
   };
 
   const openEdit = (s: any) => {
     setEditing(s);
     setForm({ name: s.name || '', phone: s.phone || '', email: s.email || '', address: s.address || '', gstNumber: s.gstNumber || '' });
-    setError(''); setShowModal(true);
+    setLocalError(''); setShowModal(true);
   };
 
   const save = async () => {
-    if (!form.name.trim()) { setError('Supplier name is required'); return; }
-    setSaving(true); setError('');
-    try {
-      // Only send non-empty optional fields
-      const payload: any = { name: form.name.trim() };
-      if (form.phone)     payload.phone     = form.phone;
-      if (form.email)     payload.email     = form.email;
-      if (form.address)   payload.address   = form.address;
-      if (form.gstNumber) payload.gstNumber = form.gstNumber;
-
-      if (editing) await api.put(`/api/suppliers/${editing.id}`, payload);
-      else         await api.post('/api/suppliers', payload);
-      setShowModal(false); load();
-    } catch (e: any) {
-      const detail = e.response?.data?.details?.[0]?.message;
-      setError(detail || e.response?.data?.error || 'Failed to save');
-    } finally { setSaving(false); }
+    if (!form.name.trim()) { setLocalError('Supplier name is required'); return; }
+    const payload: any = { name: form.name.trim() };
+    if (form.phone) payload.phone = form.phone;
+    if (form.email) payload.email = form.email;
+    if (form.address) payload.address = form.address;
+    if (form.gstNumber) payload.gstNumber = form.gstNumber;
+    saveMutation.mutate(payload);
   };
 
   const del = async (id: string) => {
     if (!confirm('Delete this supplier?')) return;
-    try { await api.delete(`/api/suppliers/${id}`); load(); }
-    catch (e: any) { alert(e.response?.data?.error || 'Failed to delete'); }
+    deleteMutation.mutate(id);
   };
 
   // ── All inputs use theme colours — no white/light overrides ─────────────
@@ -185,9 +183,9 @@ export default function SuppliersPage() {
                 style={{ background: 'none', border: 'none', color: theme.textMuted, cursor: 'pointer', fontSize: 22, lineHeight: 1 }}>×</button>
             </div>
 
-            {error && (
+            {displayError && (
               <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '10px 14px', color: '#ef4444', fontSize: 13, marginBottom: 14 }}>
-                {error}
+                {displayError}
               </div>
             )}
 

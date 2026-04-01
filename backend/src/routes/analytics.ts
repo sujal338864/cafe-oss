@@ -86,7 +86,10 @@ router.get('/recent', authenticate, asyncHandler(async (req: AuthRequest, res) =
     where: { shopId },
     take: 10,
     orderBy: { createdAt: 'desc' },
-    include: { customer: true, items: true }
+    select: {
+      id: true, invoiceNumber: true, totalAmount: true, paymentMethod: true, paymentStatus: true, createdAt: true,
+      customer: { select: { name: true } }
+    }
   });
   res.json({ orders });
 }));

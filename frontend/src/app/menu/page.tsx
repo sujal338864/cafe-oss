@@ -1,6 +1,7 @@
 'use client';
-import { useEffect, useState, Suspense, useRef, memo, useCallback } from 'react';
+import { useEffect, useState, Suspense, useRef, memo, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 type Product = { id: string; name: string; sellingPrice: number; description?: string; imageUrl?: string; categoryId?: string; stock: number; taxRate: number; originalPrice?: number; discountedPrice?: number; activeRule?: string | null; };
 type Category = { id: string; name: string; color?: string };
@@ -8,6 +9,14 @@ type CartItem = Product & { qty: number; note: string };
 
 const fmt = (n: number) => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+
+function optImg(url?: string, w = 400) {
+  if (!url) return '';
+  if (url.includes('cloudinary.com')) {
+    return url.replace('/upload/', `/upload/f_auto,q_auto,w_${w}/`);
+  }
+  return url;
+}
 
 async function get(path: string) {
   const r = await fetch(API + path);
@@ -52,7 +61,7 @@ const ProductItem = memo(function ProductItem({ p, inCart, onAdd, onInc, onDec }
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
         {p.imageUrl
-          ? <img src={p.imageUrl} alt="" width={64} height={64} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ? <img src={optImg(p.imageUrl, 128)} alt="" width={64} height={64} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           : <span style={{ fontSize: 22, fontWeight: 800, color: '#bbb' }}>{p.name[0]}</span>
         }
       </div>
@@ -113,7 +122,7 @@ const RecommendationRow = ({ items, onAdd }: { items: Product[], onAdd: (p: Prod
           }}>
             <div style={{ width: '100%', height: 80, borderRadius: 10, background: '#f8f8f8', marginBottom: 8, overflow: 'hidden' }}>
               {p.imageUrl ? (
-                <img src={p.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <img src={optImg(p.imageUrl, 280)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" />
               ) : (
                 <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 800, color: '#ddd' }}>{p.name[0]}</div>
               )}
@@ -156,9 +165,40 @@ function MenuContent() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const searchTimeout = useRef<NodeJS.Timeout>();
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [step, setStep] = useState<'menu' | 'cart' | 'info' | 'done'>('menu');
+  const queryClient = useQueryClient();
+
+  // 1. RECOMMENDATIONS
+  const { data: recData } = useQuery({
+    queryKey: ['menu_recommendations', shopId],
+    queryFn: () => get(`/api/menu/recommendations?shopId=${shopId}`).then(d => d.recommendations),
+    enabled: !!shopId && (step === 'cart' || step === 'info'),
+    staleTime: 300000 // 5 min
+  });
+  const recommendations = recData || [];
+
+  // 2. MAIN MENU DATA
+  const { data: menuData, isLoading: loading } = useQuery({
+    queryKey: ['menu_data', shopId],
+    queryFn: async () => {
+      const data = await get(`/api/menu?shopId=${shopId}`);
+      // Also cache to localStorage for SWR persistence
+      localStorage.setItem(`menu_cache_${shopId}`, JSON.stringify({ data, ts: Date.now() }));
+      return data;
+    },
+    enabled: !!shopId,
+    staleTime: 1800000, // 30 min
+    initialData: () => {
+       const cached = typeof window !== 'undefined' ? localStorage.getItem(`menu_cache_${shopId}`) : null;
+       if (cached) {
+         const { data, ts } = JSON.parse(cached);
+         if (Date.now() - ts < 3600000) return data; // 1 hour threshold for stale initial data
+       }
+       return undefined;
+    }
+  });
+
   const [shopName, setShopName] = useState('Our Menu');
   const [pricingEnabled, setPricingEnabled] = useState(false);
   const [activePromo, setActivePromo] = useState<string | null>(null);
@@ -172,25 +212,8 @@ function MenuContent() {
   const [noteFor, setNoteFor] = useState<string | null>(null);
   const [loyaltyPoints, setLoyaltyPoints] = useState(0);
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
-  const [recommendations, setRecommendations] = useState<Product[]>([]);
   const [loyaltyRate, setLoyaltyRate] = useState(0.1);
   const [redeemRate, setRedeemRate] = useState(10);
-
-  useEffect(() => {
-    if ((step === 'cart' || step === 'info') && shopId) {
-      const cartIds = cart.map(i => i.id).join(',');
-      get(`/api/menu/recommendations?shopId=${shopId}&cartItemIds=${cartIds}`)
-        .then(d => setRecommendations(d.recommendations || []))
-        .catch(() => { });
-    }
-  }, [step, shopId, cart.length]);
-
-  useEffect(() => {
-    const t = searchParams.get('table') || searchParams.get('tableNumber') || searchParams.get('t');
-    if (t) setTable(t);
-  }, [searchParams]);
-
-  useEffect(() => { if (shopId) load(); }, [shopId]);
 
   useEffect(() => {
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
@@ -206,17 +229,39 @@ function MenuContent() {
 
   useEffect(() => {
     if (step !== 'done' || !result?.id) return;
-    // Keep polling until order is COMPLETED and PAID
     const isDone = result.status === 'COMPLETED' && result.paymentStatus === 'PAID';
     if (isDone) return;
     const interval = setInterval(async () => {
       try {
         const d = await get(`/api/menu/order/${result.id}/status`);
-        setResult(r => r ? { ...r, paymentStatus: d.paymentStatus || r.paymentStatus, status: d.status || r.status } : r);
+        if (d.status === 'COMPLETED' && d.paymentStatus === 'PAID') {
+          setResult(r => r ? { ...r, paymentStatus: 'PAID', status: 'COMPLETED' } : r);
+          clearInterval(interval);
+        } else {
+          setResult(r => r ? { ...r, paymentStatus: d.paymentStatus || r.paymentStatus, status: d.status || r.status } : r);
+        }
       } catch { }
-    }, 15000);
+    }, 25000);
     return () => clearInterval(interval);
   }, [step, result?.id, result?.paymentStatus, result?.status]);
+
+  useEffect(() => {
+    if (menuData) {
+      setProducts((menuData.products || []).filter((x: Product) => x.stock > 0));
+      setAllCategories(menuData.categories || []);
+      setShopName(menuData.shop?.name || 'Our Menu');
+      setPricingEnabled(!!menuData.shop?.pricingEnabled);
+      if (menuData.loyaltyRate) setLoyaltyRate(menuData.loyaltyRate);
+      if (menuData.redeemRate) setRedeemRate(menuData.redeemRate);
+      const firstActive = (menuData.products || []).find((p: Product) => p.activeRule);
+      if (firstActive) setActivePromo(firstActive.activeRule);
+    }
+  }, [menuData]);
+
+  useEffect(() => {
+    const t = searchParams.get('table') || searchParams.get('tableNumber') || searchParams.get('t');
+    if (t) setTable(t);
+  }, [searchParams]);
 
   const lookupCustomer = async (digits: string) => {
     try {
@@ -224,23 +269,6 @@ function MenuContent() {
       if (data.loyaltyPoints) setLoyaltyPoints(data.loyaltyPoints);
       if (data.name && !name.trim()) setName(data.name);
     } catch { }
-  };
-
-  const load = async () => {
-    setError(false);
-    try {
-      const data = await get(`/api/menu?shopId=${shopId}`);
-      setProducts((data.products || []).filter((x: Product) => x.stock > 0));
-      setAllCategories(data.categories || []);
-      setShopName(data.shop?.name || 'Our Menu');
-      setPricingEnabled(!!data.shop?.pricingEnabled);
-      if (data.loyaltyRate) setLoyaltyRate(data.loyaltyRate);
-      if (data.redeemRate) setRedeemRate(data.redeemRate);
-      // Check if any product has an active rule to show the banner
-      const firstActive = (data.products || []).find((p: Product) => p.activeRule);
-      if (firstActive) setActivePromo(firstActive.activeRule);
-    } catch { setError(true); }
-    finally { setLoading(false); }
   };
 
   const addToCart = useCallback((p: Product) => setCart(c => {
@@ -260,10 +288,10 @@ function MenuContent() {
   const finalTotal = Math.max(0, total - pointsDiscount);
   const pointsEarned = Math.floor(finalTotal * loyaltyRate);
 
-  const cats = ['All', ...allCategories.map(c => c.name)];
-  const catMap = Object.fromEntries(allCategories.map(c => [c.id, c.name]));
+  const cats = useMemo(() => ['All', ...allCategories.map(c => c.name)], [allCategories]);
+  const catMap = useMemo(() => Object.fromEntries(allCategories.map(c => [c.id, c.name])), [allCategories]);
   const count = cart.reduce((s, i) => s + i.qty, 0);
-  const filtered = products.filter(p => (cat === 'All' || catMap[p.categoryId || ''] === cat) && p.name.toLowerCase().includes(debouncedSearch.toLowerCase()));
+  const filtered = useMemo(() => products.filter(p => (cat === 'All' || catMap[p.categoryId || ''] === cat) && p.name.toLowerCase().includes(debouncedSearch.toLowerCase())), [products, cat, catMap, debouncedSearch]);
 
   // Shared styles
   const inp: any = { background: '#fff', border: '1.5px solid #e5e5e5', borderRadius: 12, padding: '13px 14px', color: '#1a1a1a', fontSize: 15, width: '100%', boxSizing: 'border-box', transition: 'border-color 0.2s' };
@@ -599,7 +627,7 @@ function MenuContent() {
           <div style={{ textAlign: 'center', padding: '60px 20px' }}>
             <div style={{ fontSize: 36, marginBottom: 12 }}>😕</div>
             <div style={{ fontWeight: 600, fontSize: 16, color: '#333', marginBottom: 8 }}>Something went wrong</div>
-            <button onClick={load} style={{ background: '#111', border: 'none', color: '#fff', padding: '10px 24px', borderRadius: 10, fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>Retry</button>
+            <button onClick={() => queryClient.invalidateQueries({ queryKey: ['menu_data'] })} style={{ background: '#111', border: 'none', color: '#fff', padding: '10px 24px', borderRadius: 10, fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>Retry</button>
           </div>
         ) : filtered.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px 20px', color: '#999' }}>

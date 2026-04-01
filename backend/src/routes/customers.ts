@@ -41,6 +41,10 @@ router.get(
         where,
         skip,
         take: limitNum,
+        select: {
+          id: true, name: true, phone: true, email: true,
+          totalPurchases: true, createdAt: true
+        },
         orderBy: { createdAt: 'desc' }
       }),
       prisma.customer.count({ where })

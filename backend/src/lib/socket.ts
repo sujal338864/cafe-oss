@@ -2,12 +2,22 @@ import { Server } from 'socket.io';
 import { Server as HttpServer } from 'http';
 import { createAdapter } from '@socket.io/redis-adapter';
 import Redis from 'ioredis';
+import { redisConnection } from '../jobs/config';
+import { logRedisError } from './redis';
 
 let io: Server | null = null;
 
 export const initSocket = (server: HttpServer) => {
-  const pubClient = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
-  const subClient = pubClient.duplicate();
+  const pubClient = new Redis(redisConnection);
+  const subClient = new Redis(redisConnection);
+
+  // CRITICAL: IOSET/BullMQ/Redis-Adapter MUST have error handlers to prevent process crash
+  pubClient.on('error', (err) => logRedisError('SocketPub', err));
+  subClient.on('error', (err) => logRedisError('SocketSub', err));
+
+  // Connect manually after handlers are ready
+  pubClient.connect().catch(() => {});
+  subClient.connect().catch(() => {});
 
   io = new Server(server, {
     cors: {

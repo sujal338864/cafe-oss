@@ -34,7 +34,7 @@ router.post(
   asyncHandler(async (req: AuthRequest, res) => {
     const { customerId, items, discountAmount = 0, redeemPoints = 0, paymentMethod, paymentStatus, notes } = req.body;
 
-    const shop = await prisma.shop.findUnique({ where: { id: req.user!.shopId }, select: { loyaltyRate: true, redeemRate: true } });
+    const shop = await prisma.shop.findUnique({ where: { id: req.user!.shopId }, select: { loyaltyRate: true, redeemRate: true } as any }) as any;
     const loyaltyRate = shop?.loyaltyRate || 0.1;
     const redeemRate = shop?.redeemRate || 10;
 
@@ -68,7 +68,7 @@ router.post(
           paymentMethod,
           paymentStatus,
           status: 'COMPLETED',
-          notes: `[KITCHEN:PENDING] ` + (notes || ''),
+          notes: notes || '',
           items: {
             create: items.map((item: any) => ({
               productId: item.productId,
@@ -178,7 +178,7 @@ router.get(
       select: {
         id: true, invoiceNumber: true,
         totalAmount: true, createdAt: true, paymentMethod: true,
-        paymentStatus: true, notes: true,
+        paymentStatus: true, notes: true, status: true,
         customer: { select: { name: true, phone: true } },
         items: { select: { name: true, quantity: true } }
       },
@@ -186,15 +186,13 @@ router.get(
       take: 50
     });
 
-    // 2. Extract specific Kitchen status from notes string
-    const orders = dbOrders.map(o => {
-      const match = o.notes?.match(/\[KITCHEN:(PENDING|PREPARING|READY)\]/);
-      return {
-        ...o,
-        status: match ? match[1] : 'COMPLETED',
-        notes: o.notes?.replace(/\[KITCHEN:[A-Z]+\]\s*/, '')
-      };
-    }).filter(o => o.status !== 'COMPLETED');
+    // 2. Map orders for frontend consistency
+    const orders = dbOrders.map(o => ({
+      ...o,
+      status: o.status // Now using native OrderStatus enum
+    })).filter(o => o.status !== 'COMPLETED' && o.status !== 'CANCELLED' && o.status !== 'REFUNDED');
+
+    res.json({ orders });
 
     res.json({ orders });
   })
@@ -220,7 +218,12 @@ router.get(
     const [orders, total] = await Promise.all([
       prisma.order.findMany({
         where, skip, take: limitNum,
-        include: { customer: true, items: true, user: { select: { name: true } } },
+        select: {
+          id: true, invoiceNumber: true, totalAmount: true, paymentMethod: true, paymentStatus: true, 
+          status: true, createdAt: true,
+          customer: { select: { id: true, name: true } },
+          user: { select: { name: true } }
+        },
         orderBy: { createdAt: 'desc' }
       }),
       prisma.order.count({ where })
@@ -303,7 +306,10 @@ router.put(
 
     // When marking PAID, award loyalty points + send WhatsApp
     if (paymentStatus === 'PAID' && order.paymentStatus !== 'PAID') {
-      const shop = await prisma.shop.findUnique({ where: { id: req.user!.shopId }, select: { name: true, loyaltyRate: true, redeemRate: true } });
+      const shop = await prisma.shop.findUnique({ 
+        where: { id: req.user!.shopId }, 
+        select: { name: true, loyaltyRate: true, redeemRate: true } as any 
+      }) as any;
       const loyaltyRate = shop?.loyaltyRate || 0.1;
 
       try {
@@ -358,23 +364,13 @@ router.put(
     });
     if (!order) return res.status(404).json({ error: 'Order not found' });
 
-    let rawNotes = order.notes || '';
-    rawNotes = rawNotes.replace(/\[KITCHEN:[A-Z]+\]\s*/, ''); // strip old
-    let newNotes = rawNotes;
-    if (status === 'PENDING' || status === 'PREPARING' || status === 'READY') {
-      newNotes = `[KITCHEN:${status}] ${rawNotes}`;
-    }
-
     const updated = await prisma.order.update({
       where: { id: req.params.id },
-      data: { 
-        status: (status === 'COMPLETED' || status === 'CANCELLED') ? status as any : 'COMPLETED',
-        notes: newNotes 
-      },
+      data: { status: status as any },
       include: { items: true, customer: true }
     });
 
-    const parsedOrder = { ...updated, status, notes: rawNotes };
+    const parsedOrder = updated;
     try { emitToShop(req.user!.shopId, 'ORDER_UPDATED', parsedOrder); } catch {}
     res.json(parsedOrder);
   })
@@ -392,7 +388,7 @@ router.post(
     if (!order) return res.status(404).json({ error: 'Order not found' });
     if (!order.customer?.phone) return res.status(400).json({ error: 'Customer has no phone number' });
 
-    const shop = await prisma.shop.findUnique({ where: { id: req.user!.shopId }, select: { name: true, loyaltyRate: true } });
+    const shop = await prisma.shop.findUnique({ where: { id: req.user!.shopId }, select: { name: true, loyaltyRate: true } as any }) as any;
     const loyaltyRate = shop?.loyaltyRate || 0.1;
     const customer = order.customerId ? (await prisma.customer.findUnique({ where: { id: order.customerId } })) as any : null;
 

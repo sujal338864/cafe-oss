@@ -1,7 +1,7 @@
-'use client';
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 const PRESET_COLORS = [
   '#7c3aed','#3b82f6','#10b981','#f59e0b','#ef4444',
@@ -10,59 +10,57 @@ const PRESET_COLORS = [
 
 export default function CategoriesPage() {
   const { theme } = useTheme();
-  const [categories, setCategories] = useState<any[]>([]);
-  const [loading,    setLoading]    = useState(true);
+  const queryClient = useQueryClient();
+  const { data: catData, isLoading: loading, error: queryError } = useQuery({
+    queryKey: ['categories'],
+    queryFn: () => api.get('/api/categories').then(res => res.data.categories || []),
+    staleTime: 300000, // 5 min
+  });
+  const categories = catData || [];
+
   const [showModal,  setShowModal]  = useState(false);
   const [editing,    setEditing]    = useState<any>(null);
   const [form,       setForm]       = useState({ name: '', color: '#7c3aed' });
-  const [saving,     setSaving]     = useState(false);
-  const [error,      setError]      = useState('');
+  const [localError, setLocalError] = useState('');
 
-  useEffect(() => { load(); }, []);
+  const saveMutation = useMutation({
+    mutationFn: (payload: any) => editing ? api.put(`/api/categories/${editing.id}`, payload) : api.post('/api/categories', payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      setShowModal(false);
+    }
+  });
 
-  const load = async () => {
-    setLoading(true); setError('');
-    try {
-      const { data } = await api.get('/api/categories');
-      setCategories(data.categories || []);
-    } catch (e) { setError('Failed to load categories. Backend may be warming up.'); }
-    finally { setLoading(false); }
-  };
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/api/categories/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['categories'] })
+  });
+
+  const saving = saveMutation.isPending;
+  const displayError = (queryError ? 'Failed to load' : '') || (saveMutation.error as any)?.response?.data?.error || localError;
 
   const openAdd = () => {
     setEditing(null);
     setForm({ name: '', color: '#7c3aed' });
-    setError('');
+    setLocalError('');
     setShowModal(true);
   };
 
   const openEdit = (cat: any) => {
     setEditing(cat);
     setForm({ name: cat.name, color: cat.color || '#7c3aed' });
-    setError('');
+    setLocalError('');
     setShowModal(true);
   };
 
   const save = async () => {
-    if (!form.name.trim()) { setError('Category name is required'); return; }
-    setSaving(true); setError('');
-    try {
-      if (editing) {
-        await api.put(`/api/categories/${editing.id}`, form);
-      } else {
-        await api.post('/api/categories', form);
-      }
-      setShowModal(false);
-      load();
-    } catch (e: any) {
-      setError(e.response?.data?.error || 'Failed to save');
-    } finally { setSaving(false); }
+    if (!form.name.trim()) { setLocalError('Category name is required'); return; }
+    saveMutation.mutate(form);
   };
 
   const del = async (id: string) => {
     if (!confirm('Delete this category? Products in this category will become uncategorised.')) return;
-    try { await api.delete(`/api/categories/${id}`); load(); }
-    catch (e: any) { alert(e.response?.data?.error || 'Failed to delete'); }
+    deleteMutation.mutate(id);
   };
 
   const inp: React.CSSProperties = {
@@ -100,10 +98,10 @@ export default function CategoriesPage() {
           <div>Loading categories...</div>
           <div style={{ fontSize: 11, color: theme.textFaint, marginTop: 8 }}>If this takes long, the backend is warming up.</div>
         </div>
-      ) : error && categories.length === 0 ? (
+      ) : displayError && categories.length === 0 ? (
         <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, padding: 40, textAlign: 'center' }}>
-          <div style={{ fontSize: 14, color: '#ef4444', marginBottom: 12 }}>{error}</div>
-          <button onClick={load} style={{ background: '#7c3aed', color: 'white', border: 'none', padding: '8px 20px', borderRadius: 8, fontWeight: 700, cursor: 'pointer' }}>Retry</button>
+          <div style={{ fontSize: 14, color: '#ef4444', marginBottom: 12 }}>{displayError}</div>
+          <button onClick={() => queryClient.invalidateQueries({ queryKey: ['categories'] })} style={{ background: '#7c3aed', color: 'white', border: 'none', padding: '8px 20px', borderRadius: 8, fontWeight: 700, cursor: 'pointer' }}>Retry</button>
         </div>
       ) : categories.length === 0 ? (
         <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, padding: 60, textAlign: 'center' }}>
@@ -229,7 +227,7 @@ export default function CategoriesPage() {
               <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', color: theme.textMuted, cursor: 'pointer', fontSize: 22, lineHeight: 1 }}>×</button>
             </div>
 
-            {error && <div style={{ background: 'rgba(239,68,68,0.1)', borderRadius: 8, padding: '10px 14px', color: '#ef4444', fontSize: 13, marginBottom: 14 }}>{error}</div>}
+            {displayError && <div style={{ background: 'rgba(239,68,68,0.1)', borderRadius: 8, padding: '10px 14px', color: '#ef4444', fontSize: 13, marginBottom: 14 }}>{displayError}</div>}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div>

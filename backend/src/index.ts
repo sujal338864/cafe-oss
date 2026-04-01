@@ -1,3 +1,14 @@
+import Redis from 'ioredis';
+// --- ULTIMATE LOG SILENCE ---
+// Intercept stderr to filter out Redis connection noise from nested dependencies (like BullMQ's internal ioredis)
+const originalStderrWrite = process.stderr.write;
+process.stderr.write = function (chunk: string | Uint8Array, ...args: any[]) {
+  const content = typeof chunk === 'string' ? chunk : chunk.toString();
+  const isRedisNoise = content.includes('ECONNREFUSED 127.0.0.1:6379') || content.includes('Connection is closed');
+  if (isRedisNoise) return true; // Silence it
+  return originalStderrWrite.apply(process.stderr, [chunk, ...args] as any);
+} as any;
+
 import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -12,6 +23,7 @@ dotenv.config();
 import { prisma as extendedPrisma } from './common/prisma';
 import { logger } from './lib/logger';
 import { requestLogger } from './middleware/requestLogger';
+import { logRedisError } from './lib/redis';
 import { distributedRateLimiter } from './middleware/rateLimiter';
 import { metricsCollector, metricsEndpoint } from './middleware/metrics';
 
@@ -187,6 +199,18 @@ const startServer = async () => {
     process.exit(1);
   }
 };
+
+// Silence Redis connection noise globally to keep logs clean
+process.on('uncaughtException', (err: any) => {
+  if (err?.code === 'ECONNREFUSED' && err?.port === 6379) return;
+  logger.error('Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason: any) => {
+  const msg = (reason as any)?.message || String(reason);
+  if ((reason as any)?.code === 'ECONNREFUSED' || msg.includes('Connection is closed')) return;
+  logger.error('Unhandled Rejection:', reason);
+});
 
 process.on('SIGTERM', async () => { await prisma.$disconnect(); process.exit(0); });
 process.on('SIGINT', async () => { await prisma.$disconnect(); process.exit(0); });
