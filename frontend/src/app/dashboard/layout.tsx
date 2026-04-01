@@ -1,5 +1,6 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -28,56 +29,51 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { user, logout } = useAuth();
   const { theme, isDark, toggleTheme } = useTheme();
   const { socket } = useSocket();
+  const queryClient = useQueryClient();
 
-  // Low-stock badge
-  const [lowStock,      setLowStock]      = useState(0);
-  const [notifications, setNotifications] = useState<any[]>([]);
-  const [showNotifs,    setShowNotifs]    = useState(false);
-  const [unreadCount,   setUnreadCount]   = useState(0);
-  const [shopName,      setShopName]      = useState('My Shop');
+  const [mounted, setMounted] = useState(false);
+  const [showNotifs, setShowNotifs] = useState(false);
 
-  const fetchLowStock = useCallback(async () => {
-    try {
-      const { data } = await api.get('/api/analytics/dashboard');
-      setLowStock(Number(data.lowStockItems || 0));
-    } catch {}
-  }, []);
+  // Queries
+  const { data: dashboardData } = useQuery({ 
+    queryKey: ['dashboard_stats'], 
+    queryFn: () => api.get('/api/analytics/dashboard').then(r => r.data) 
+  });
+  const { data: notifData } = useQuery({ 
+    queryKey: ['notifications'], 
+    queryFn: () => api.get('/api/notifications?limit=20').then(r => r.data) 
+  });
 
-  const fetchNotifications = useCallback(async () => {
-    try {
-      const { data } = await api.get('/api/notifications?limit=20');
-      const notifs = data.notifications || [];
-      setNotifications(notifs);
-      setUnreadCount(notifs.filter((n: any) => !n.isRead).length);
-    } catch {}
-  }, []);
+  const lowStock = Number(dashboardData?.lowStockItems || 0);
+  const notifications = notifData?.notifications || [];
+  const unreadCount = notifications.filter((n: any) => !n.isRead).length;
 
-  // Fetch ONCE on mount — then rely on WebSocket for instant updates (saves ~2GB/month)
-  useEffect(() => {
-    fetchLowStock();
-    fetchNotifications();
-  }, [fetchLowStock, fetchNotifications]);
+  useEffect(() => { setMounted(true); }, []);
 
-  // WebSocket: instant push updates instead of polling (FASTER + zero egress)
+  // WebSocket: Invalidate queries instead of manual fetch
   useEffect(() => {
     if (!socket) return;
-    const refresh = () => { fetchLowStock(); fetchNotifications(); };
+    const refresh = () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard_stats'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    };
     socket.on('ORDER_CREATED', refresh);
     socket.on('ORDER_UPDATED', refresh);
-    socket.on('NOTIFICATION', fetchNotifications);
+    socket.on('NOTIFICATION', () => queryClient.invalidateQueries({ queryKey: ['notifications'] }));
     return () => {
       socket.off('ORDER_CREATED', refresh);
       socket.off('ORDER_UPDATED', refresh);
-      socket.off('NOTIFICATION', fetchNotifications);
+      socket.off('NOTIFICATION', refresh);
     };
-  }, [socket, fetchLowStock, fetchNotifications]);
+  }, [socket, queryClient]);
 
   const markAllRead = async () => {
     try {
       await api.put('/api/notifications/read-all');
-      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-      setUnreadCount(0);
-    } catch {}
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    } catch (e) {
+      console.error('[Layout] markAllRead failed:', e);
+    }
   };
 
   const totalBadge = unreadCount + (lowStock > 0 ? 1 : 0);

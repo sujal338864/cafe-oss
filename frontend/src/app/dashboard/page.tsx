@@ -43,7 +43,12 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (socket) {
-      const handleEvent = () => queryClient.invalidateQueries();
+      const handleEvent = () => {
+        // Only invalidate specific dashboard keys, NOT everything (prevents loops)
+        queryClient.invalidateQueries({ queryKey: ['dashboard_stats'] });
+        queryClient.invalidateQueries({ queryKey: ['recent_orders'] });
+        queryClient.invalidateQueries({ queryKey: ['financial_summary'] });
+      };
       socket.on('ORDER_CREATED', handleEvent);
       socket.on('ORDER_UPDATED', handleEvent);
       socket.on('ORDER_CANCELLED', handleEvent);
@@ -63,6 +68,9 @@ export default function DashboardPage() {
   const financialSummary = financialData?.summary || null;
   const aiInsight = aiData?.insight || '';
 
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
   const totalRevenue   = Number(stats?.totalRevenue   ?? 0);
   const totalOrders    = Number(stats?.totalOrders    ?? 0);
   const totalCustomers = Number(stats?.totalCustomers ?? 0);
@@ -72,6 +80,8 @@ export default function DashboardPage() {
   const todayRevenue = Number(stats?.todayRevenue ?? 0);
   const todayCogs    = Number(stats?.todayCogs ?? 0);
   const todayCount   = Number(stats?.todayOrdersCount ?? 0);
+
+  if (!mounted) return null;
 
   const h = new Date().getHours();
   const greeting = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';

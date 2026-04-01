@@ -167,7 +167,8 @@ export const AnalyticsService = {
         todayOrdersData,
         topProductsData,
         monthlySalesData,
-        categoriesData
+        categoriesData,
+        inventoryValueResult
       ] = await Promise.all([
         // 1. Revenue & Orders (Historical total)
         prisma.order.aggregate({
@@ -207,8 +208,19 @@ export const AnalyticsService = {
               select: { total: true }
             }
           }
+        }),
+        // 9. Total Inventory Value (Current stock * Cost Price)
+        prisma.product.aggregate({
+          where: { shopId },
+          _sum: { stock: true }
         })
       ]);
+
+      const productsWithPrices = await prisma.product.findMany({
+        where: { shopId },
+        select: { stock: true, costPrice: true }
+      });
+      const totalInventoryValue = productsWithPrices.reduce((sum, p) => sum + (p.stock * Number(p.costPrice || 0)), 0);
 
       let todayRevenue = 0;
       let todayCogs = 0;
@@ -218,6 +230,8 @@ export const AnalyticsService = {
           todayCogs += Number(i.costPrice || 0) * i.quantity;
         });
       });
+
+      const todayMargin = todayRevenue - todayCogs;
 
       // Format Monthly Sales WITH COGS
       const monthlyMap: Record<string, { revenue: number, orders: number, cogs: number }> = {};
@@ -234,8 +248,8 @@ export const AnalyticsService = {
         month, ...data, profit: data.revenue - data.cogs
       }));
 
-      const totalRevenue = Number(revenueResult._sum.totalAmount || 0);
-      const avgOrderValue = totalOrders > 0 ? Math.round((totalRevenue / totalOrders) * 100) / 100 : 0;
+      const totalRevenueValue = Number(revenueResult._sum.totalAmount || 0);
+      const avgOrderValue = totalOrders > 0 ? Math.round((totalRevenueValue / totalOrders) * 100) / 100 : 0;
 
       // 1. Format Top Products
       const topProducts = topProductsData.map(p => ({
@@ -256,13 +270,15 @@ export const AnalyticsService = {
       }));
 
       return {
-        totalRevenue,
+        totalRevenue: totalRevenueValue,
         totalOrders,
         totalCustomers,
         totalProducts,
         avgOrderValue,
         todayRevenue,
         todayCogs,
+        todayMargin,
+        totalInventoryValue,
         todayOrdersCount: todayOrdersData.length,
         lowStockItems,
         topProducts,
@@ -306,7 +322,13 @@ export const AnalyticsService = {
       return heatmap;
     } catch (error: any) {
       logger.error(`[ANALYTICS] Peak hour calculation failed: ${error.message}`);
-      throw error;
+      // Return empty heatmap as fail-safe
+      const heatmap: Record<number, Record<number, number>> = {};
+      for (let d = 0; d < 7; d++) {
+        heatmap[d] = {};
+        for (let h = 0; h < 24; h++) heatmap[d][h] = 0;
+      }
+      return heatmap;
     }
   },
 
@@ -358,7 +380,11 @@ export const AnalyticsService = {
       };
     } catch (error: any) {
       logger.error(`[ANALYTICS] Financial summary failed: ${error.message}`);
-      throw error;
+      return {
+        totalRevenue: 0, totalCOGS: 0, totalOpEx: 0,
+        grossProfit: 0, netProfit: 0, marginPercent: 0,
+        daysAnalyzed: days
+      };
     }
   }
 };
