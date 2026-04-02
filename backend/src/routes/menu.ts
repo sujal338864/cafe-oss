@@ -3,7 +3,7 @@ import { prisma } from '../index';
 import { asyncHandler } from '../middleware/auth';
 import { PaymentMethod } from '@prisma/client';
 import { sendWhatsAppBill } from '../lib/whatsapp';
-import { getCache, setCache } from '../common/cache';
+import { getCache, setCache, deleteCache } from '../common/cache';
 import { emitToShop } from '../lib/socket';
 import { logger } from '../lib/logger';
 import { generateInvoicePDF } from '../lib/invoice';
@@ -40,18 +40,26 @@ const router = Router();
  * Implements a "Double-Layer" cache: Redis (5m) and Browser Cache (1m).
  */
 router.get('/', menuLimiter, asyncHandler(async (req, res) => {
-  const { shopId } = req.query;
+  const { shopId, fresh } = req.query;
   if (!shopId || typeof shopId !== 'string') return res.status(400).json({ error: 'shopId query is required' });
 
   const cacheKey = `menu:${shopId}`;
 
+  // If fresh=true, delete stale cache first
+  if (fresh === 'true') {
+    await deleteCache(cacheKey);
+    logger.info(`[MENU] Cache cleared for shop ${shopId}`);
+  }
+
   try {
-    // 1. Redis-first: try cache
-    const cached = await getCache<any>(cacheKey);
-    if (cached) {
-      res.set('X-Cache', 'HIT');
-      res.set('Cache-Control', 'public, max-age=60, s-maxage=300');
-      return res.json(cached);
+    // 1. Redis-first: try cache (skip if fresh=true)
+    if (fresh !== 'true') {
+      const cached = await getCache<any>(cacheKey);
+      if (cached) {
+        res.set('X-Cache', 'HIT');
+        res.set('Cache-Control', 'public, max-age=60, s-maxage=300');
+        return res.json(cached);
+      }
     }
 
     // 2. DB fallback: parallel queries for performance
@@ -66,7 +74,7 @@ router.get('/', menuLimiter, asyncHandler(async (req, res) => {
         orderBy: { name: 'asc' }
       }),
       prisma.product.findMany({
-        where: { shopId, isActive: true, stock: { gt: 0 } },
+        where: { shopId, isActive: true },
         select: {
           id: true, name: true, sellingPrice: true, stock: true,
           imageUrl: true, description: true, taxRate: true, categoryId: true
@@ -76,6 +84,8 @@ router.get('/', menuLimiter, asyncHandler(async (req, res) => {
     ]);
 
     if (!shop) return res.status(404).json({ error: 'Shop not found' });
+
+    logger.info(`[MENU] Loaded ${products.length} products for shop "${shop.name}"`);
 
     // 2.5 Apply Dynamic Pricing Rules
     const dynamicProducts = applyPricingRules(products, shop);
@@ -125,12 +135,11 @@ router.get('/recommendations', menuLimiter, asyncHandler(async (req, res) => {
       where: { 
         shopId, 
         isActive: true, 
-        stock: { gt: 0 },
         id: { notIn: ignoreIds }
       },
       select: { 
         id: true, name: true, sellingPrice: true, costPrice: true, 
-        imageUrl: true
+        imageUrl: true, taxRate: true, stock: true, description: true, categoryId: true
       },
       take: 20
     });
@@ -280,6 +289,30 @@ router.post('/order', orderLimiter, asyncHandler(async (req, res) => {
   } catch (error: any) {
     logger.error(`[MENU] Order placement failed: ${error.message}`);
     return res.status(400).json({ error: error.message });
+  }
+}));
+
+/**
+ * GET /api/menu/customer
+ * Endpoint for looking up customer name and loyalty points by phone number.
+ */
+router.get('/customer', asyncHandler(async (req, res) => {
+  const { phone, shopId } = req.query;
+  if (!phone || typeof phone !== 'string') return res.status(400).json({ error: 'phone required' });
+  if (!shopId || typeof shopId !== 'string') return res.status(400).json({ error: 'shopId required' });
+
+  try {
+    const digits = phone.replace(/\D/g, '').replace(/^91/, '').replace(/^0/, '');
+    const cust = await prisma.customer.findFirst({
+      where: { shopId, phone: { contains: digits } },
+      select: { name: true, loyaltyPoints: true }
+    });
+
+    if (!cust) return res.json({});
+    return res.json(cust);
+  } catch (error: any) {
+    logger.error(`[MENU] Customer lookup failed: ${error.message}`);
+    return res.status(500).json({ error: 'Internal server error' });
   }
 }));
 
