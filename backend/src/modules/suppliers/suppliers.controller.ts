@@ -8,7 +8,7 @@ export const getSuppliers = async (req: AuthRequest, res: Response) => {
   const limitNum = Math.min(100, parseInt(limit as string) || 20);
   const skip = (pageNum - 1) * limitNum;
 
-  const { suppliers, total } = await supplierService.getSuppliers(req.user!.shopId, {
+  const { suppliers, total } = await supplierService.getSuppliers(req.shopId!, {
     skip,
     take: limitNum,
     search: search as string
@@ -21,12 +21,12 @@ export const getSuppliers = async (req: AuthRequest, res: Response) => {
 };
 
 export const createSupplier = async (req: AuthRequest, res: Response) => {
-  const supplier = await supplierService.createSupplier(req.user!.shopId, req.body);
+  const supplier = await supplierService.createSupplier(req.shopId!, req.body);
   res.status(201).json(supplier);
 };
 
 export const getSupplierById = async (req: AuthRequest, res: Response) => {
-  const supplier = await supplierService.getSupplierById(req.params.id, req.user!.shopId);
+  const supplier = await supplierService.getSupplierById(req.params.id, req.shopId!);
   if (!supplier) {
     return res.status(404).json({ error: 'Supplier not found' });
   }
@@ -34,7 +34,7 @@ export const getSupplierById = async (req: AuthRequest, res: Response) => {
 };
 
 export const updateSupplier = async (req: AuthRequest, res: Response) => {
-  const supplier = await supplierService.getSupplierById(req.params.id, req.user!.shopId);
+  const supplier = await supplierService.getSupplierById(req.params.id, req.shopId!);
   if (!supplier) {
     return res.status(404).json({ error: 'Supplier not found' });
   }
@@ -44,6 +44,6 @@ export const updateSupplier = async (req: AuthRequest, res: Response) => {
 };
 
 export const getSupplierPurchases = async (req: AuthRequest, res: Response) => {
-  const purchases = await supplierService.getSupplierPurchases(req.params.id, req.user!.shopId);
+  const purchases = await supplierService.getSupplierPurchases(req.params.id, req.shopId!);
   res.json(purchases);
 };

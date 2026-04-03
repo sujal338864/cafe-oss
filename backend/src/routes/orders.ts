@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../index';
-import { authenticate, authorize, asyncHandler, validateRequest, AuthRequest } from '../middleware/auth';
+import { authenticate, authorize, asyncHandler, validateRequest, AuthRequest, tenantContext } from '../middleware/auth';
 import { sendWhatsAppBill } from '../lib/whatsapp';
 import { emitToShop } from '../lib/socket';
 
@@ -30,11 +30,12 @@ const orderSchema = z.object({
 router.post(
   '/',
   authenticate,
+  tenantContext,
   validateRequest(orderSchema),
   asyncHandler(async (req: AuthRequest, res) => {
     const { customerId, items, discountAmount = 0, redeemPoints = 0, paymentMethod, paymentStatus, notes } = req.body;
 
-    const shop = await prisma.shop.findUnique({ where: { id: req.user!.shopId }, select: { loyaltyRate: true, redeemRate: true } as any }) as any;
+    const shop = await prisma.shop.findUnique({ where: { id: req.shopId }, select: { loyaltyRate: true, redeemRate: true } as any }) as any;
     const loyaltyRate = shop?.loyaltyRate || 0.1;
     const redeemRate = shop?.redeemRate || 10;
 
@@ -50,13 +51,13 @@ router.post(
     }
     const totalAmount = Math.max(0, subtotal + taxAmount - totalDiscount);
 
-    const count = await prisma.order.count({ where: { shopId: req.user!.shopId } });
+    const count = await prisma.order.count({ where: { shopId: req.shopId } });
     const invoiceNumber = `INV-${String(count + 1).padStart(6, '0')}`;
 
     const order = await prisma.$transaction(async (tx) => {
       const newOrder = await tx.order.create({
         data: {
-          shopId: req.user!.shopId,
+          shopId: req.shopId,
           userId: req.user!.id,
           customerId: customerId || null,
           invoiceNumber,
@@ -118,7 +119,7 @@ router.post(
     }, { timeout: 15000 });
 
     // Broadcast to Kitchen Display System instantly
-    try { emitToShop(req.user!.shopId, 'ORDER_CREATED', { ...order, status: 'PENDING' }); } catch {}
+    try { emitToShop(req.shopId, 'ORDER_CREATED', { ...order, status: 'PENDING' }); } catch {}
 
     // Low stock check (non-critical)
     try {
@@ -135,7 +136,7 @@ router.post(
     // WhatsApp bill (non-critical)
     try {
       if ((order as any).customer?.phone && paymentStatus === 'PAID') {
-        const shop = await prisma.shop.findUnique({ where: { id: req.user!.shopId }, select: { name: true } });
+        const shop = await prisma.shop.findUnique({ where: { id: req.shopId }, select: { name: true } });
         const updatedCustomer = (await prisma.customer.findUnique({ where: { id: customerId! } })) as any;
         const pointsEarned = Math.floor(Number(order.totalAmount) * loyaltyRate);
         await sendWhatsAppBill(
@@ -168,11 +169,12 @@ router.post(
 router.get(
   '/kitchen',
   authenticate,
+  tenantContext,
   asyncHandler(async (req: AuthRequest, res) => {
     // 1. Fetch recent orders
     const dbOrders = await prisma.order.findMany({
       where: {
-        shopId: req.user!.shopId,
+        shopId: req.shopId,
         notes: { contains: '[KITCHEN:' }
       },
       select: {
@@ -201,6 +203,7 @@ router.get(
 router.get(
   '/',
   authenticate,
+  tenantContext,
   asyncHandler(async (req: AuthRequest, res) => {
     const { page = '1', limit = '20', startDate, endDate, customerId, status, paymentStatus } = req.query;
     const pageNum = Math.max(1, parseInt(page as string) || 1);
@@ -208,7 +211,7 @@ router.get(
     const skip = (pageNum - 1) * limitNum;
 
     const where: any = {
-      shopId: req.user!.shopId,
+      shopId: req.shopId,
       ...(startDate && endDate && { createdAt: { gte: new Date(startDate as string), lte: new Date(endDate as string) } }),
       ...(customerId && { customerId: customerId as string }),
       ...(status && { status: status as string }),
@@ -236,9 +239,10 @@ router.get(
 router.get(
   '/:id',
   authenticate,
+  tenantContext,
   asyncHandler(async (req: AuthRequest, res) => {
     const order = await prisma.order.findFirst({
-      where: { id: req.params.id, shopId: req.user!.shopId },
+      where: { id: req.params.id, shopId: req.shopId },
       include: { customer: true, items: true, user: { select: { name: true } } }
     });
     if (!order) return res.status(404).json({ error: 'Order not found' });
@@ -249,10 +253,11 @@ router.get(
 router.put(
   '/:id/cancel',
   authenticate,
+  tenantContext,
   authorize('ADMIN', 'MANAGER'),
   asyncHandler(async (req: AuthRequest, res) => {
     const order = await prisma.order.findFirst({
-      where: { id: req.params.id, shopId: req.user!.shopId },
+      where: { id: req.params.id, shopId: req.shopId },
       include: { items: true }
     });
     if (!order) return res.status(404).json({ error: 'Order not found' });
@@ -283,6 +288,7 @@ router.put(
 router.put(
   '/:id/payment',
   authenticate,
+  tenantContext,
   authorize('ADMIN', 'MANAGER'),
   asyncHandler(async (req: AuthRequest, res) => {
     const { paymentStatus } = req.body;
@@ -290,7 +296,7 @@ router.put(
       return res.status(400).json({ error: 'Invalid payment status' });
     }
     const order = await prisma.order.findFirst({
-      where: { id: req.params.id, shopId: req.user!.shopId },
+      where: { id: req.params.id, shopId: req.shopId },
       include: { customer: true, items: true }
     });
     if (!order) return res.status(404).json({ error: 'Order not found' });
@@ -307,7 +313,7 @@ router.put(
     // When marking PAID, award loyalty points + send WhatsApp
     if (paymentStatus === 'PAID' && order.paymentStatus !== 'PAID') {
       const shop = await prisma.shop.findUnique({ 
-        where: { id: req.user!.shopId }, 
+        where: { id: req.shopId }, 
         select: { name: true, loyaltyRate: true, redeemRate: true } as any 
       }) as any;
       const loyaltyRate = shop?.loyaltyRate || 0.1;
@@ -353,6 +359,7 @@ router.put(
 router.put(
   '/:id/status',
   authenticate,
+  tenantContext,
   asyncHandler(async (req: AuthRequest, res) => {
     const { status } = req.body;
     const validStatuses = ['PENDING', 'PREPARING', 'READY', 'COMPLETED', 'CANCELLED'];
@@ -360,7 +367,7 @@ router.put(
       return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
     }
     const order = await prisma.order.findFirst({
-      where: { id: req.params.id, shopId: req.user!.shopId }
+      where: { id: req.params.id, shopId: req.shopId }
     });
     if (!order) return res.status(404).json({ error: 'Order not found' });
 
@@ -371,7 +378,7 @@ router.put(
     });
 
     const parsedOrder = updated;
-    try { emitToShop(req.user!.shopId, 'ORDER_UPDATED', parsedOrder); } catch {}
+    try { emitToShop(req.shopId, 'ORDER_UPDATED', parsedOrder); } catch {}
     res.json(parsedOrder);
   })
 );
@@ -380,15 +387,16 @@ router.put(
 router.post(
   '/:id/whatsapp',
   authenticate,
+  tenantContext,
   asyncHandler(async (req: AuthRequest, res) => {
     const order = await prisma.order.findFirst({
-      where: { id: req.params.id, shopId: req.user!.shopId },
+      where: { id: req.params.id, shopId: req.shopId },
       include: { customer: true, items: true }
     });
     if (!order) return res.status(404).json({ error: 'Order not found' });
     if (!order.customer?.phone) return res.status(400).json({ error: 'Customer has no phone number' });
 
-    const shop = await prisma.shop.findUnique({ where: { id: req.user!.shopId }, select: { name: true, loyaltyRate: true } as any }) as any;
+    const shop = await prisma.shop.findUnique({ where: { id: req.shopId }, select: { name: true, loyaltyRate: true } as any }) as any;
     const loyaltyRate = shop?.loyaltyRate || 0.1;
     const customer = order.customerId ? (await prisma.customer.findUnique({ where: { id: order.customerId } })) as any : null;
 

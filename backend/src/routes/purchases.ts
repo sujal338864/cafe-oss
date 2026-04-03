@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../index';
-import { authenticate, authorize, asyncHandler, validateRequest, AuthRequest } from '../middleware/auth';
+import { authenticate, authorize, asyncHandler, validateRequest, AuthRequest, tenantContext } from '../middleware/auth';
 
 const router = Router();
 
@@ -25,7 +25,8 @@ const purchaseSchema = z.object({
  */
 router.post(
   '/',
-  authenticate,
+  authenticate as any,
+  tenantContext,
   authorize('ADMIN', 'MANAGER'),
   validateRequest(purchaseSchema),
   asyncHandler(async (req: AuthRequest, res) => {
@@ -33,7 +34,7 @@ router.post(
 
     // Verify supplier exists
     const supplier = await prisma.supplier.findFirst({
-      where: { id: supplierId, shopId: req.user!.shopId }
+      where: { id: supplierId, shopId: req.shopId! }
     });
 
     if (!supplier) {
@@ -50,7 +51,7 @@ router.post(
     const purchase = await prisma.$transaction(async (tx) => {
       const newPurchase = await tx.purchase.create({
         data: {
-          shopId: req.user!.shopId,
+          shopId: req.shopId!,
           supplierId,
           billNumber: billNumber || `PO-${Date.now()}`,
           totalAmount,
@@ -108,7 +109,8 @@ router.post(
  */
 router.get(
   '/',
-  authenticate,
+  authenticate as any,
+  tenantContext,
   asyncHandler(async (req: AuthRequest, res) => {
     const { page = '1', limit = '20', supplierId, startDate, endDate } = req.query;
     const pageNum = Math.max(1, parseInt(page as string) || 1);
@@ -116,7 +118,7 @@ router.get(
     const skip = (pageNum - 1) * limitNum;
 
     const where: any = {
-      shopId: req.user!.shopId,
+      shopId: req.shopId!,
       ...(supplierId && { supplierId: supplierId as string }),
       ...(startDate && endDate && {
         purchaseDate: {
@@ -149,10 +151,11 @@ router.get(
  */
 router.get(
   '/:id',
-  authenticate,
+  authenticate as any,
+  tenantContext,
   asyncHandler(async (req: AuthRequest, res) => {
     const purchase = await prisma.purchase.findFirst({
-      where: { id: req.params.id, shopId: req.user!.shopId },
+      where: { id: req.params.id, shopId: req.shopId! },
       include: { items: true, supplier: true }
     });
 

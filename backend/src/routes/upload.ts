@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { v2 as cloudinary } from 'cloudinary';
-import { authenticate, asyncHandler, AuthRequest } from '../middleware/auth';
+import { authenticate, asyncHandler, AuthRequest, tenantContext } from '../middleware/auth';
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -12,7 +12,7 @@ const router = Router();
 
 // POST /api/upload/image
 // Body: { data: 'base64string', filename: 'name.jpg' }
-router.post('/image', authenticate, asyncHandler(async (req: AuthRequest, res) => {
+router.post('/image', authenticate as any, tenantContext, asyncHandler(async (req: AuthRequest, res) => {
   const { data, filename } = req.body;
   if (!data) return res.status(400).json({ error: 'No image data' });
   try {

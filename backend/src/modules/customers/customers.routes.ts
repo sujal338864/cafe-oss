@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { authenticate, validateRequest, asyncHandler } from '../../middleware/auth';
+import { authenticate, validateRequest, asyncHandler, tenantContext } from '../../middleware/auth';
 import * as customerController from './customers.controller';
 
 const router = Router();
@@ -19,6 +19,7 @@ export const customerSchema = z.object({
 router.get(
   '/',
   authenticate as any,
+  tenantContext,
   asyncHandler(customerController.getCustomers)
 );
 
@@ -28,6 +29,7 @@ router.get(
 router.get(
   '/lookup',
   authenticate as any,
+  tenantContext,
   asyncHandler(customerController.lookupCustomer)
 );
 
@@ -37,6 +39,7 @@ router.get(
 router.get(
   '/:id',
   authenticate as any,
+  tenantContext,
   asyncHandler(customerController.getCustomerById)
 );
 
@@ -46,6 +49,7 @@ router.get(
 router.post(
   '/',
   authenticate as any,
+  tenantContext,
   validateRequest(customerSchema),
   asyncHandler(customerController.createCustomer)
 );
@@ -56,6 +60,7 @@ router.post(
 router.put(
   '/:id',
   authenticate as any,
+  tenantContext,
   validateRequest(customerSchema.partial()),
   asyncHandler(customerController.updateCustomer)
 );
@@ -66,6 +71,7 @@ router.put(
 router.get(
   '/:id/orders',
   authenticate as any,
+  tenantContext,
   asyncHandler(customerController.getCustomerOrders)
 );
 

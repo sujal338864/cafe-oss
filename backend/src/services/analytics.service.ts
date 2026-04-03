@@ -1,4 +1,4 @@
-import { prisma } from '../index';
+import { prisma } from '../common/prisma';
 import { logger } from '../lib/logger';
 
 export interface DailyProfit {
@@ -21,7 +21,7 @@ export interface InventoryForecast {
 
 /**
  * Analytics Service: Handles business intelligence, forecasting, and staffing intelligence.
- * Designed for high-performance data aggregation and multi-tenant scalability.
+ * Includes "Pro" features for trend analysis and repeat customer tracking.
  */
 export const AnalyticsService = {
   /**
@@ -115,7 +115,7 @@ export const AnalyticsService = {
       return products.map(p => {
         const totalSold = sales.find(s => s.productId === p.id)?._sum?.quantity || 0;
         const avgDailySales = totalSold / windowDays;
-        
+
         let daysRemaining = 999;
         if (avgDailySales > 0) {
           daysRemaining = Math.round((p.stock / avgDailySales) * 10) / 10;
@@ -151,7 +151,7 @@ export const AnalyticsService = {
       const istOffset = 5.5 * 60 * 60 * 1000;
       const istNow = new Date(now.getTime() + istOffset);
       const startOfIstToday = new Date(istNow);
-      startOfIstToday.setUTCHours(0, 0, 0, 0); 
+      startOfIstToday.setUTCHours(0, 0, 0, 0);
       const safeToday = new Date(startOfIstToday.getTime() - istOffset);
 
       const sixMonthsAgo = new Date();
@@ -268,6 +268,100 @@ export const AnalyticsService = {
   },
 
   /**
+   * Subscription Guard & Expiry Manager
+   * Validates if a shop has an active PRO/ENTERPRISE plan.
+   * Automatically downgrades to STARTER if the planExpiry has passed.
+   */
+  checkProPlan: async (shopId: string): Promise<boolean> => {
+    try {
+      const shop = await prisma.shop.findUnique({
+        where: { id: shopId },
+        select: { plan: true, planExpiry: true }
+      });
+
+      if (!shop || shop.plan === 'STARTER') return false;
+
+      // Check Expiry (if set)
+      if (shop.planExpiry && new Date() > new Date(shop.planExpiry)) {
+        logger.info(`[SUBSCRIPTION] Plan expired for shop ${shopId}. Reverting to STARTER.`);
+        await prisma.shop.update({
+          where: { id: shopId },
+          data: { plan: 'STARTER', planExpiry: null }
+        });
+        return false;
+      }
+
+      return true;
+    } catch (e: any) {
+      logger.error(`[SUBSCRIPTION] Guard error: ${e.message}`);
+      return false;
+    }
+  },
+
+  /**
+   * Calculate Trend Percentages
+   */
+  calculateTrend: (current: number, previous: number) => {
+    if (previous === 0) return current > 0 ? 100 : 0;
+    return Math.round(((current - previous) / previous) * 100);
+  },
+
+  /**
+   * Advanced Business Intelligence (PRO feature)
+   * Calculates repeat vs new customers and deep sales trends.
+   */
+  getProInsights: async (shopId: string) => {
+    try {
+      const isPro = await AnalyticsService.checkProPlan(shopId);
+      if (!isPro) throw new Error('Subscription required for advanced insights');
+
+      // 1. Repeat Customer Rate
+      const totalCustomers = await prisma.customer.count({ where: { shopId } });
+      const repeatCustomers = await prisma.customer.count({
+        where: { shopId, orders: { some: {} }, totalPurchases: { gt: 0 } }
+      });
+
+      // 2. Weekly Trend Comparison (Revenue & Orders)
+      const thisWeekStart = new Date();
+      thisWeekStart.setDate(thisWeekStart.getDate() - 7);
+      const lastWeekStart = new Date();
+      lastWeekStart.setDate(lastWeekStart.getDate() - 14);
+
+      const [thisWeek, lastWeek] = await Promise.all([
+        prisma.order.aggregate({
+          where: { shopId, createdAt: { gte: thisWeekStart }, status: { not: 'CANCELLED' as any } },
+          _sum: { totalAmount: true },
+          _count: { id: true }
+        }),
+        prisma.order.aggregate({
+          where: { shopId, createdAt: { gte: lastWeekStart, lt: thisWeekStart }, status: { not: 'CANCELLED' as any } },
+          _sum: { totalAmount: true },
+          _count: { id: true }
+        })
+      ]);
+
+      const revTrend = AnalyticsService.calculateTrend(Number(thisWeek._sum.totalAmount || 0), Number(lastWeek._sum.totalAmount || 0));
+      const ordTrend = AnalyticsService.calculateTrend(thisWeek._count.id, lastWeek._count.id);
+
+      // 3. Ignored Items (Pro)
+      const ignoredItems = await prisma.product.findMany({
+        where: { shopId, isActive: true, stock: { gt: 0 }, orderItems: { none: { order: { createdAt: { gte: thisWeekStart } } } } },
+        select: { name: true, stock: true, sellingPrice: true },
+        take: 5
+      });
+
+      return {
+        repeatCustomerRate: totalCustomers > 0 ? Math.round((repeatCustomers / totalCustomers) * 100) : 0,
+        trends: { revenue: revTrend, orders: ordTrend },
+        ignoredItems
+      };
+    } catch (e: any) {
+      logger.warn(`[BI-ENGINE] Failed to fetch pro insights: ${e.message}`);
+      return null;
+    }
+  },
+
+  /**
    * Get Peak Hours Intelligence
    * Maps order volume across hours and days to help with staff scheduling.
    * Returns a 24/7 heatmap of order frequency.
@@ -352,7 +446,7 @@ export const AnalyticsService = {
         marginPercent: totalRevenue > 0 ? Math.round((netProfit / totalRevenue) * 10000) / 100 : 0,
         daysAnalyzed: days
       };
-      } catch (error: any) {
+    } catch (error: any) {
       logger.error(`[ANALYTICS] Financial summary failed: ${error.message}`);
       return {
         totalRevenue: 0, totalCOGS: 0, totalOpEx: 0,
@@ -379,7 +473,7 @@ export const AnalyticsService = {
       };
 
       const stats = await safeFetch(AnalyticsService.calculateDashboardStats(shopId), { totalRevenue: 0, totalOrders: 0 });
-      
+
       // FULLY SEQUENTIAL BATCHING: Ensuring 100% stability
       const recentOrders = await safeFetch(prisma.order.findMany({
         where: { shopId },
@@ -395,6 +489,7 @@ export const AnalyticsService = {
       const forecasting = await safeFetch(AnalyticsService.getInventoryForecast(shopId), []);
       const heatmap = await safeFetch(AnalyticsService.getPeakHours(shopId), {});
       const financialSummary = await safeFetch(AnalyticsService.getFinancialSummary(shopId, 30), { netProfit: 0, totalRevenue: 0 });
+      const proInsights = await safeFetch(AnalyticsService.getProInsights(shopId), null);
 
       return {
         stats,
@@ -403,6 +498,7 @@ export const AnalyticsService = {
         forecasting: { forecasting },
         heatmap: { heatmap },
         financialSummary: { summary: financialSummary },
+        proInsights,
         timestamp: new Date()
       };
     } catch (error: any) {

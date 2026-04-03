@@ -98,7 +98,7 @@ model Shop {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  users      User[]
+  members    ShopMember[]
   categories Category[]
   products   Product[]
   customers  Customer[]
@@ -114,12 +114,11 @@ model Shop {
 
 model User {
   id              String    @id @default(cuid())
-  shopId          String
-  shop            Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
   name            String
-  email           String
+  email           String    @unique
   passwordHash    String
-  role            Role      @default(EMPLOYEE)
+  plan            Plan      @default(STARTER)
+  shopLimit       Int       @default(1)
   isEmailVerified Boolean   @default(false)
   verifyToken     String?
   resetToken      String?
@@ -129,9 +128,29 @@ model User {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  orders  Order[]
+  shopId          String?
+  memberships ShopMember[]
+  orders      Order[]
 
-  @@unique([email, shopId])
+  @@index([email])
+}
+
+// ─────────────────────────────────────────────────────────────
+// SHOP MEMBER  (Links Users to multiple Shops with specific roles)
+// ─────────────────────────────────────────────────────────────
+
+model ShopMember {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  role      Role     @default(EMPLOYEE)
+  joinedAt  DateTime @default(now())
+  isActive  Boolean  @default(true)
+
+  @@unique([userId, shopId])
+  @@index([userId])
   @@index([shopId])
 }
 

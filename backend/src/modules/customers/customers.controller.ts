@@ -8,7 +8,7 @@ export const getCustomers = async (req: AuthRequest, res: Response) => {
   const limitNum = Math.min(100, parseInt(limit as string) || 20);
   const skip = (pageNum - 1) * limitNum;
 
-  const { customers, total } = await customerService.getCustomers(req.user!.shopId, {
+  const { customers, total } = await customerService.getCustomers(req.shopId!, {
     skip,
     take: limitNum,
     search: search as string
@@ -22,13 +22,13 @@ export const getCustomers = async (req: AuthRequest, res: Response) => {
 
 export const createCustomer = async (req: AuthRequest, res: Response) => {
   if (req.body.phone) {
-    const existing = await customerService.getCustomerByPhone(req.user!.shopId, req.body.phone);
+    const existing = await customerService.getCustomerByPhone(req.shopId!, req.body.phone);
     if (existing) {
       return res.status(400).json({ error: 'Customer with this phone number already exists' });
     }
   }
 
-  const customer = await customerService.createCustomer(req.user!.shopId, req.body);
+  const customer = await customerService.createCustomer(req.shopId!, req.body);
   res.status(201).json(customer);
 };
 
@@ -39,7 +39,7 @@ export const lookupCustomer = async (req: AuthRequest, res: Response) => {
   }
 
   const digits = phone.replace(/\D/g, '').replace(/^91/, '').replace(/^0/, '');
-  const customer = await customerService.lookupCustomer(req.user!.shopId, digits);
+  const customer = await customerService.lookupCustomer(req.shopId!, digits);
 
   if (!customer) {
     return res.status(404).json({ found: false, error: 'Customer not found' });
@@ -49,7 +49,7 @@ export const lookupCustomer = async (req: AuthRequest, res: Response) => {
 };
 
 export const getCustomerById = async (req: AuthRequest, res: Response) => {
-  const customer = await customerService.getCustomerById(req.params.id, req.user!.shopId);
+  const customer = await customerService.getCustomerById(req.params.id, req.shopId!);
   if (!customer) {
     return res.status(404).json({ error: 'Customer not found' });
   }
@@ -57,7 +57,7 @@ export const getCustomerById = async (req: AuthRequest, res: Response) => {
 };
 
 export const updateCustomer = async (req: AuthRequest, res: Response) => {
-  const customer = await customerService.getCustomerById(req.params.id, req.user!.shopId);
+  const customer = await customerService.getCustomerById(req.params.id, req.shopId!);
   if (!customer) {
     return res.status(404).json({ error: 'Customer not found' });
   }
@@ -67,6 +67,6 @@ export const updateCustomer = async (req: AuthRequest, res: Response) => {
 };
 
 export const getCustomerOrders = async (req: AuthRequest, res: Response) => {
-  const orders = await customerService.getCustomerOrders(req.params.id, req.user!.shopId);
+  const orders = await customerService.getCustomerOrders(req.params.id, req.shopId!);
   res.json(orders);
 };

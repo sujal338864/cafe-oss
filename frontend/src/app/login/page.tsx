@@ -92,7 +92,7 @@ export default function LoginPage() {
         return;
       }
       // Existing user or new user with shop already created
-      login(data.token, data.user, data.shop);
+      login(data.token, data.user, data.shops);
       router.push('/dashboard');
     } catch (e: any) {
       setError(e.response?.data?.error || 'Google sign-in failed');
@@ -111,7 +111,7 @@ export default function LoginPage() {
         shopName: gShopName.trim(),
         phone: gPhone.trim(),
       });
-      login(data.token, data.user, data.shop);
+      login(data.token, data.user, data.shops);
       router.push('/dashboard');
     } catch (e: any) {
       setError(e.response?.data?.error || 'Registration failed');
@@ -125,7 +125,7 @@ export default function LoginPage() {
     setLoading(true); setError('');
     try {
       const { data } = await api.post('/api/auth/login', { email, password });
-      login(data.token, data.user, data.shop);
+      login(data.token, data.user, data.shops);
       router.push('/dashboard');
     } catch (e: any) {
       setError(e.response?.data?.error || e.message || 'Invalid email or password');
@@ -143,7 +143,7 @@ export default function LoginPage() {
       const { data } = await api.post('/api/auth/register', {
         shopName, ownerName, email, password: regPass, phone,
       });
-      login(data.token, data.user, data.shop);
+      login(data.token, data.user, data.shops);
       router.push('/dashboard');
     } catch (e: any) {
       setError(e.response?.data?.error || 'Registration failed');

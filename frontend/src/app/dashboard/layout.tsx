@@ -6,6 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { useSocket } from '@/context/SocketContext';
 import api from '@/lib/api';
+import ShopSwitcher from '@/components/ui/ShopSwitcher';
 
 const NAV = [
   { href: '/dashboard',            label: 'Dashboard',  icon: '▦' },
@@ -19,6 +20,7 @@ const NAV = [
   { href: '/dashboard/purchases',  label: 'Purchases',  icon: '🛒' },
   { href: '/dashboard/expenses',   label: 'Expenses',   icon: '💸' },
   { href: '/dashboard/analytics',  label: 'Analytics',  icon: '📊' },
+  { href: '/dashboard/reports',    label: 'Reports',    icon: '📋' },
   { href: '/dashboard/qr',         label: 'QR Codes',   icon: '📱' },
   { href: '/dashboard/settings',   label: 'Settings',   icon: '⚙️' },
 ];
@@ -26,7 +28,8 @@ const NAV = [
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname  = usePathname();
   const router    = useRouter();
-  const { user, logout } = useAuth();
+  const { user, activeShop, logout, getActivePlan } = useAuth() as any;
+  const currentPlan = getActivePlan();
   const { theme, isDark, toggleTheme } = useTheme();
   const { socket } = useSocket();
   const queryClient = useQueryClient();
@@ -38,11 +41,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { data: megaData } = useQuery({ 
     queryKey: ['mega_dashboard'], 
     queryFn: () => api.get('/api/analytics/dashboard-mega').then(r => r.data),
-    staleTime: 5000 // 5s stale time for layout
+    staleTime: 60000, // 1 min (Optimized to reduce egress)
+    gcTime: 120000,
+    refetchOnWindowFocus: false,
   });
   const { data: notifData } = useQuery({ 
     queryKey: ['notifications'], 
-    queryFn: () => api.get('/api/notifications?limit=20').then(r => r.data) 
+    queryFn: () => api.get('/api/notifications?limit=20').then(r => r.data),
+    staleTime: 30000, // 30s stale time for notifications
+    refetchOnWindowFocus: false,
   });
 
   const lowStock = Number(megaData?.stats?.lowStockItems || 0);
@@ -97,17 +104,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* ── Sidebar ───────────────────────────────────────────────────── */}
       <aside style={s.sidebar}>
-        {/* Shop name */}
-        <div style={{ padding: '20px 18px 14px', borderBottom: `1px solid ${theme.border}` }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 9, background: 'linear-gradient(135deg,#7c3aed,#3b82f6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, color: 'white', fontSize: 14, flexShrink: 0 }}>
-              {user?.name?.[0]?.toUpperCase() || 'S'}
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: theme.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Shop OS</div>
-              <div style={{ fontSize: 11, color: theme.textFaint, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name || 'Admin'}</div>
-            </div>
-          </div>
+        {/* Shop Switcher */}
+        <div style={{ padding: '16px 14px', borderBottom: `1px solid ${theme.border}` }}>
+          <ShopSwitcher />
         </div>
 
         {/* Nav links */}
@@ -130,6 +129,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </a>
             );
           })}
+          
+          {/* Upgrade Section for Starter Users */}
+          {currentPlan === 'STARTER' && (
+            <div style={{ marginTop: 24, padding: '12px', background: 'rgba(124,58,237,0.08)', borderRadius: 12, border: '1px dashed rgba(124,58,237,0.3)' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#7c3aed', marginBottom: 6 }}>UPGRADE TO PRO</div>
+              <div style={{ fontSize: 10, color: theme.textMuted, marginBottom: 10 }}>Unlock deep analytics, automated reports and more.</div>
+              <button onClick={() => router.push('/dashboard/settings')}
+                style={{ width: '100%', background: 'linear-gradient(135deg,#7c3aed,#3b82f6)', color: 'white', border: 'none', padding: '7px 0', borderRadius: 8, fontSize: 11, fontWeight: 800, cursor: 'pointer' }}>
+                Go Pro Now
+              </button>
+            </div>
+          )}
         </nav>
 
         {/* Bottom — theme toggle + sign out */}
@@ -217,8 +228,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               )}
             </div>
 
-            {/* Starter badge */}
-            <div style={{ background: 'linear-gradient(135deg,#7c3aed,#3b82f6)', borderRadius: 8, padding: '4px 12px', fontSize: 11, fontWeight: 800, color: 'white' }}>STARTER</div>
+            {/* Dynamic Plan Badge */}
+            <div style={{ 
+              background: currentPlan === 'STARTER' ? theme.hover : 'linear-gradient(135deg,#7c3aed,#3b82f6)', 
+              borderRadius: 8, padding: '4px 12px', fontSize: 11, fontWeight: 800, color: currentPlan === 'STARTER' ? theme.textMuted : 'white',
+              border: currentPlan === 'STARTER' ? `1px solid ${theme.border}` : 'none',
+              boxShadow: currentPlan !== 'STARTER' ? '0 4px 12px rgba(124,58,237,0.3)' : 'none'
+            }}>
+              {currentPlan}
+            </div>
           </div>
         </div>
 

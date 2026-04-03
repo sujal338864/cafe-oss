@@ -1,14 +1,16 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { Role } from '@prisma/client';
+import { prisma } from '../common/prisma';
 
 export interface AuthRequest extends Request {
   user?: {
     id: string;
-    shopId: string;
-    role: Role;
     email: string;
+    name?: string;
   };
+  shopId?: string;
+  role?: Role;
 }
 
 /**
@@ -26,8 +28,6 @@ export const authenticate = (req: AuthRequest, res: Response, next: NextFunction
 
     req.user = {
       id: payload.id,
-      shopId: payload.shopId,
-      role: payload.role,
       email: payload.email
     };
 
@@ -41,16 +41,46 @@ export const authenticate = (req: AuthRequest, res: Response, next: NextFunction
 };
 
 /**
+ * Multi-Tenant Middleware (Injects Shop context)
+ */
+export const tenantContext = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const shopId = req.headers['x-shop-id'] as string;
+    if (!shopId) return res.status(400).json({ error: 'Missing X-Shop-Id header' });
+
+    // Verify membership
+    const membership = await prisma.shopMember.findUnique({
+      where: { userId_shopId: { userId: req.user!.id, shopId } },
+      include: { shop: true }
+    });
+
+    if (!membership || !membership.isActive) {
+      return res.status(403).json({ error: 'Access denied: Not a member of this shop' });
+    }
+
+    if (!membership.shop.isActive) {
+      return res.status(403).json({ error: 'Shop is inactive' });
+    }
+
+    req.shopId = shopId;
+    req.role = membership.role;
+    next();
+  } catch (error: any) {
+    return res.status(500).json({ error: 'Internal Server Error during tenant validation' });
+  }
+};
+
+/**
  * Middleware to check user role
  */
 export const authorize = (...allowedRoles: Role[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Unauthorized' });
+    if (!req.user || !req.role) {
+      return res.status(401).json({ error: 'Unauthorized (No shop context)' });
     }
 
-    if (!allowedRoles.includes(req.user.role)) {
-      return res.status(403).json({ error: 'Insufficient permissions' });
+    if (!allowedRoles.includes(req.role)) {
+      return res.status(403).json({ error: 'Insufficient permissions for this branch' });
     }
 
     next();

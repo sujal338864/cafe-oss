@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { authenticate, authorize, asyncHandler, validateRequest } from '../../middleware/auth';
+import { authenticate, authorize, asyncHandler, validateRequest, tenantContext } from '../../middleware/auth';
 import * as categoryController from './categories.controller';
 
 const router = Router();
@@ -16,6 +16,7 @@ const categorySchema = z.object({
 router.get(
   '/',
   authenticate as any,
+  tenantContext,
   asyncHandler(categoryController.getCategories)
 );
 
@@ -25,6 +26,7 @@ router.get(
 router.post(
   '/',
   authenticate as any,
+  tenantContext,
   authorize('ADMIN', 'MANAGER'),
   validateRequest(categorySchema),
   asyncHandler(categoryController.createCategory)
@@ -36,6 +38,7 @@ router.post(
 router.put(
   '/:id',
   authenticate as any,
+  tenantContext,
   authorize('ADMIN', 'MANAGER'),
   validateRequest(categorySchema.partial()),
   asyncHandler(categoryController.updateCategory)
@@ -47,6 +50,7 @@ router.put(
 router.delete(
   '/:id',
   authenticate as any,
+  tenantContext,
   authorize('ADMIN'),
   asyncHandler(categoryController.deleteCategory)
 );

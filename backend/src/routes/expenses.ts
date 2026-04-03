@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../index';
-import { authenticate, authorize, asyncHandler, validateRequest, AuthRequest } from '../middleware/auth';
+import { authenticate, authorize, asyncHandler, validateRequest, AuthRequest, tenantContext } from '../middleware/auth';
 import { ExpenseCategory } from '@prisma/client';
 
 const router = Router();
@@ -18,7 +18,8 @@ const expenseSchema = z.object({
  */
 router.post(
   '/',
-  authenticate,
+  authenticate as any,
+  tenantContext,
   authorize('ADMIN', 'MANAGER'),
   validateRequest(expenseSchema),
   asyncHandler(async (req: AuthRequest, res) => {
@@ -26,7 +27,7 @@ router.post(
 
     const expense = await prisma.expense.create({
       data: {
-        shopId: req.user!.shopId,
+        shopId: req.shopId!,
         category: category as ExpenseCategory,
         amount,
         description,
@@ -43,7 +44,8 @@ router.post(
  */
 router.get(
   '/',
-  authenticate,
+  authenticate as any,
+  tenantContext,
   asyncHandler(async (req: AuthRequest, res) => {
     const { page = '1', limit = '20', category, startDate, endDate } = req.query;
     const pageNum = Math.max(1, parseInt(page as string) || 1);
@@ -51,7 +53,7 @@ router.get(
     const skip = (pageNum - 1) * limitNum;
 
     const where: any = {
-      shopId: req.user!.shopId,
+      shopId: req.shopId!,
       ...(category && { category: category as string }),
       ...(startDate && endDate && {
         date: {
@@ -83,11 +85,12 @@ router.get(
  */
 router.delete(
   '/:id',
-  authenticate,
+  authenticate as any,
+  tenantContext,
   authorize('ADMIN'),
   asyncHandler(async (req: AuthRequest, res) => {
     const expense = await prisma.expense.findFirst({
-      where: { id: req.params.id, shopId: req.user!.shopId }
+      where: { id: req.params.id, shopId: req.shopId! }
     });
 
     if (!expense) {

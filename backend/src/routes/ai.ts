@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate, asyncHandler, AuthRequest } from '../middleware/auth';
+import { asyncHandler, AuthRequest } from '../middleware/auth';
 import { redis } from '../lib/redis';
 import { addAiInsightsJob } from '../jobs/queues/ai.queue';
 import { generateShopInsights } from '../services/ai.service';
@@ -14,10 +14,9 @@ const router = Router();
  */
 router.get(
   '/insights',
-  authenticate,
   checkPlan('PRO'),
   asyncHandler(async (req: AuthRequest, res) => {
-    const shopId = req.user!.shopId;
+    const shopId = req.shopId!;
     const cacheKey = `ai_insights:${shopId}`;
 
     const cached = await redis.get(cacheKey);

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { prisma } from '../index';
+import { prisma } from '../common/prisma';
 import { asyncHandler } from '../middleware/auth';
 import { PaymentMethod } from '@prisma/client';
 import { sendWhatsAppBill } from '../lib/whatsapp';
@@ -10,7 +10,7 @@ import { generateInvoicePDF } from '../lib/invoice';
 import { applyPricingRules } from '../lib/pricing';
 import rateLimit from 'express-rate-limit';
 
-const MENU_CACHE_TTL = 300; // 5 minutes
+const MENU_CACHE_TTL = 600; // 10 minutes
 
 /**
  * Public Menu Rate Limiters
@@ -57,7 +57,7 @@ router.get('/', menuLimiter, asyncHandler(async (req, res) => {
       const cached = await getCache<any>(cacheKey);
       if (cached) {
         res.set('X-Cache', 'HIT');
-        res.set('Cache-Control', 'public, max-age=60, s-maxage=300');
+        res.set('Cache-Control', 'public, max-age=60, s-maxage=600');
         return res.json(cached);
       }
     }
@@ -101,7 +101,7 @@ router.get('/', menuLimiter, asyncHandler(async (req, res) => {
     await setCache(cacheKey, payload, MENU_CACHE_TTL);
 
     res.set('X-Cache', 'MISS');
-    res.set('Cache-Control', 'public, max-age=60, s-maxage=300');
+    res.set('Cache-Control', 'public, max-age=60, s-maxage=600');
     return res.json(payload);
   } catch (error: any) {
     logger.error(`[MENU] Failed to fetch menu: ${error.message}`, { shopId });
@@ -138,8 +138,7 @@ router.get('/recommendations', menuLimiter, asyncHandler(async (req, res) => {
         id: { notIn: ignoreIds }
       },
       select: { 
-        id: true, name: true, sellingPrice: true, costPrice: true, 
-        imageUrl: true, taxRate: true, stock: true, description: true, categoryId: true
+        id: true, name: true, sellingPrice: true, costPrice: true, imageUrl: true
       },
       take: 20
     });

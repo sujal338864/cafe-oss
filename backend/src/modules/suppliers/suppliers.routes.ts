@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { authenticate, authorize, asyncHandler, validateRequest } from '../../middleware/auth';
+import { authenticate, authorize, asyncHandler, validateRequest, tenantContext } from '../../middleware/auth';
 import * as supplierController from './suppliers.controller';
 
 const router = Router();
@@ -19,6 +19,7 @@ const supplierSchema = z.object({
 router.get(
   '/',
   authenticate as any,
+  tenantContext,
   asyncHandler(supplierController.getSuppliers)
 );
 
@@ -28,6 +29,7 @@ router.get(
 router.get(
   '/:id',
   authenticate as any,
+  tenantContext,
   asyncHandler(supplierController.getSupplierById)
 );
 
@@ -37,6 +39,7 @@ router.get(
 router.post(
   '/',
   authenticate as any,
+  tenantContext,
   authorize('ADMIN', 'MANAGER'),
   validateRequest(supplierSchema),
   asyncHandler(supplierController.createSupplier)
@@ -48,6 +51,7 @@ router.post(
 router.put(
   '/:id',
   authenticate as any,
+  tenantContext,
   authorize('ADMIN', 'MANAGER'),
   validateRequest(supplierSchema.partial()),
   asyncHandler(supplierController.updateSupplier)
@@ -59,6 +63,7 @@ router.put(
 router.get(
   '/:id/purchases',
   authenticate as any,
+  tenantContext,
   asyncHandler(supplierController.getSupplierPurchases)
 );
 

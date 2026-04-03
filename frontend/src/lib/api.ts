@@ -7,7 +7,9 @@ const api = axios.create({
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
     const token = localStorage.getItem('shop_os_token');
+    const shopId = localStorage.getItem('active_shop_id');
     if (token) config.headers.Authorization = `Bearer ${token}`;
+    if (shopId) config.headers['X-Shop-Id'] = shopId;
   }
   return config;
 });

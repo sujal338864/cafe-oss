@@ -2,6 +2,8 @@
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
+import { useAuth } from '@/context/AuthContext';
+import { useRouter } from 'next/navigation';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend,
@@ -15,6 +17,10 @@ const COLORS = ['#7c3aed','#3b82f6','#10b981','#f59e0b','#ef4444','#ec4899','#06
 
 export default function AnalyticsPage() {
   const { theme } = useTheme();
+  const { getActivePlan } = useAuth() as any;
+  const router = useRouter();
+  const isPro = getActivePlan() === 'PRO';
+  
   const [data,     setData]     = useState<any>(null);
   const [expenses, setExpenses] = useState<any[]>([]);
   const [orders,   setOrders]   = useState<any[]>([]);
@@ -358,8 +364,35 @@ export default function AnalyticsPage() {
       )}
 
       {/* 🏢 Strategic Growth Intelligence Module */}
-      <div style={{ ...cardStyle, background: 'linear-gradient(135deg, #0f172a, #1e293b)', border: 'none', color: '#fff', marginTop: 10 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+      <div style={{ 
+        ...cardStyle, 
+        background: 'linear-gradient(135deg, #0f172a, #1e293b)', 
+        border: 'none', 
+        color: '#fff', 
+        marginTop: 10,
+        position: 'relative'
+      }}>
+        {!isPro && (
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(10px)',
+            zIndex: 10, borderRadius: 20, display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', gap: 16, border: '1px solid rgba(255,255,255,0.1)'
+          }}>
+            <div style={{ fontSize: 40 }}>🔒</div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: 1 }}>PRO FEATURE</div>
+              <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 4 }}>Unlock Strategic Expansion Intelligence to scale your business.</div>
+            </div>
+            <button onClick={() => router.push('/dashboard/settings')} style={{
+              background: 'linear-gradient(135deg,#f59e0b,#7c3aed)', color: '#fff', border: 'none',
+              padding: '10px 24px', borderRadius: 12, fontWeight: 800, fontSize: 13, cursor: 'pointer',
+              boxShadow: '0 10px 30px rgba(124, 58, 237, 0.4)'
+            }}>Upgrade to PRO</button>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, opacity: isPro ? 1 : 0.2 }}>
           <div>
             <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 4 }}>Expansion Intelligence</div>
             <h3 style={{ fontSize: 20, fontWeight: 900, margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>Strategic Expansion Pulse 💹</h3>
@@ -369,7 +402,7 @@ export default function AnalyticsPage() {
           </div>
         </div>
         
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 32 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 32, opacity: isPro ? 1 : 0.2 }}>
           <div>
             <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 10, fontWeight: 600 }}>Expansion Readiness</div>
             <div style={{ fontSize: 16, fontWeight: 800, color: data?.totalRevenue > 50000 ? '#4ade80' : '#fbbf24' }}>

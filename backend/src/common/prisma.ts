@@ -20,7 +20,7 @@ const modelsWithShopId = [
   'Supplier', 'Purchase', 'Expense', 'Notification', 'Subscription'
 ];
 
-export const prisma = basePrisma.$extends({
+export const prisma = (basePrisma.$extends({
   query: {
     $allModels: {
       async findMany({ model, args, query }: any) {
@@ -67,4 +67,4 @@ export const prisma = basePrisma.$extends({
       }
     }
   }
-});
+}) as any);

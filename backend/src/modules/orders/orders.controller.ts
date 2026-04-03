@@ -16,7 +16,7 @@ import { logger } from '../../lib/logger';
  */
 export const createOrder = async (req: AuthRequest, res: Response) => {
   try {
-    const shopId = req.user!.shopId;
+    const shopId = req.shopId!;
     const userId = req.user!.id;
     
     // Core business logic (Atomic)
@@ -82,9 +82,9 @@ export const getOrders = async (req: AuthRequest, res: Response) => {
     const pageNum = Math.max(1, parseInt(page as string) || 1);
     const limitNum = Math.min(100000, parseInt(limit as string) || 20);
     const skip = (pageNum - 1) * limitNum;
-    console.log(`[ORDER_LIST] Shop: ${req.user!.shopId}, Limit: ${limitNum}, Skip: ${skip}, Sort: ${sort}`);
+    console.log(`[ORDER_LIST] Shop: ${req.shopId!}, Limit: ${limitNum}, Skip: ${skip}, Sort: ${sort}`);
 
-    const { orders, total } = await orderService.getOrders(req.user!.shopId, {
+    const { orders, total } = await orderService.getOrders(req.shopId!, {
       skip,
       take: limitNum,
       startDate: startDate as string,
@@ -116,7 +116,7 @@ export const getOrders = async (req: AuthRequest, res: Response) => {
  */
 export const getOrderById = async (req: AuthRequest, res: Response) => {
   try {
-    const order = await orderService.getOrderById(req.params.id, req.user!.shopId);
+    const order = await orderService.getOrderById(req.params.id, req.shopId!);
     if (!order) return res.status(404).json({ error: 'Order not found' });
     return res.json(order);
   } catch (error: any) {
@@ -130,11 +130,11 @@ export const getOrderById = async (req: AuthRequest, res: Response) => {
  */
 export const cancelOrder = async (req: AuthRequest, res: Response) => {
   try {
-    const updated = await orderService.cancelOrder(req.params.id, req.user!.shopId);
+    const updated = await orderService.cancelOrder(req.params.id, req.shopId!);
     
     // Background updates
-    addDashboardUpdateJob(req.user!.shopId).catch(() => {});
-    emitToShop(req.user!.shopId, 'ORDER_CANCELLED', { orderId: req.params.id });
+    addDashboardUpdateJob(req.shopId!).catch(() => {});
+    emitToShop(req.shopId!, 'ORDER_CANCELLED', { orderId: req.params.id });
 
     return res.json(updated);
   } catch (error: any) {
@@ -154,7 +154,7 @@ export const updatePaymentStatus = async (req: AuthRequest, res: Response) => {
   }
 
   try {
-    const updated = await orderService.updatePaymentStatus(req.params.id, req.user!.shopId, paymentStatus);
+    const updated = await orderService.updatePaymentStatus(req.params.id, req.shopId!, paymentStatus);
 
     // Sync side effects for newly PAID orders
     if (paymentStatus === 'PAID') {
@@ -173,8 +173,8 @@ export const updatePaymentStatus = async (req: AuthRequest, res: Response) => {
       }
     }
 
-    addDashboardUpdateJob(req.user!.shopId).catch(() => {});
-    emitToShop(req.user!.shopId, 'ORDER_UPDATED', updated);
+    addDashboardUpdateJob(req.shopId!).catch(() => {});
+    emitToShop(req.shopId!, 'ORDER_UPDATED', updated);
 
     return res.json(updated);
   } catch (error: any) {
@@ -188,7 +188,7 @@ export const updatePaymentStatus = async (req: AuthRequest, res: Response) => {
  */
 export const getKitchenOrders = async (req: AuthRequest, res: Response) => {
   try {
-    const orders = await orderService.getKitchenOrders(req.user!.shopId);
+    const orders = await orderService.getKitchenOrders(req.shopId!);
     return res.json({ orders });
   } catch (error: any) {
     logger.error(`[KITCHEN] Fetch failed: ${error.message}`);
@@ -208,8 +208,8 @@ export const updateOrderStatus = async (req: AuthRequest, res: Response) => {
   }
 
   try {
-    const updated = await orderService.updateKitchenStatus(req.params.id, req.user!.shopId, status);
-    emitToShop(req.user!.shopId, 'ORDER_UPDATED', updated);
+    const updated = await orderService.updateKitchenStatus(req.params.id, req.shopId!, status);
+    emitToShop(req.shopId!, 'ORDER_UPDATED', updated);
     return res.json(updated);
   } catch (error: any) {
     logger.error(`[KITCHEN] Status update failed: ${error.message}`);
@@ -222,7 +222,7 @@ export const updateOrderStatus = async (req: AuthRequest, res: Response) => {
  */
 export const resendWhatsApp = async (req: AuthRequest, res: Response) => {
   try {
-    const order = await orderService.getOrderById(req.params.id, req.user!.shopId);
+    const order = await orderService.getOrderById(req.params.id, req.shopId!);
     if (!order) return res.status(404).json({ error: 'Order not found' });
     if (!order.customer?.phone) return res.status(400).json({ error: 'Customer has no phone number' });
 

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../index';
-import { authenticate, authorize, asyncHandler, validateRequest, AuthRequest } from '../middleware/auth';
+import { authenticate, authorize, asyncHandler, validateRequest, AuthRequest, tenantContext } from '../middleware/auth';
 
 const router = Router();
 
@@ -27,6 +27,7 @@ const productSchema = z.object({
 router.get(
   '/',
   authenticate,
+  tenantContext,
   asyncHandler(async (req: AuthRequest, res) => {
     const { page = '1', limit = '20', search = '', category, lowStock } = req.query;
     const pageNum = Math.max(1, parseInt(page as string) || 1);
@@ -34,7 +35,7 @@ router.get(
     const skip = (pageNum - 1) * limitNum;
 
     const where: any = {
-      shopId: req.user!.shopId,
+      shopId: req.shopId,
       isActive: true,
       ...(search && {
         OR: [
@@ -84,11 +85,12 @@ router.get(
 router.get(
   '/:id',
   authenticate,
+  tenantContext,
   asyncHandler(async (req: AuthRequest, res) => {
     const product = await prisma.product.findFirst({
       where: {
         id: req.params.id,
-        shopId: req.user!.shopId
+        shopId: req.shopId
       },
       include: { category: true }
     });
@@ -108,6 +110,7 @@ router.get(
 router.post(
   '/',
   authenticate,
+  tenantContext,
   authorize('ADMIN', 'MANAGER'),
   validateRequest(productSchema),
   asyncHandler(async (req: AuthRequest, res) => {
@@ -117,7 +120,7 @@ router.post(
     if (data.sku) {
       const existing = await prisma.product.findFirst({
         where: {
-          shopId: req.user!.shopId,
+          shopId: req.shopId,
           sku: data.sku
         }
       });
@@ -130,7 +133,7 @@ router.post(
     const product = await prisma.product.create({
       data: {
         ...data,
-        shopId: req.user!.shopId
+        shopId: req.shopId
       },
       include: { category: true }
     });
@@ -146,13 +149,14 @@ router.post(
 router.put(
   '/:id',
   authenticate,
+  tenantContext,
   authorize('ADMIN', 'MANAGER'),
   validateRequest(productSchema.partial()),
   asyncHandler(async (req: AuthRequest, res) => {
     const product = await prisma.product.findFirst({
       where: {
         id: req.params.id,
-        shopId: req.user!.shopId
+        shopId: req.shopId
       }
     });
 
@@ -177,12 +181,13 @@ router.put(
 router.delete(
   '/:id',
   authenticate,
+  tenantContext,
   authorize('ADMIN'),
   asyncHandler(async (req: AuthRequest, res) => {
     const product = await prisma.product.findFirst({
       where: {
         id: req.params.id,
-        shopId: req.user!.shopId
+        shopId: req.shopId
       }
     });
 
@@ -206,13 +211,14 @@ router.delete(
 router.get(
   '/:id/stock-history',
   authenticate,
+  tenantContext,
   asyncHandler(async (req: AuthRequest, res) => {
     const { limit = '50' } = req.query;
 
     const product = await prisma.product.findFirst({
       where: {
         id: req.params.id,
-        shopId: req.user!.shopId
+        shopId: req.shopId
       }
     });
 
@@ -237,6 +243,7 @@ router.get(
 router.post(
   '/:id/adjust-stock',
   authenticate,
+  tenantContext,
   authorize('ADMIN', 'MANAGER'),
   asyncHandler(async (req: AuthRequest, res) => {
     const { quantity, note } = req.body;
@@ -248,7 +255,7 @@ router.post(
     const product = await prisma.product.findFirst({
       where: {
         id: req.params.id,
-        shopId: req.user!.shopId
+        shopId: req.shopId
       }
     });
 

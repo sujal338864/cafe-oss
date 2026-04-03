@@ -1,4 +1,4 @@
-import { prisma } from '../../index';
+import { prisma } from '../../common/prisma';
 
 export const getSuppliers = async (shopId: string, filters: {
   skip: number;

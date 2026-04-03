@@ -6,7 +6,12 @@ import api from '@/lib/api';
 
 export default function SettingsPage() {
   const { theme, themeName, setTheme } = useTheme();
-  const { user } = useAuth();
+  const { user, shops, activeShop, switchShop } = useAuth() as any;
+
+  // Branch management
+  const [newBranch,    setNewBranch]    = useState({ name: '', phone: '' });
+  const [branchSaving, setBranchSaving] = useState(false);
+
 
   // Shop profile
   const [shop,       setShop]       = useState<any>(null);
@@ -90,6 +95,17 @@ export default function SettingsPage() {
       setPwErr(e.response?.data?.error || 'Failed to change password');
     } finally { setPwSaving(false); }
   };
+  const createBranch = async () => {
+    if (!newBranch.name) return;
+    setBranchSaving(true);
+    try {
+      await api.post('/api/shop', newBranch);
+      window.location.reload(); // Refresh to get new shop list
+    } catch (e: any) {
+      alert(e.response?.data?.error || 'Failed to create branch');
+    } finally { setBranchSaving(false); }
+  };
+
 
   const card: React.CSSProperties  = { background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, marginBottom: 16 };
   const cardHead: React.CSSProperties = { padding: '16px 20px', borderBottom: `1px solid ${theme.border}` };
@@ -214,7 +230,55 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* ── Appearance ───────────────────────────────────────────────── */}
+      {/* ── Branch Management ─────────────────────────────────────────── */}
+      <div style={card}>
+        <div style={cardHead}>
+          <div style={{ fontWeight: 700, fontSize: 15, color: theme.text }}>🏢 Multi-Branch Management</div>
+          <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 2 }}>
+            You are currently using {shops.length} of {user?.shopLimit || 1} available branches.
+          </div>
+        </div>
+        <div style={cardBody}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+            {shops.map((s: any) => (
+              <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderRadius: 12, background: theme.hover, border: `1px solid ${s.id === activeShop?.id ? '#7c3aed' : 'transparent'}` }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: theme.text }}>{s.name}</div>
+                  <div style={{ fontSize: 11, color: theme.textFaint }}>Role: {s.role} • Plan: {s.plan}</div>
+                </div>
+                {s.id === activeShop?.id ? (
+                  <span style={{ fontSize: 10, fontWeight: 800, color: '#7c3aed', background: 'rgba(124,58,237,0.1)', padding: '2px 8px', borderRadius: 6 }}>ACTIVE</span>
+                ) : (
+                  <button onClick={() => switchShop(s.id)} style={{ background: 'none', border: `1px solid ${theme.border}`, color: theme.textMuted, padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>Switch</button>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {shops.length < (user?.shopLimit || 1) ? (
+            <div style={{ border: `1px dashed ${theme.border}`, borderRadius: 12, padding: 16 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: theme.text, marginBottom: 12 }}>Create New Branch</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+                <input placeholder="Branch Name" value={newBranch.name} onChange={e => setNewBranch(v => ({...v, name: e.target.value}))} style={inp} />
+                <input placeholder="Phone" value={newBranch.phone} onChange={e => setNewBranch(v => ({...v, phone: e.target.value}))} style={inp} />
+              </div>
+              <button onClick={createBranch} disabled={branchSaving || !newBranch.name}
+                style={{ width: '100%', background: theme.accent, color: 'white', border: 'none', padding: '9px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                {branchSaving ? 'Creating...' : '+ Create Branch'}
+              </button>
+            </div>
+          ) : (
+            <div style={{ padding: '12px', background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 12, display: 'flex', gap: 10, alignItems: 'center' }}>
+              <span style={{ fontSize: 20 }}>🚀</span>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#f59e0b' }}>Branch Limit Reached</div>
+                <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 2 }}>Upgrade your global plan to add more branches to your business.</div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       <div style={card}>
         <div style={cardHead}>
           <div style={{ fontWeight: 700, fontSize: 15, color: theme.text }}>Appearance</div>

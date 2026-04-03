@@ -20,14 +20,13 @@ import { PrismaClient } from '@prisma/client';
 import dotenv from 'dotenv';
 dotenv.config();
 
-import { prisma as extendedPrisma } from './common/prisma';
+import { prisma } from './common/prisma';
 import { logger } from './lib/logger';
 import { requestLogger } from './middleware/requestLogger';
 import { logRedisError } from './lib/redis';
 import { distributedRateLimiter } from './middleware/rateLimiter';
 import { metricsCollector, metricsEndpoint } from './middleware/metrics';
 
-export const prisma = extendedPrisma;
 
 const app: Express = express();
 app.use(metricsCollector);
@@ -54,7 +53,7 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Shop-Id'],
 }));
 
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
@@ -100,7 +99,7 @@ app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
 });
 
-import { authenticate } from './middleware/auth';
+import { authenticate, tenantContext } from './middleware/auth';
 import { withTenantContext } from './middleware/tenant';
 
 app.use('/api/upload', uploadRoutes);
@@ -110,6 +109,7 @@ app.use('/api/auth', authRoutes);
 // --- Authenticated Dashboard Scope ---
 const dashboardRouter = express.Router();
 dashboardRouter.use(authenticate as any);
+dashboardRouter.use(tenantContext as any);
 dashboardRouter.use(withTenantContext as any);
 
 dashboardRouter.use('/shop', shopRoutes);

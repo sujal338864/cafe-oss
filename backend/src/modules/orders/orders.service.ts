@@ -1,4 +1,4 @@
-import { prisma } from '../../index';
+import { prisma } from '../../common/prisma';
 import { logger } from '../../lib/logger';
 
 // Loyalty constants removed - now fetched dynamically per-shop inside transactions

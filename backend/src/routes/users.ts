@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { prisma } from '../index';
-import { authenticate, authorize, asyncHandler, AuthRequest } from '../middleware/auth';
+import { prisma } from '../common/prisma';
+import { authenticate, authorize, asyncHandler, AuthRequest, tenantContext } from '../middleware/auth';
 
 const router = Router();
 
@@ -9,11 +9,12 @@ const router = Router();
  */
 router.get(
   '/',
-  authenticate,
+  authenticate as any,
+  tenantContext,
   authorize('ADMIN'),
   asyncHandler(async (req: AuthRequest, res) => {
     const users = await prisma.user.findMany({
-      where: { shopId: req.user!.shopId },
+      where: { shopId: req.shopId! },
       select: {
         id: true,
         name: true,
@@ -36,13 +37,14 @@ router.get(
  */
 router.post(
   '/',
-  authenticate,
+  authenticate as any,
+  tenantContext,
   authorize('ADMIN'),
   asyncHandler(async (req: AuthRequest, res) => {
     const { name, email, role } = req.body;
 
     const existing = await prisma.user.findFirst({
-      where: { email, shopId: req.user!.shopId }
+      where: { email, shopId: req.shopId! }
     });
 
     if (existing) {
@@ -53,7 +55,7 @@ router.post(
 
     const user = await prisma.user.create({
       data: {
-        shopId: req.user!.shopId,
+        shopId: req.shopId!,
         name,
         email,
         role,
@@ -76,13 +78,14 @@ router.post(
  */
 router.put(
   '/:id/role',
-  authenticate,
+  authenticate as any,
+  tenantContext,
   authorize('ADMIN'),
   asyncHandler(async (req: AuthRequest, res) => {
     const { role } = req.body;
 
     const user = await prisma.user.findFirst({
-      where: { id: req.params.id, shopId: req.user!.shopId }
+      where: { id: req.params.id, shopId: req.shopId! }
     });
 
     if (!user) {
@@ -108,11 +111,12 @@ router.put(
  */
 router.delete(
   '/:id',
-  authenticate,
+  authenticate as any,
+  tenantContext,
   authorize('ADMIN'),
   asyncHandler(async (req: AuthRequest, res) => {
     const user = await prisma.user.findFirst({
-      where: { id: req.params.id, shopId: req.user!.shopId }
+      where: { id: req.params.id, shopId: req.shopId! }
     });
 
     if (!user) {

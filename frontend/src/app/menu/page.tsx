@@ -14,7 +14,8 @@ const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001';
 function optImg(url?: string, w = 400) {
   if (!url) return '';
   if (url.includes('cloudinary.com')) {
-    return url.replace('/upload/', `/upload/f_auto,q_auto,w_${w}/`);
+    // Optimized: f_auto (format), q_auto (quality), c_limit (containment)
+    return url.replace('/upload/', `/upload/f_auto,q_auto,w_${w},c_limit/`);
   }
   return url;
 }
@@ -60,7 +61,7 @@ const ProductItem = memo(function ProductItem({ p, inCart, onAdd, onInc, onDec }
       {/* Thumbnail */}
       <div className="w-full aspect-[4/3] relative overflow-hidden bg-slate-50 flex items-center justify-center">
         {p.imageUrl
-          ? <img src={optImg(p.imageUrl, 400)} alt={p.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+          ? <img src={optImg(p.imageUrl, 220)} alt={p.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
           : <span className="text-4xl font-bold text-slate-200">{p.name[0]}</span>
         }
         {p.activeRule && (
@@ -119,7 +120,7 @@ const RecommendationRow = ({ items, onAdd }: { items: Product[], onAdd: (p: Prod
           <div key={p.id} className="snap-start shrink-0 w-[140px] bg-white rounded-2xl border border-slate-100 p-2 shadow-sm relative group hover:shadow-md transition-shadow">
             <div className="w-full h-20 rounded-xl bg-slate-50 mb-2 overflow-hidden flex items-center justify-center">
               {p.imageUrl ? (
-                <img src={optImg(p.imageUrl, 280)} alt={p.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                <img src={optImg(p.imageUrl, 150)} alt={p.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
               ) : (
                 <span className="text-2xl font-bold text-slate-200">{p.name[0]}</span>
               )}
@@ -150,8 +151,6 @@ function MenuContent() {
   const searchParams = useSearchParams();
   const shopId = searchParams.get('shopId');
 
-  const [products, setProducts] = useState<Product[]>([]);
-  const [allCategories, setAllCategories] = useState<Category[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cat, setCat] = useState('All');
   const [search, setSearch] = useState('');
@@ -161,32 +160,7 @@ function MenuContent() {
   const [step, setStep] = useState<'menu' | 'cart' | 'info' | 'done'>('menu');
   const queryClient = useQueryClient();
 
-  // 1. RECOMMENDATIONS
-  const { data: recData } = useQuery({
-    queryKey: ['menu_recommendations', shopId],
-    queryFn: () => get(`/api/menu/recommendations?shopId=${shopId}`).then(d => d.recommendations),
-    enabled: !!shopId && (step === 'cart' || step === 'info'),
-    staleTime: 300000 // 5 min
-  });
-  const recommendations = recData || [];
-
-  // 2. MAIN MENU DATA
-  const { data: menuData, isLoading: loading } = useQuery({
-    queryKey: ['menu_data', shopId],
-    queryFn: async () => {
-      // Clear any stale localStorage cache
-      localStorage.removeItem(`menu_cache_${shopId}`);
-      const data = await get(`/api/menu?shopId=${shopId}&fresh=true`);
-      console.log('[MENU DEBUG] API response:', data?.products?.length, 'products');
-      return data;
-    },
-    enabled: !!shopId,
-    staleTime: 60000, // 1 min
-  });
-
-  const [shopName, setShopName] = useState('Our Menu');
-  const [pricingEnabled, setPricingEnabled] = useState(false);
-  const [activePromo, setActivePromo] = useState<string | null>(null);
+  // Lifecycle & Form states
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [table, setTable] = useState('');
@@ -197,11 +171,38 @@ function MenuContent() {
   const [noteFor, setNoteFor] = useState<string | null>(null);
   const [loyaltyPoints, setLoyaltyPoints] = useState(0);
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
-  const [loyaltyRate, setLoyaltyRate] = useState(0.1);
-  const [redeemRate, setRedeemRate] = useState(10);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [latestError, setLatestError] = useState<string | null>(null);
+
+  // 1. RECOMMENDATIONS
+  const { data: recData } = useQuery({
+    queryKey: ['menu_recommendations', shopId],
+    queryFn: () => get(`/api/menu/recommendations?shopId=${shopId}`).then(d => d.recommendations),
+    enabled: !!shopId && (step === 'cart' || step === 'info'),
+    staleTime: 300000 // 5 min
+  });
+  const recommendations = recData || [];
+
+  // 2. MAIN MENU DATA (Optimized: 10m Caching)
+  const { data: menuData, isLoading: loading } = useQuery({
+    queryKey: ['menu_data', shopId],
+    queryFn: () => get(`/api/menu?shopId=${shopId}`),
+    enabled: !!shopId,
+    staleTime: 600000, // 10 min
+    gcTime: 900000,    // 15 min
+    refetchOnWindowFocus: false // Reduce egress on tab switch
+  });
+
   const isDebug = searchParams.get('debug') === '1';
+
+  // DERIVED STATE (Optimization: Cuts 5 renders to 1)
+  const products       = useMemo(() => menuData?.products || [], [menuData]);
+  const allCategories  = useMemo(() => menuData?.categories || [], [menuData]);
+  const shopName       = useMemo(() => menuData?.shop?.name || 'Our Menu', [menuData]);
+  const pricingEnabled = useMemo(() => !!menuData?.shop?.pricingEnabled, [menuData]);
+  const loyaltyRate    = useMemo(() => menuData?.loyaltyRate || 0.1, [menuData]);
+  const redeemRate     = useMemo(() => menuData?.redeemRate || 10, [menuData]);
+  const activePromo    = useMemo(() => (menuData?.products || []).find((p: any) => p.activeRule)?.activeRule || null, [menuData]);
 
   useEffect(() => {
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
@@ -243,18 +244,7 @@ function MenuContent() {
     return () => clearInterval(interval);
   }, [step, result?.id, result?.paymentStatus, result?.status]);
 
-  useEffect(() => {
-    if (menuData) {
-      setProducts(menuData.products || []);
-      setAllCategories(menuData.categories || []);
-      setShopName(menuData.shop?.name || 'Our Menu');
-      setPricingEnabled(!!menuData.shop?.pricingEnabled);
-      if (menuData.loyaltyRate) setLoyaltyRate(menuData.loyaltyRate);
-      if (menuData.redeemRate) setRedeemRate(menuData.redeemRate);
-      const firstActive = (menuData.products || []).find((p: Product) => p.activeRule);
-      if (firstActive) setActivePromo(firstActive.activeRule);
-    }
-  }, [menuData]);
+  // Optimization: Removed redundant useEffect mapping for menuData
 
   useEffect(() => {
     const t = searchParams.get('table') || searchParams.get('tableNumber') || searchParams.get('t');
@@ -585,7 +575,7 @@ function MenuContent() {
             {cart.map((item, i) => (
               <div key={item.id} className="flex gap-4 p-4 items-center bg-white group hover:bg-slate-50 transition-colors rounded-2xl relative" style={{ animation: `slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1) ${i * 0.05}s both` }}>
                 <div className="w-16 h-16 rounded-xl bg-slate-100 shrink-0 overflow-hidden flex items-center justify-center relative">
-                  {item.imageUrl ? <img src={optImg(item.imageUrl, 128)} className="w-full h-full object-cover" /> : <ShoppingCart className="text-slate-300" />}
+                  {item.imageUrl ? <img src={optImg(item.imageUrl, 100)} loading="lazy" className="w-full h-full object-cover" /> : <ShoppingCart className="text-slate-300" />}
                 </div>
                 <div className="flex-1 min-w-0 pr-2">
                   <div className="font-semibold text-sm text-slate-900 leading-tight mb-1 truncate">{item.name}</div>

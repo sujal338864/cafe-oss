@@ -1,7 +1,7 @@
-﻿import { Router } from 'express';
+import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../index';
-import { authenticate, authorize, asyncHandler, validateRequest, AuthRequest } from '../middleware/auth';
+import { authenticate, authorize, asyncHandler, validateRequest, AuthRequest, tenantContext } from '../middleware/auth';
 
 const router = Router();
 
@@ -16,9 +16,10 @@ const categorySchema = z.object({
 router.get(
   '/',
   authenticate,
+  tenantContext,
   asyncHandler(async (req: AuthRequest, res) => {
     const categories = await prisma.category.findMany({
-      where: { shopId: req.user!.shopId },
+      where: { shopId: req.shopId },
       include: { _count: { select: { products: true } } },
       orderBy: { name: 'asc' }
     });
@@ -33,13 +34,14 @@ router.get(
 router.post(
   '/',
   authenticate,
+  tenantContext,
   authorize('ADMIN', 'MANAGER'),
   validateRequest(categorySchema),
   asyncHandler(async (req: AuthRequest, res) => {
     const { name, color } = req.body;
 
     const existing = await prisma.category.findFirst({
-      where: { shopId: req.user!.shopId, name }
+      where: { shopId: req.shopId, name }
     });
 
     if (existing) {
@@ -48,7 +50,7 @@ router.post(
 
     const category = await prisma.category.create({
       data: {
-        shopId: req.user!.shopId,
+        shop: { connect: { id: req.shopId! } },
         name,
         color
       }
@@ -64,11 +66,12 @@ router.post(
 router.put(
   '/:id',
   authenticate,
+  tenantContext,
   authorize('ADMIN', 'MANAGER'),
   validateRequest(categorySchema.partial()),
   asyncHandler(async (req: AuthRequest, res) => {
     const category = await prisma.category.findFirst({
-      where: { id: req.params.id, shopId: req.user!.shopId }
+      where: { id: req.params.id, shopId: req.shopId }
     });
 
     if (!category) {
@@ -90,10 +93,11 @@ router.put(
 router.delete(
   '/:id',
   authenticate,
+  tenantContext,
   authorize('ADMIN'),
   asyncHandler(async (req: AuthRequest, res) => {
     const category = await prisma.category.findFirst({
-      where: { id: req.params.id, shopId: req.user!.shopId }
+      where: { id: req.params.id, shopId: req.shopId }
     });
 
     if (!category) {

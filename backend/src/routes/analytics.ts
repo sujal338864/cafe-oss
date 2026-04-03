@@ -2,15 +2,15 @@
 // Fixes: too many parallel Prisma queries causing connection pool timeout
 
 import { Router } from 'express';
-import { authenticate, asyncHandler, AuthRequest } from '../middleware/auth';
+import { asyncHandler, AuthRequest } from '../middleware/auth';
 import { getCache, setCache } from '../common/cache';
 import { calculateDashboardStats } from '../services/analytics.service';
-import { prisma } from '../index';
+import { prisma } from '../common/prisma';
 
 const router = Router();
 
-router.get('/dashboard', authenticate, asyncHandler(async (req: AuthRequest, res) => {
-  const shopId = req.user!.shopId;
+router.get('/dashboard', asyncHandler(async (req: AuthRequest, res) => {
+  const shopId = req.shopId!;
 
     // 2. Cache Miss -> Fallback to Calculate Inline
     // CACHE DISABLED: Ensuring real-time dashboard accuracy per user request
@@ -30,8 +30,8 @@ router.get('/dashboard', authenticate, asyncHandler(async (req: AuthRequest, res
  * GET /api/analytics/mega-dashboard
  * The "Nuclear Option" for performance. Returns EVERYTHING in one call.
  */
-router.get('/dashboard-mega', authenticate, asyncHandler(async (req: AuthRequest, res) => {
-  const shopId = req.user!.shopId;
+router.get('/dashboard-mega', asyncHandler(async (req: AuthRequest, res) => {
+  const shopId = req.shopId!;
   const cacheKey = `mega_dashboard:${shopId}`;
 
   const cached = await getCache(cacheKey);
@@ -55,8 +55,8 @@ router.get('/dashboard-mega', authenticate, asyncHandler(async (req: AuthRequest
  * GET /api/analytics/financial-summary
  * Returns the true P&L (Profit & Loss) after subtracting COGS and OpEx.
  */
-router.get('/financial-summary', authenticate, asyncHandler(async (req: AuthRequest, res) => {
-  const shopId = req.user!.shopId;
+router.get('/financial-summary', asyncHandler(async (req: AuthRequest, res) => {
+  const shopId = req.shopId!;
   const days = parseInt(req.query.days as string) || 30;
 
   const { AnalyticsService } = await import('../services/analytics.service');
@@ -69,8 +69,8 @@ router.get('/financial-summary', authenticate, asyncHandler(async (req: AuthRequ
  * GET /api/analytics/daily-profit
  * Returns aggregated profit/revenue for the last N days.
  */
-router.get('/daily-profit', authenticate, asyncHandler(async (req: AuthRequest, res) => {
-  const shopId = req.user!.shopId;
+router.get('/daily-profit', asyncHandler(async (req: AuthRequest, res) => {
+  const shopId = req.shopId!;
   const days = parseInt(req.query.days as string) || 7;
   
   const { AnalyticsService } = await import('../services/analytics.service');
@@ -83,8 +83,8 @@ router.get('/daily-profit', authenticate, asyncHandler(async (req: AuthRequest, 
  * GET /api/analytics/inventory-forecast
  * Returns stockout predictions based on sales velocity.
  */
-router.get('/inventory-forecast', authenticate, asyncHandler(async (req: AuthRequest, res) => {
-  const shopId = req.user!.shopId;
+router.get('/inventory-forecast', asyncHandler(async (req: AuthRequest, res) => {
+  const shopId = req.shopId!;
   
   const { AnalyticsService } = await import('../services/analytics.service');
   const forecasting = await AnalyticsService.getInventoryForecast(shopId);
@@ -97,16 +97,16 @@ router.get('/inventory-forecast', authenticate, asyncHandler(async (req: AuthReq
  * Returns a 24/7 heatmap of order volume for staffing optimization.
  * Helps owners decide when to schedule more or fewer staff members.
  */
-router.get('/peak-hours', authenticate, asyncHandler(async (req: AuthRequest, res) => {
-  const shopId = req.user!.shopId;
+router.get('/peak-hours', asyncHandler(async (req: AuthRequest, res) => {
+  const shopId = req.shopId!;
   const { AnalyticsService } = await import('../services/analytics.service');
   const heatmap = await AnalyticsService.getPeakHours(shopId);
   res.json({ heatmap });
 }));
 
 // Recent activity
-router.get('/recent', authenticate, asyncHandler(async (req: AuthRequest, res) => {
-  const shopId = req.user!.shopId;
+router.get('/recent', asyncHandler(async (req: AuthRequest, res) => {
+  const shopId = req.shopId!;
   const orders = await prisma.order.findMany({
     where: { shopId },
     take: 10,
