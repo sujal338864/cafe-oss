@@ -200,6 +200,8 @@ function MenuContent() {
   const [loyaltyRate, setLoyaltyRate] = useState(0.1);
   const [redeemRate, setRedeemRate] = useState(10);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [latestError, setLatestError] = useState<string | null>(null);
+  const isDebug = searchParams.get('debug') === '1';
 
   useEffect(() => {
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
@@ -261,10 +263,15 @@ function MenuContent() {
 
   const lookupCustomer = async (digits: string) => {
     try {
+      setLatestError(null);
       const data = await get(`/api/menu/customer?phone=${digits}&shopId=${shopId}`);
       if (data.loyaltyPoints) setLoyaltyPoints(data.loyaltyPoints);
       if (data.name && !name.trim()) setName(data.name);
-    } catch { }
+      if (!data.name) setLatestError('No customer found for this number');
+    } catch (err: any) {
+      setLatestError(err.message || 'Connection failed');
+      console.error('[MENU] Customer lookup error:', err);
+    }
   };
 
   const addToCart = useCallback((p: Product) => setCart(c => {
@@ -718,6 +725,12 @@ function MenuContent() {
               <div className="font-bold text-slate-700 mb-1 font-sans">DEBUG INFO:</div>
               <div><b>Shop ID:</b> {shopId}</div>
               <div><b>Loaded:</b> {products.length} products</div>
+              {isDebug && (
+                <div className="mt-2 pt-2 border-t border-slate-200">
+                  <div><b>API:</b> {API}</div>
+                  <div><b>Status:</b> {latestError || 'Ready'}</div>
+                </div>
+              )}
               <button onClick={() => window.location.reload()} className="mt-3 px-3 py-1.5 bg-white border border-slate-200 rounded font-bold text-slate-800 block w-full">Force Refresh</button>
             </div>
           </div>

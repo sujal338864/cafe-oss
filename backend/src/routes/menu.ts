@@ -304,7 +304,14 @@ router.get('/customer', asyncHandler(async (req, res) => {
   try {
     const digits = phone.replace(/\D/g, '').replace(/^91/, '').replace(/^0/, '');
     const cust = await prisma.customer.findFirst({
-      where: { shopId, phone: { contains: digits } },
+      where: { 
+        shopId, 
+        OR: [
+          { phone: digits },
+          { phone: { contains: digits } },
+          { phone: phone }
+        ]
+      },
       select: { name: true, loyaltyPoints: true }
     });
 
