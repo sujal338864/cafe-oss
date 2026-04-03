@@ -45,6 +45,7 @@ app.use(cors({
     const ok =
       origin.endsWith('.netlify.app') ||
       origin.endsWith('.netlify.live') ||
+      origin.endsWith('.vercel.app') ||
       origin.startsWith('http://localhost') ||
       origin.startsWith('http://127.0.0.1') ||
       origin === (process.env.FRONTEND_URL || '');
