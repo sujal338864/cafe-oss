@@ -14,31 +14,31 @@ declare global {
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
 
 export default function LoginPage() {
-  const router  = useRouter();
+  const router = useRouter();
   const { login } = useAuth();
   const { theme } = useTheme();
 
-  const [tab,        setTab]        = useState<'login' | 'register'>('login');
-  const [email,      setEmail]      = useState('');
-  const [password,   setPassword]   = useState('');
-  const [loading,    setLoading]    = useState(false);
-  const [error,      setError]      = useState('');
-  const [waking,     setWaking]     = useState(false);
+  const [tab, setTab] = useState<'login' | 'register'>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [waking, setWaking] = useState(false);
   const [googleReady, setGoogleReady] = useState(false);
 
   // Register fields
-  const [shopName,   setShopName]   = useState('');
-  const [ownerName,  setOwnerName]  = useState('');
-  const [phone,      setPhone]      = useState('');
-  const [regPass,    setRegPass]    = useState('');
+  const [shopName, setShopName] = useState('');
+  const [ownerName, setOwnerName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [regPass, setRegPass] = useState('');
   const [regLoading, setRegLoading] = useState(false);
 
   // Google registration extra step
-  const [googleStep, setGoogleStep]   = useState(false);
-  const [googleInfo, setGoogleInfo]   = useState<any>(null);
-  const [gShopName,  setGShopName]    = useState('');
-  const [gPhone,     setGPhone]       = useState('');
-  const [gLoading,   setGLoading]     = useState(false);
+  const [googleStep, setGoogleStep] = useState(false);
+  const [googleInfo, setGoogleInfo] = useState<any>(null);
+  const [gShopName, setGShopName] = useState('');
+  const [gPhone, setGPhone] = useState('');
+  const [gLoading, setGLoading] = useState(false);
 
   const googleBtnRef = useRef<HTMLDivElement>(null);
 
@@ -69,7 +69,7 @@ export default function LoginPage() {
     if (!googleReady || !window.google || !googleBtnRef.current || !GOOGLE_CLIENT_ID) return;
     window.google.accounts.id.initialize({
       client_id: GOOGLE_CLIENT_ID,
-      callback:  handleGoogleCallback,
+      callback: handleGoogleCallback,
     });
     window.google.accounts.id.renderButton(googleBtnRef.current, {
       theme: 'filled_black', size: 'large', width: '100%', text: 'continue_with',
@@ -103,13 +103,13 @@ export default function LoginPage() {
 
   const completeGoogleRegister = async () => {
     if (!gShopName.trim()) { setError('Shop name is required'); return; }
-    if (!gPhone.trim())    { setError('Phone number is required'); return; }
+    if (!gPhone.trim()) { setError('Phone number is required'); return; }
     setGLoading(true); setError('');
     try {
       const { data } = await api.post('/api/auth/google', {
         credential: googleInfo.credential,
-        shopName:   gShopName.trim(),
-        phone:      gPhone.trim(),
+        shopName: gShopName.trim(),
+        phone: gPhone.trim(),
       });
       login(data.token, data.user, data.shop);
       router.push('/dashboard');
@@ -128,7 +128,7 @@ export default function LoginPage() {
       login(data.token, data.user, data.shop);
       router.push('/dashboard');
     } catch (e: any) {
-      setError(e.response?.data?.error || 'Invalid email or password');
+      setError(e.response?.data?.error || e.message || 'Invalid email or password');
     } finally {
       setLoading(false);
     }
@@ -231,9 +231,11 @@ export default function LoginPage() {
           <div style={{ display: 'flex', gap: 4, marginBottom: 22, background: theme.input, borderRadius: 12, padding: 4 }}>
             {(['login', 'register'] as const).map(t => (
               <button key={t} onClick={() => { setTab(t); setError(''); }}
-                style={{ flex: 1, padding: '8px', borderRadius: 9, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13,
+                style={{
+                  flex: 1, padding: '8px', borderRadius: 9, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13,
                   background: tab === t ? theme.accent : 'transparent',
-                  color: tab === t ? 'white' : theme.textMuted }}>
+                  color: tab === t ? 'white' : theme.textMuted
+                }}>
                 {t === 'login' ? 'Sign In' : 'Register'}
               </button>
             ))}
