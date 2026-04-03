@@ -48,3 +48,7 @@ next-env.d.ts
 
 # Turbo
 .turbo/
+
+# Archive files in root
+*.zip
+*.z*

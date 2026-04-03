@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate, authorize, asyncHandler, validateRequest, tenantContext } from '../../middleware/auth';
+import { authenticate, authorize, asyncHandler, validateRequest } from '../../middleware/auth';
 import * as orderController from './orders.controller';
 import { createOrderSchema } from './orders.validation';
 import { idempotency } from '../../middleware/idempotency';
@@ -23,7 +23,7 @@ router.post(
 router.get(
   '/',
   authenticate as any,
-  tenantContext,
+
   asyncHandler(orderController.getOrders)
 );
 
@@ -34,7 +34,7 @@ router.get(
 router.get(
   '/kitchen',
   authenticate as any,
-  tenantContext,
+
   asyncHandler(orderController.getKitchenOrders)
 );
 
@@ -44,7 +44,7 @@ router.get(
 router.get(
   '/:id',
   authenticate as any,
-  tenantContext,
+
   asyncHandler(orderController.getOrderById)
 );
 
@@ -54,7 +54,7 @@ router.get(
 router.put(
   '/:id/cancel',
   authenticate as any,
-  tenantContext,
+
   authorize('ADMIN', 'MANAGER'),
   asyncHandler(orderController.cancelOrder)
 );
@@ -65,7 +65,7 @@ router.put(
 router.put(
   '/:id/payment',
   authenticate as any,
-  tenantContext,
+
   authorize('ADMIN', 'MANAGER'),
   idempotency,
   asyncHandler(orderController.updatePaymentStatus)
@@ -77,7 +77,7 @@ router.put(
 router.put(
   '/:id/status',
   authenticate as any,
-  tenantContext,
+
   asyncHandler(orderController.updateOrderStatus)
 );
 
@@ -87,7 +87,7 @@ router.put(
 router.post(
   '/:id/whatsapp',
   authenticate as any,
-  tenantContext,
+
   asyncHandler(orderController.resendWhatsApp)
 );
 

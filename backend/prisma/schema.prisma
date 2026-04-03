@@ -98,7 +98,6 @@ model Shop {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  members    ShopMember[]
   categories Category[]
   products   Product[]
   customers  Customer[]
@@ -106,6 +105,7 @@ model Shop {
   orders     Order[]
   purchases  Purchase[]
   expenses   Expense[]
+  users      User[]
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -128,31 +128,14 @@ model User {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  shopId          String?
-  memberships ShopMember[]
+  shopId          String
+  shop            Shop      @relation(fields: [shopId], references: [id])
   orders      Order[]
 
   @@index([email])
 }
 
-// ─────────────────────────────────────────────────────────────
-// SHOP MEMBER  (Links Users to multiple Shops with specific roles)
-// ─────────────────────────────────────────────────────────────
 
-model ShopMember {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  shopId    String
-  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  role      Role     @default(EMPLOYEE)
-  joinedAt  DateTime @default(now())
-  isActive  Boolean  @default(true)
-
-  @@unique([userId, shopId])
-  @@index([userId])
-  @@index([shopId])
-}
 
 // ─────────────────────────────────────────────────────────────
 // CATEGORY

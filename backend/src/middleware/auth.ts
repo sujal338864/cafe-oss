@@ -16,7 +16,7 @@ export interface AuthRequest extends Request {
 /**
  * Middleware to verify JWT token and attach user to request
  */
-export const authenticate = (req: AuthRequest, res: Response, next: NextFunction) => {
+export const authenticate = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -26,10 +26,20 @@ export const authenticate = (req: AuthRequest, res: Response, next: NextFunction
     const token = authHeader.substring(7);
     const payload = jwt.verify(token, process.env.JWT_SECRET!) as any;
 
+    const user = await prisma.user.findUnique({
+      where: { id: payload.id },
+      select: { id: true, email: true, name: true, shopId: true }
+    });
+
+    if (!user) return res.status(401).json({ error: 'User not found' });
+
     req.user = {
-      id: payload.id,
-      email: payload.email
+      id: user.id,
+      email: user.email,
+      name: user.name || undefined
     };
+    req.shopId = user.shopId;
+    req.role = Role.ADMIN; // Defaulting to ADMIN for single-tenant owner
 
     next();
   } catch (error: any) {
@@ -37,36 +47,6 @@ export const authenticate = (req: AuthRequest, res: Response, next: NextFunction
       return res.status(401).json({ error: 'Token expired' });
     }
     return res.status(401).json({ error: 'Invalid token' });
-  }
-};
-
-/**
- * Multi-Tenant Middleware (Injects Shop context)
- */
-export const tenantContext = async (req: AuthRequest, res: Response, next: NextFunction) => {
-  try {
-    const shopId = req.headers['x-shop-id'] as string;
-    if (!shopId) return res.status(400).json({ error: 'Missing X-Shop-Id header' });
-
-    // Verify membership
-    const membership = await prisma.shopMember.findUnique({
-      where: { userId_shopId: { userId: req.user!.id, shopId } },
-      include: { shop: true }
-    });
-
-    if (!membership || !membership.isActive) {
-      return res.status(403).json({ error: 'Access denied: Not a member of this shop' });
-    }
-
-    if (!membership.shop.isActive) {
-      return res.status(403).json({ error: 'Shop is inactive' });
-    }
-
-    req.shopId = shopId;
-    req.role = membership.role;
-    next();
-  } catch (error: any) {
-    return res.status(500).json({ error: 'Internal Server Error during tenant validation' });
   }
 };
 

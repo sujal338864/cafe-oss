@@ -44,7 +44,7 @@ function makeToken(userId: string, email: string) {
   );
 }
 
-function userResponse(user: any, memberships: any[], token: string) {
+function userResponse(user: any, token: string) {
   return {
     token,
     user: { 
@@ -52,14 +52,8 @@ function userResponse(user: any, memberships: any[], token: string) {
       name: user.name, 
       email: user.email, 
       plan: user.plan,
-      shopLimit: user.shopLimit 
-    },
-    shops: memberships.map(m => ({
-      id: m.shop.id,
-      name: m.shop.name,
-      plan: m.shop.plan,
-      role: m.role
-    })),
+      shopId: user.shopId
+    }
   };
 }
 
@@ -101,21 +95,17 @@ router.post('/register', validateRequest(registerSchema), asyncHandler(async (re
       }
     });
 
-    // 3. Create Membership
-    const membership = await tx.shopMember.create({
-      data: {
-        userId: user.id,
-        shopId: shop.id,
-        role: 'ADMIN'
-      },
-      include: { shop: true }
+    // 3. Update User with ShopId
+    const updatedUser = await tx.user.update({
+      where: { id: user.id },
+      data: { shopId: shop.id }
     });
 
-    return { user, membership };
+    return { user: updatedUser, shop };
   });
 
   const token = makeToken(result.user.id, result.user.email);
-  return res.status(201).json(userResponse(result.user, [result.membership], token));
+  return res.status(201).json(userResponse(result.user, token));
 }));
 
 // ───────────────────────────────────────────
@@ -125,12 +115,7 @@ router.post('/login', validateRequest(loginSchema), asyncHandler(async (req, res
   const { email, password } = req.body;
 
   const user = await prisma.user.findUnique({
-    where: { email },
-    include: { 
-      memberships: {
-        include: { shop: true }
-      }
-    }
+    where: { email }
   });
 
   if (!user) return res.status(401).json({ error: 'Invalid email or password' });
@@ -143,7 +128,7 @@ router.post('/login', validateRequest(loginSchema), asyncHandler(async (req, res
   await prisma.user.update({ where: { id: user.id }, data: { lastLogin: new Date() } });
 
   const token = makeToken(user.id, user.email);
-  return res.json(userResponse(user, user.memberships, token));
+  return res.json(userResponse(user, token));
 }));
 
 // ───────────────────────────────────────────
@@ -167,8 +152,7 @@ router.post('/google', validateRequest(googleAuthSchema), asyncHandler(async (re
   if (!email) return res.status(400).json({ error: 'Google account has no email' });
 
   const existingUser = await prisma.user.findUnique({
-    where: { email },
-    include: { memberships: { include: { shop: true } } }
+    where: { email }
   });
 
   if (existingUser) {
@@ -181,7 +165,7 @@ router.post('/google', validateRequest(googleAuthSchema), asyncHandler(async (re
 
     const token = makeToken(existingUser.id, existingUser.email);
     return res.json({
-      ...userResponse(existingUser, existingUser.memberships, token),
+      ...userResponse(existingUser, token),
       isNewUser: false,
     });
   }
@@ -213,21 +197,18 @@ router.post('/google', validateRequest(googleAuthSchema), asyncHandler(async (re
       }
     });
 
-    const membership = await tx.shopMember.create({
-      data: {
-        userId: user.id,
-        shopId: shop.id,
-        role: 'ADMIN'
-      },
-      include: { shop: true }
+    // 3. Relate User
+    const updatedUser = await tx.user.update({
+      where: { id: user.id },
+      data: { shopId: shop.id }
     });
 
-    return { user, membership };
+    return { user: updatedUser, shop };
   });
 
   const token = makeToken(result.user.id, result.user.email);
   return res.status(201).json({
-    ...userResponse(result.user, [result.membership], token),
+    ...userResponse(result.user, token),
     isNewUser: true,
   });
 }));

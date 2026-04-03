@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { prisma } from '../index';
-import { authenticate, authorize, asyncHandler, validateRequest, AuthRequest, tenantContext } from '../middleware/auth';
+import { prisma } from '../common/prisma';
+import { authenticate, authorize, asyncHandler, validateRequest, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
@@ -16,7 +16,7 @@ const categorySchema = z.object({
 router.get(
   '/',
   authenticate,
-  tenantContext,
+
   asyncHandler(async (req: AuthRequest, res) => {
     const categories = await prisma.category.findMany({
       where: { shopId: req.shopId },
@@ -34,7 +34,7 @@ router.get(
 router.post(
   '/',
   authenticate,
-  tenantContext,
+
   authorize('ADMIN', 'MANAGER'),
   validateRequest(categorySchema),
   asyncHandler(async (req: AuthRequest, res) => {
@@ -66,7 +66,7 @@ router.post(
 router.put(
   '/:id',
   authenticate,
-  tenantContext,
+
   authorize('ADMIN', 'MANAGER'),
   validateRequest(categorySchema.partial()),
   asyncHandler(async (req: AuthRequest, res) => {
@@ -93,7 +93,7 @@ router.put(
 router.delete(
   '/:id',
   authenticate,
-  tenantContext,
+
   authorize('ADMIN'),
   asyncHandler(async (req: AuthRequest, res) => {
     const category = await prisma.category.findFirst({

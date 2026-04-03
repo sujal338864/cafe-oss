@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { prisma } from '../index';
-import { authenticate, authorize, asyncHandler, validateRequest, AuthRequest, tenantContext } from '../middleware/auth';
+import { prisma } from '../common/prisma';
+import { authenticate, authorize, asyncHandler, validateRequest, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
@@ -26,7 +26,7 @@ const purchaseSchema = z.object({
 router.post(
   '/',
   authenticate as any,
-  tenantContext,
+
   authorize('ADMIN', 'MANAGER'),
   validateRequest(purchaseSchema),
   asyncHandler(async (req: AuthRequest, res) => {
@@ -110,7 +110,7 @@ router.post(
 router.get(
   '/',
   authenticate as any,
-  tenantContext,
+
   asyncHandler(async (req: AuthRequest, res) => {
     const { page = '1', limit = '20', supplierId, startDate, endDate } = req.query;
     const pageNum = Math.max(1, parseInt(page as string) || 1);
@@ -152,7 +152,7 @@ router.get(
 router.get(
   '/:id',
   authenticate as any,
-  tenantContext,
+
   asyncHandler(async (req: AuthRequest, res) => {
     const purchase = await prisma.purchase.findFirst({
       where: { id: req.params.id, shopId: req.shopId! },

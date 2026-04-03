@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { authenticate, authorize, asyncHandler, validateRequest, tenantContext } from '../../middleware/auth';
+import { authenticate, authorize, asyncHandler, validateRequest } from '../../middleware/auth';
 import * as productController from './products.controller';
 
 const router = Router();
@@ -26,7 +26,7 @@ const productSchema = z.object({
 router.get(
   '/',
   authenticate as any,
-  tenantContext,
+
   asyncHandler(productController.getProducts)
 );
 
@@ -36,7 +36,7 @@ router.get(
 router.get(
   '/:id',
   authenticate as any,
-  tenantContext,
+
   asyncHandler(productController.getProductById)
 );
 
@@ -46,7 +46,7 @@ router.get(
 router.post(
   '/',
   authenticate as any,
-  tenantContext,
+
   authorize('ADMIN', 'MANAGER'),
   validateRequest(productSchema),
   asyncHandler(productController.createProduct)
@@ -58,7 +58,7 @@ router.post(
 router.put(
   '/:id',
   authenticate as any,
-  tenantContext,
+
   authorize('ADMIN', 'MANAGER'),
   validateRequest(productSchema.partial()),
   asyncHandler(productController.updateProduct)
@@ -70,7 +70,7 @@ router.put(
 router.delete(
   '/:id',
   authenticate as any,
-  tenantContext,
+
   authorize('ADMIN'),
   asyncHandler(productController.deleteProduct)
 );
@@ -81,7 +81,7 @@ router.delete(
 router.get(
   '/:id/stock-history',
   authenticate as any,
-  tenantContext,
+
   asyncHandler(productController.getStockHistory)
 );
 
@@ -91,7 +91,7 @@ router.get(
 router.post(
   '/:id/adjust-stock',
   authenticate as any,
-  tenantContext,
+
   authorize('ADMIN', 'MANAGER'),
   asyncHandler(productController.adjustStock)
 );

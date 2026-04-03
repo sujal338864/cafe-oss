@@ -1,16 +1,9 @@
 const { PrismaClient } = require('@prisma/client');
-require('dotenv').config();
-const prisma = new PrismaClient({
-  datasources: {
-    db: {
-      url: process.env.DATABASE_URL + '&connection_limit=1'
-    }
-  }
-});
+const prisma = new PrismaClient();
 
 async function main() {
   const email = 'admin@cafeosz.com';
-  
+
   console.log(`--- Seeding Demo Data for ${email} ---`);
 
   try {
@@ -65,13 +58,13 @@ async function main() {
     const products = await Promise.all([
       prisma.product.create({
         data: {
-          shopId: shop.id, categoryId: category.id, name: 'Cappuccino', 
+          shopId: shop.id, categoryId: category.id, name: 'Cappuccino',
           costPrice: 40, sellingPrice: 120, stock: 50, unit: 'cups'
         }
       }),
       prisma.product.create({
         data: {
-          shopId: shop.id, categoryId: category.id, name: 'Blueberry Muffin', 
+          shopId: shop.id, categoryId: category.id, name: 'Blueberry Muffin',
           costPrice: 30, sellingPrice: 85, stock: 12, unit: 'pcs', lowStockAlert: 15
         }
       })
@@ -80,19 +73,19 @@ async function main() {
 
     // 5. Create some Orders (Demo sales)
     for (let i = 0; i < 5; i++) {
-        const total = 200 + (Math.random() * 500);
-        await prisma.order.create({
-            data: {
-                shopId: shop.id,
-                userId: user.id,
-                invoiceNumber: `INV-${1000 + i}`,
-                subtotal: total,
-                totalAmount: total,
-                paymentMethod: 'UPI',
-                status: 'COMPLETED',
-                createdAt: new Date(Date.now() - (i * 24 * 60 * 60 * 1000)) // Spread over last 5 days
-            }
-        });
+      const total = 200 + (Math.random() * 500);
+      await prisma.order.create({
+        data: {
+          shopId: shop.id,
+          userId: user.id,
+          invoiceNumber: `INV-${1000 + i}`,
+          subtotal: total,
+          totalAmount: total,
+          paymentMethod: 'UPI',
+          status: 'COMPLETED',
+          createdAt: new Date(Date.now() - (i * 24 * 60 * 60 * 1000)) // Spread over last 5 days
+        }
+      });
     }
     console.log('Generated 5 demo orders.');
 

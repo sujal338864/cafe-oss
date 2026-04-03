@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../common/prisma';
-import { authenticate, authorize, asyncHandler, AuthRequest, tenantContext, validateRequest } from '../middleware/auth';
+import { authenticate, authorize, asyncHandler, AuthRequest, validateRequest } from '../middleware/auth';
 
 const router = Router();
 
@@ -92,7 +92,7 @@ router.post(
 router.get(
   '/profile',
   authenticate,
-  tenantContext,
+
   asyncHandler(async (req: AuthRequest, res) => {
     const shop = await prisma.shop.findUnique({
       where: { id: req.shopId }
@@ -109,7 +109,7 @@ router.get(
 router.put(
   '/profile',
   authenticate,
-  tenantContext,
+
   authorize('ADMIN'),
   asyncHandler(async (req: AuthRequest, res) => {
     const { name, phone, email, address, currency, pricingEnabled, pricingRules, loyaltyRate, redeemRate } = req.body;
@@ -128,7 +128,7 @@ router.put(
 router.post(
   '/upgrade',
   authenticate,
-  tenantContext,
+
   authorize('ADMIN'),
   asyncHandler(async (req: AuthRequest, res) => {
     const { plan } = req.body;
@@ -142,6 +142,102 @@ router.post(
     });
 
     res.json({ message: `Successfully upgraded branch to ${plan}`, shop });
+  })
+);
+
+/**
+ * GET /api/shop/members
+ * List all members of the active shop
+ */
+router.get(
+  '/members',
+  authenticate,
+
+  asyncHandler(async (req: AuthRequest, res) => {
+    const members = await prisma.shopMember.findMany({
+      where: { shopId: req.shopId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    res.json({
+      members: members.map(m => ({
+        id: m.id,
+        userId: m.user.id,
+        name: m.user.name,
+        email: m.user.email,
+        role: m.role,
+        isActive: m.isActive,
+        joinedAt: m.joinedAt
+      }))
+    });
+  })
+);
+
+/**
+ * PATCH /api/shop/members/:userId
+ * Update a member's role or status
+ */
+router.patch(
+  '/members/:userId',
+  authenticate,
+
+  authorize('ADMIN'),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const { userId } = req.params;
+    const { role, isActive } = req.body;
+
+    const membership = await prisma.shopMember.update({
+      where: { 
+        userId_shopId: { 
+          userId, 
+          shopId: req.shopId 
+        } 
+      },
+      data: { 
+        ...(role && { role }), 
+        ...(isActive !== undefined && { isActive }) 
+      }
+    });
+
+    res.json(membership);
+  })
+);
+
+/**
+ * DELETE /api/shop/members/:userId
+ * Remove a member from the shop
+ */
+router.delete(
+  '/members/:userId',
+  authenticate,
+
+  authorize('ADMIN'),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const { userId } = req.params;
+
+    // Prevent removing yourself
+    if (userId === req.user!.id) {
+      return res.status(400).json({ error: 'You cannot remove yourself from the shop' });
+    }
+
+    await prisma.shopMember.delete({
+      where: { 
+        userId_shopId: { 
+          userId, 
+          shopId: req.shopId 
+        } 
+      }
+    });
+
+    res.json({ message: 'Member removed successfully' });
   })
 );
 

@@ -176,15 +176,16 @@ router.post('/order', orderLimiter, asyncHandler(async (req, res) => {
 
   try {
     const shop = await prisma.shop.findUnique({ 
-      where: { id: shopId }, 
-      include: { users: { take: 1, select: { id: true } } } 
+      where: { id: shopId }
     });
     if (!shop) return res.status(404).json({ error: 'Shop not found' });
     
     const redeemRate = (shop as any).redeemRate || 10;
     const loyaltyRate = (shop as any).loyaltyRate || 0.1;
     
-    const userId = shop.users[0]?.id;
+    // Find any user belonging to this shop to assign the order
+    const owner = await prisma.user.findFirst({ where: { shopId: shop.id } });
+    const userId = owner?.id;
     if (!userId) {
       logger.error(`[MENU] Shop ${shopId} has no active users to assign orders to.`);
       return res.status(500).json({ error: 'Server configuration error' });

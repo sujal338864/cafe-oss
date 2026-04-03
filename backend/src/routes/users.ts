@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../common/prisma';
-import { authenticate, authorize, asyncHandler, AuthRequest, tenantContext } from '../middleware/auth';
+import { authenticate, authorize, asyncHandler, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
@@ -10,7 +10,7 @@ const router = Router();
 router.get(
   '/',
   authenticate as any,
-  tenantContext,
+
   authorize('ADMIN'),
   asyncHandler(async (req: AuthRequest, res) => {
     const users = await prisma.user.findMany({
@@ -38,7 +38,7 @@ router.get(
 router.post(
   '/',
   authenticate as any,
-  tenantContext,
+
   authorize('ADMIN'),
   asyncHandler(async (req: AuthRequest, res) => {
     const { name, email, role } = req.body;
@@ -79,7 +79,7 @@ router.post(
 router.put(
   '/:id/role',
   authenticate as any,
-  tenantContext,
+
   authorize('ADMIN'),
   asyncHandler(async (req: AuthRequest, res) => {
     const { role } = req.body;
@@ -112,7 +112,7 @@ router.put(
 router.delete(
   '/:id',
   authenticate as any,
-  tenantContext,
+
   authorize('ADMIN'),
   asyncHandler(async (req: AuthRequest, res) => {
     const user = await prisma.user.findFirst({

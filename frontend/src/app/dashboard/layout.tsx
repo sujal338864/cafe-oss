@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { useSocket } from '@/context/SocketContext';
 import api from '@/lib/api';
-import ShopSwitcher from '@/components/ui/ShopSwitcher';
+
 
 const NAV = [
   { href: '/dashboard',            label: 'Dashboard',  icon: '▦' },
@@ -28,7 +28,7 @@ const NAV = [
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname  = usePathname();
   const router    = useRouter();
-  const { user, activeShop, logout, getActivePlan } = useAuth() as any;
+  const { user, logout, getActivePlan } = useAuth() as any;
   const currentPlan = getActivePlan();
   const { theme, isDark, toggleTheme } = useTheme();
   const { socket } = useSocket();
@@ -105,8 +105,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* ── Sidebar ───────────────────────────────────────────────────── */}
       <aside style={s.sidebar}>
         {/* Shop Switcher */}
-        <div style={{ padding: '16px 14px', borderBottom: `1px solid ${theme.border}` }}>
-          <ShopSwitcher />
+        <div style={{ padding: '16px 14px', borderBottom: `1px solid ${theme.border}`, fontSize: 16, fontWeight: 800, color: '#7c3aed', textAlign: 'center' }}>
+          Shop OS
         </div>
 
         {/* Nav links */}

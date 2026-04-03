@@ -99,8 +99,7 @@ app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
 });
 
-import { authenticate, tenantContext } from './middleware/auth';
-import { withTenantContext } from './middleware/tenant';
+import { authenticate } from './middleware/auth';
 
 app.use('/api/upload', uploadRoutes);
 app.use('/api/menu', menuRoutes);
@@ -109,8 +108,6 @@ app.use('/api/auth', authRoutes);
 // --- Authenticated Dashboard Scope ---
 const dashboardRouter = express.Router();
 dashboardRouter.use(authenticate as any);
-dashboardRouter.use(tenantContext as any);
-dashboardRouter.use(withTenantContext as any);
 
 dashboardRouter.use('/shop', shopRoutes);
 dashboardRouter.use('/products', productRoutes);
@@ -181,13 +178,19 @@ import { initSocket } from './lib/socket';
 
 const startServer = async () => {
   try {
-    await prisma.$queryRaw`SELECT 1`;
-    logger.info('✅ Database connected');
+    // Non-blocking database check to avoid startup hangs due to connection quotas
+    prisma.$queryRaw`SELECT 1`
+      .then(() => logger.info('✅ Database connected'))
+      .catch(err => logger.error('❌ Database connection delayed/failed:', err.message));
 
     // Multi-headed compute separation 🐳
     if (process.env.RUN_WORKERS !== 'false') {
-      startWorkers();
-      logger.info('👷🏽 Background Worker queue consumers started');
+      try {
+        startWorkers();
+        logger.info('👷🏽 Background Worker queue consumers started');
+      } catch (e: any) {
+        logger.error('Failed to start workers:', e.message);
+      }
     }
 
     if (process.env.RUN_API !== 'false') {
@@ -201,7 +204,7 @@ const startServer = async () => {
       logger.info('🛑 API endpoints disabled (Worker node only)');
     }
   } catch (err) {
-    logger.error('💥 Failed to start:', err);
+    logger.error('💥 Critical error during startup:', err);
     process.exit(1);
   }
 };

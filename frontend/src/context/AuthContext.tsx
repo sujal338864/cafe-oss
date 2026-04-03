@@ -8,26 +8,15 @@ interface User {
   name: string; 
   email: string; 
   plan: string; 
-  shopLimit: number; 
-}
-
-interface ShopMembership { 
-  id: string; 
-  name: string; 
-  plan: string; 
-  role: string; 
-  isActive?: boolean;
+  shopId: string; 
 }
 
 interface AuthContextType {
   user:         User | null;
-  shops:        ShopMembership[];
-  activeShop:   ShopMembership | null;
   token:        string | null;
   loading:      boolean;
-  login:        (token: string, user: User, shops: ShopMembership[]) => void;
+  login:        (token: string, user: User) => void;
   logout:       () => void;
-  switchShop:   (shopId: string) => void;
   getActivePlan: () => string;
 }
 
@@ -36,8 +25,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
-  const [shops, setShops] = useState<ShopMembership[]>([]);
-  const [activeShopId, setActiveShopId] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -46,76 +33,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const t = localStorage.getItem('shop_os_token');
       const u = localStorage.getItem('shop_os_user');
-      const s = localStorage.getItem('shop_os_shops');
-      const activeId = localStorage.getItem('active_shop_id');
       
-      if (t && u && s) {
+      if (t && u) {
         setToken(t);
-        setUser(JSON.parse(u));
-        const parsedShops = JSON.parse(s);
-        setShops(parsedShops);
-        setActiveShopId(activeId || (parsedShops.length > 0 ? parsedShops[0].id : null));
+        const parsedUser = JSON.parse(u);
+        setUser(parsedUser);
         api.defaults.headers.common['Authorization'] = `Bearer ${t}`;
+        // Still setting x-shop-id for backward compatibility with some frontend components
+        api.defaults.headers.common['x-shop-id'] = parsedUser.shopId;
       }
     } catch { /* ignore */ }
     finally { setLoading(false); }
   }, []);
 
-  const login = (token: string, user: User, shops: ShopMembership[]) => {
-    const defaultShopId = shops.length > 0 ? shops[0].id : null;
-    
+  const login = (token: string, user: User) => {
     localStorage.setItem('shop_os_token', token);
     localStorage.setItem('shop_os_user', JSON.stringify(user));
-    localStorage.setItem('shop_os_shops', JSON.stringify(shops));
-    if (defaultShopId) localStorage.setItem('active_shop_id', defaultShopId);
+    localStorage.setItem('active_shop_id', user.shopId);
 
     api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    api.defaults.headers.common['x-shop-id'] = user.shopId;
     
     setToken(token);
     setUser(user);
-    setShops(shops);
-    setActiveShopId(defaultShopId);
   };
 
   const logout = () => {
     localStorage.removeItem('shop_os_token');
     localStorage.removeItem('shop_os_user');
-    localStorage.removeItem('shop_os_shops');
     localStorage.removeItem('active_shop_id');
     
     delete api.defaults.headers.common['Authorization'];
+    delete api.defaults.headers.common['x-shop-id'];
     
     setToken(null);
     setUser(null);
-    setShops([]);
-    setActiveShopId(null);
     router.push('/login');
   };
 
-  const switchShop = (shopId: string) => {
-    localStorage.setItem('active_shop_id', shopId);
-    setActiveShopId(shopId);
-    // Reload to re-fetch all data with new X-Shop-Id context
-    window.location.reload();
-  };
-
-  const activeShop = shops.find(s => s.id === activeShopId) || (shops.length > 0 ? shops[0] : null);
-
   const getActivePlan = () => {
-    if (!activeShop) return 'STARTER';
-    return activeShop.plan;
+    return user?.plan || 'STARTER';
   };
 
   return (
     <AuthContext.Provider value={{ 
       user, 
-      shops, 
-      activeShop, 
       token, 
       loading, 
       login, 
-      logout, 
-      switchShop, 
+      logout,
       getActivePlan 
     }}>
       {children}
