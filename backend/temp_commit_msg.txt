@@ -1,0 +1,1 @@
+Fix: all bugs from site analysis - encoding, auth, retry states, favicon 

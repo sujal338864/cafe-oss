@@ -1,0 +1,62 @@
+1. Starting Script
+2. Dotenv loaded
+3. Prisma required
+4. Prisma Instantiated
+5. Inside Test
+prisma:info Starting a postgresql pool with 5 connections in PgBouncer mode.
+prisma:query BEGIN
+prisma:query DEALLOCATE ALL
+prisma:query SELECT COUNT(*) FROM (SELECT "public"."Order"."id" FROM "public"."Order" WHERE 1=1 OFFSET $1) AS "sub"
+prisma:query COMMIT
+6. Total Orders in Database: 114
+7. Executing Category Breakdown $queryRaw...
+prisma:query BEGIN
+prisma:query DEALLOCATE ALL
+prisma:query 
+      SELECT c.name, SUM(oi.total) as revenue 
+      FROM "Category" c 
+      JOIN "Product" p ON p."categoryId" = c.id 
+      JOIN "OrderItem" oi ON oi."productId" = p.id 
+      JOIN "Order" o ON o.id = oi."orderId" 
+      WHERE o."shopId" = 'd8bd17c9-c001-4d56-8351-2c73214083d1' AND o.status::text = 'COMPLETED' 
+      GROUP BY c.name 
+      ORDER BY revenue DESC
+    
+prisma:query COMMIT
+8. Category Breakdown $queryRaw count: 3
+9. Initializing OpenAI Client for Groq...
+10. Executing Groq Completion Request...
+Crashed inside test: BadRequestError: 400 The model `llama3-8b-8192` has been decommissioned and is no longer supported. Please refer to https://console.groq.com/docs/deprecations for a recommendation on which model to use instead.
+    at APIError.generate (c:\Users\Lenovo\Downloads\files\backend\node_modules\openai\error.js:45:20)
+    at OpenAI.makeStatusError (c:\Users\Lenovo\Downloads\files\backend\node_modules\openai\core.js:302:33)
+    at OpenAI.makeRequest (c:\Users\Lenovo\Downloads\files\backend\node_modules\openai\core.js:346:30)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async test (c:\Users\Lenovo\Downloads\files\backend\test_step_by_step.js:37:28) {
+  status: 400,
+  headers: {
+    'alt-svc': 'h3=":443"; ma=86400',
+    'cache-control': 'private, max-age=0, no-store, no-cache, must-revalidate',
+    'cf-cache-status': 'DYNAMIC',
+    'cf-ray': '9df21aef0ca44808-BOM',
+    connection: 'keep-alive',
+    'content-length': '275',
+    'content-type': 'application/json',
+    date: 'Fri, 20 Mar 2026 04:52:03 GMT',
+    server: 'cloudflare',
+    'set-cookie': '__cf_bm=VeNWDhB.QIXe.c5H2XONEozC9HhYnZ1oSl592kuz6u0-1773982323.0460894-1.0.1.1-pyTUcpPX6fHazTegozlpq7PIK2CWlnZhuh8SrK3hUBKoARnhydLPIsWGHzq0pF6atw7.NkJLbkiM9_LpA.xDiWyQ65f_OiQ9.ZBu7igOCiMW.st05pyARaS6Bclzlnkz; HttpOnly; Secure; Path=/; Domain=groq.com; Expires=Fri, 20 Mar 2026 05:22:03 GMT',
+    'strict-transport-security': 'max-age=15552000',
+    vary: 'Origin',
+    via: '1.1 google',
+    'x-groq-region': 'bom',
+    'x-request-id': 'req_01km4sc4ccejqrfa4b4v7vccnf'
+  },
+  request_id: 'req_01km4sc4ccejqrfa4b4v7vccnf',
+  error: {
+    message: 'The model `llama3-8b-8192` has been decommissioned and is no longer supported. Please refer to https://console.groq.com/docs/deprecations for a recommendation on which model to use instead.',
+    type: 'invalid_request_error',
+    code: 'model_decommissioned'
+  },
+  code: 'model_decommissioned',
+  param: undefined,
+  type: 'invalid_request_error'
+}

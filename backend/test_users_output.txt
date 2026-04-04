@@ -1,0 +1,10 @@
+--- USERS FOR SHOP ID ---
+[
+  {
+    "email": "admin@kiranaking.com",
+    "name": "Admin",
+    "shop": {
+      "name": "csfeosss"
+    }
+  }
+]
