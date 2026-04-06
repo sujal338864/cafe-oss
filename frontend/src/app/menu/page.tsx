@@ -3,6 +3,7 @@ import { useEffect, useState, Suspense, useRef, memo, useCallback, useMemo } fro
 import { useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search, ShoppingCart, Plus, Minus, ArrowLeft, Check, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
+import { getOptimizedImage } from '@/lib/cloudinary';
 
 type Product = { id: string; name: string; sellingPrice: number; description?: string; imageUrl?: string; categoryId?: string; stock: number; taxRate: number; originalPrice?: number; discountedPrice?: number; activeRule?: string | null; };
 type Category = { id: string; name: string; color?: string };
@@ -11,13 +12,6 @@ type CartItem = Product & { qty: number; note: string };
 const fmt = (n: number) => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001';
 
-function optImg(url?: string, w = 400) {
-  if (!url) return '';
-  if (url.includes('cloudinary.com')) {
-    return url.replace('/upload/', `/upload/f_auto,q_auto,w_${w}/`);
-  }
-  return url;
-}
 
 async function get(path: string) {
   const r = await fetch(API + path);
@@ -60,7 +54,7 @@ const ProductItem = memo(function ProductItem({ p, inCart, onAdd, onInc, onDec }
       {/* Thumbnail */}
       <div className="w-full aspect-[4/3] relative overflow-hidden bg-slate-50 flex items-center justify-center">
         {p.imageUrl
-          ? <img src={optImg(p.imageUrl, 400)} alt={p.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+          ? <img src={getOptimizedImage(p.imageUrl, 400) || ''} alt={p.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
           : <span className="text-4xl font-bold text-slate-200">{p.name[0]}</span>
         }
         {p.activeRule && (
@@ -119,7 +113,7 @@ const RecommendationRow = ({ items, onAdd }: { items: Product[], onAdd: (p: Prod
           <div key={p.id} className="snap-start shrink-0 w-[140px] bg-white rounded-2xl border border-slate-100 p-2 shadow-sm relative group hover:shadow-md transition-shadow">
             <div className="w-full h-20 rounded-xl bg-slate-50 mb-2 overflow-hidden flex items-center justify-center">
               {p.imageUrl ? (
-                <img src={optImg(p.imageUrl, 280)} alt={p.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                <img src={getOptimizedImage(p.imageUrl, 280) || ''} alt={p.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
               ) : (
                 <span className="text-2xl font-bold text-slate-200">{p.name[0]}</span>
               )}
@@ -585,7 +579,7 @@ function MenuContent() {
             {cart.map((item, i) => (
               <div key={item.id} className="flex gap-4 p-4 items-center bg-white group hover:bg-slate-50 transition-colors rounded-2xl relative" style={{ animation: `slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1) ${i * 0.05}s both` }}>
                 <div className="w-16 h-16 rounded-xl bg-slate-100 shrink-0 overflow-hidden flex items-center justify-center relative">
-                  {item.imageUrl ? <img src={optImg(item.imageUrl, 128)} className="w-full h-full object-cover" /> : <ShoppingCart className="text-slate-300" />}
+                  {item.imageUrl ? <img src={getOptimizedImage(item.imageUrl, 128) || ''} className="w-full h-full object-cover" /> : <ShoppingCart className="text-slate-300" />}
                 </div>
                 <div className="flex-1 min-w-0 pr-2">
                   <div className="font-semibold text-sm text-slate-900 leading-tight mb-1 truncate">{item.name}</div>

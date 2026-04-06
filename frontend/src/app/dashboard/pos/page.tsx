@@ -3,6 +3,7 @@ import { useEffect, useState, useRef } from 'react';
 import api from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
 import { useSocket } from '@/context/SocketContext';
+import { getOptimizedImage } from '@/lib/cloudinary';
 
 const fmt = (n: any) => 'Rs.' + Number(n || 0).toLocaleString('en-IN');
 const COLORS = ['#7c3aed', '#2563eb', '#059669', '#d97706', '#dc2626', '#0891b2', '#7c3aed'];
@@ -464,7 +465,7 @@ export default function POSPage() {
                     onMouseLeave={e => { if (!isOutOfStock) (e.currentTarget as HTMLElement).style.borderColor = theme.border; }}>
                     <div style={{ width: '100%', aspectRatio: '1', background: COLORS[idx % COLORS.length] + '22', border: '1px solid ' + COLORS[idx % COLORS.length] + '44', borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10, position: 'relative' }}>
                       {p.imageUrl
-                        ? <img src={p.imageUrl} alt={p.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 9 }} />
+                        ? <img src={getOptimizedImage(p.imageUrl, 200) || ''} alt={p.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 9 }} />
                         : <span style={{ fontSize: 28, fontWeight: 900, color: COLORS[idx % COLORS.length] }}>{p.name[0].toUpperCase()}</span>
                       }
                       {isOutOfStock && (

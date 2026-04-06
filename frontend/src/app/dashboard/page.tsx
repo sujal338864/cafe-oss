@@ -19,7 +19,9 @@ export default function DashboardPage() {
   // Single Consolidated Mega-Query (The Performance Nuclear Option)
   const { data: megaData, isLoading: megaLoading } = useQuery({ 
     queryKey: ['mega_dashboard'], 
-    queryFn: () => api.get('/api/analytics/dashboard-mega').then(r => r.data) 
+    queryFn: () => api.get('/api/analytics/dashboard-mega').then(r => r.data),
+    staleTime: 30000, // 30 seconds
+    gcTime: 60000     // 1 minute
   });
 
   const { data: aiData, isLoading: aiLoading } = useQuery({ 

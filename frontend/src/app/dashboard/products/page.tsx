@@ -4,14 +4,10 @@ import { useState } from 'react';
 import api from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { getOptimizedImage } from '@/lib/cloudinary';
 
 const fmt = (n: any) => 'Rs.' + Number(n || 0).toLocaleString('en-IN');
 const COLORS = ['#7c3aed','#2563eb','#059669','#d97706','#dc2626','#0891b2','#7c3aed','#db2777'];
-function optImg(url?: string, w = 120) {
-  if (!url) return '';
-  if (url.includes('cloudinary.com')) return url.replace('/upload/', `/upload/f_auto,q_auto,w_${w}/`);
-  return url;
-}
 
 function exportCSV(products: any[]) {
   const rows = [
@@ -261,7 +257,7 @@ export default function ProductsPage() {
                       onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
                       <td style={{ padding: '10px 12px' }}>
                         {p.imageUrl
-                          ? <img src={optImg(p.imageUrl, 80)} alt="" style={{ width: 38, height: 38, borderRadius: 8, objectFit: 'cover' }} />
+                          ? <img src={getOptimizedImage(p.imageUrl, 80) || ''} alt="" style={{ width: 38, height: 38, borderRadius: 8, objectFit: 'cover' }} />
                           : <div style={{ width: 38, height: 38, borderRadius: 8, background: COLORS[idx % COLORS.length] + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 15, color: COLORS[idx % COLORS.length] }}>
                               {p.name[0].toUpperCase()}
                             </div>
