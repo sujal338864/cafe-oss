@@ -10,7 +10,7 @@ type Category = { id: string; name: string; color?: string };
 type CartItem = Product & { qty: number; note: string };
 
 const fmt = (n: number) => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001';
+const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
 
 async function get(path: string) {

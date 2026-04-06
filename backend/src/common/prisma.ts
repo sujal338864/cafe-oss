@@ -1,15 +1,20 @@
 import { PrismaClient } from '@prisma/client';
 import { getTenantContext } from './context';
 
-// Initialize the base client with connection timeouts to avoid P2024
-const basePrisma = new PrismaClient({
-  log: ['error', 'warn'],
-  datasources: { 
-    db: { 
-      url: process.env.DATABASE_URL 
-    } 
-  },
-});
+// --- PRISMA SINGLETON PATTERN ---
+// Prevents nodemon from creating a new connection pool every time a file is saved.
+const globalForPrisma = global as unknown as { prisma: PrismaClient };
+
+const basePrisma =
+  globalForPrisma.prisma ||
+  new PrismaClient({
+    log: ['error', 'warn'],
+    datasources: { db: { url: process.env.DATABASE_URL } },
+  });
+
+if (process.env.NODE_ENV !== 'production') {
+  globalForPrisma.prisma = basePrisma;
+}
 
 // Dedicated client for Analytics/Heavy queries to bypass Pooler (PgBouncer)
 export const directPrisma = new PrismaClient({

@@ -27,10 +27,10 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
       return;
     }
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001';
-    console.log(`[Socket] Connecting to ${apiUrl} for shop ${user.shopId}`);
+    const SOCKET_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    console.log(`[Socket] Connecting to ${SOCKET_URL} for shop ${user.shopId}`);
 
-    const newSocket = io(apiUrl, {
+    const newSocket = io(SOCKET_URL, {
       query: { shopId: user.shopId },
       transports: ['websocket'], // Force WebSocket to avoid CORS polling issues
     });

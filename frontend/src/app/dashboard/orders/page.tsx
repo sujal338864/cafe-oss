@@ -48,8 +48,7 @@ export default function OrdersPage() {
     mutationFn: (id: string) => api.put(`/api/orders/${id}/payment`, { paymentStatus: 'PAID' }),
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
-      // Auto-open invoice for printing
-      const url = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001') + `/api/menu/order/${id}/invoice`;
+      const url = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000') + `/api/menu/order/${id}/invoice`;
       window.open(url, '_blank');
     }
   });

@@ -6,7 +6,7 @@ type Product = { id: string; name: string; sellingPrice: number; description?: s
 type CartItem = Product & { qty: number; note: string };
 
 const fmt = (n: number) => 'Rs.' + Number(n || 0).toLocaleString('en-IN');
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001';
+const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
 async function get(path: string) {
   const r = await fetch(API + path);
@@ -177,7 +177,7 @@ export default function OrderPage() {
           </div>
           
           {result?.id && result?.paymentStatus === 'PAID' && (
-            <button onClick={() => window.open((process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001') + '/api/menu/order/' + result.id + '/invoice')}
+            <button onClick={() => window.open((process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000') + '/api/menu/order/' + result.id + '/invoice')}
               style={{ width: '100%', background: 'rgba(59,130,246,0.1)', border: '1px solid #3b82f6', color: '#60a5fa', padding: '12px', borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: 'pointer', marginBottom: 12 }}>
               📄 Download Invoice (PDF)
             </button>

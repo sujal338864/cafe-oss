@@ -181,10 +181,15 @@ import { initSocket } from './lib/socket';
 
 const startServer = async () => {
   try {
-    await prisma.$queryRaw`SELECT 1`;
-    logger.info('✅ Database connected');
+    // 1. Database Ping (Graceful)
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      logger.info('✅ Database connected');
+    } catch (dbErr: any) {
+      logger.warn(`⚠️ Database ping failed at startup (continuing anyway...): ${dbErr.message}`);
+    }
 
-    // Multi-headed compute separation 🐳
+    // 2. Multi-headed compute separation 🐳
     if (process.env.RUN_WORKERS !== 'false') {
       startWorkers();
       logger.info('👷🏽 Background Worker queue consumers started');
@@ -202,7 +207,6 @@ const startServer = async () => {
     }
   } catch (err) {
     logger.error('💥 Failed to start:', err);
-    process.exit(1);
   }
 };
 
