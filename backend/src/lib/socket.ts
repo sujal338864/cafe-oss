@@ -8,16 +8,19 @@ import { logRedisError } from './redis';
 let io: Server | null = null;
 
 export const initSocket = (server: HttpServer) => {
-  const pubClient = new Redis(redisConnection);
-  const subClient = new Redis(redisConnection);
+  // Dedicated connection options for Socket.IO that allow buffering until connected
+  const socketRedisOptions = { 
+    ...redisConnection, 
+    lazyConnect: false, 
+    enableOfflineQueue: true 
+  };
+
+  const pubClient = new Redis(socketRedisOptions);
+  const subClient = new Redis(socketRedisOptions);
 
   // CRITICAL: IOSET/BullMQ/Redis-Adapter MUST have error handlers to prevent process crash
   pubClient.on('error', (err) => logRedisError('SocketPub', err));
   subClient.on('error', (err) => logRedisError('SocketSub', err));
-
-  // Connect manually after handlers are ready
-  pubClient.connect().catch(() => {});
-  subClient.connect().catch(() => {});
 
   io = new Server(server, {
     cors: {
@@ -26,7 +29,13 @@ export const initSocket = (server: HttpServer) => {
     }
   });
 
-  io.adapter(createAdapter(pubClient, subClient));
+  // Only use Redis adapter if connection is established to avoid 'Stream not writable' crashes
+  try {
+    io.adapter(createAdapter(pubClient, subClient));
+    console.log('[Socket] Redis adapter activated.');
+  } catch (err) {
+    console.error('[Socket] Redis adapter failed to initialize (using local memory instead).');
+  }
 
   io.on('connection', (socket) => {
     console.log(`[Socket] Client connected: ${socket.id}`);

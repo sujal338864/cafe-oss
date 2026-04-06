@@ -1,4 +1,4 @@
-import { prisma } from '../index';
+import { prisma } from '../common/prisma';
 import { logger } from '../lib/logger';
 
 export interface DailyProfit {
@@ -162,44 +162,33 @@ export const AnalyticsService = {
       const sixMonthsAgo = new Date();
       sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-      const [
-        revenueResult,
-        totalOrders,
-        totalCustomers,
-        totalProducts,
-        lowStockResult,
-        todayOrdersData,
-        inventoryValueResult,
-        topProductsData,
-        monthlySalesData,
-        categorySalesResult
-      ] = await Promise.all([
-        prisma.order.aggregate({
+      // SEQUENTIAL: Save connection pool to avoid "MaxClientsInSessionMode"
+      const revenueResult = await prisma.order.aggregate({
           where: { shopId, status: { not: 'CANCELLED' as any } },
           _sum: { totalAmount: true },
           _count: { id: true }
-        }),
-        prisma.order.count({ where: { shopId, status: { not: 'CANCELLED' as any } } }),
-        prisma.customer.count({ where: { shopId } }),
-        prisma.product.count({ where: { shopId, isActive: true } }),
-        prisma.$queryRaw<{ count: bigint }[]>`SELECT COUNT(*)::bigint as count FROM "Product" WHERE "shopId" = ${shopId} AND "isActive" = true AND "stock" <= "lowStockAlert"`,
-        prisma.order.findMany({
+      });
+      const totalOrders = await prisma.order.count({ where: { shopId, status: { not: 'CANCELLED' as any } } });
+      const totalCustomers = await prisma.customer.count({ where: { shopId } });
+      const totalProducts = await prisma.product.count({ where: { shopId, isActive: true } });
+      const lowStockResult = await prisma.$queryRaw<{ count: bigint }[]>`SELECT COUNT(*)::bigint as count FROM "Product" WHERE "shopId" = ${shopId} AND "isActive" = true AND "stock" <= "lowStockAlert"`;
+      const todayOrdersData = await prisma.order.findMany({
           where: { shopId, createdAt: { gte: safeToday }, status: { not: 'CANCELLED' as any } },
           select: { totalAmount: true, items: { select: { costPrice: true, quantity: true } } }
-        }),
-        prisma.$queryRaw<{ sum: number }[]>`SELECT SUM("stock" * CAST("costPrice" AS numeric)) as sum FROM "Product" WHERE "shopId" = ${shopId} AND "isActive" = true`,
-        prisma.orderItem.groupBy({
+      });
+      const inventoryValueResult = await prisma.$queryRaw<{ sum: number }[]>`SELECT SUM("stock" * CAST("costPrice" AS numeric)) as sum FROM "Product" WHERE "shopId" = ${shopId} AND "isActive" = true`;
+      const topProductsData = await prisma.orderItem.groupBy({
           by: ['productId', 'name'],
           _sum: { quantity: true, total: true },
           where: { order: { shopId, status: { not: 'CANCELLED' as any } } },
           orderBy: { _sum: { total: 'desc' } },
           take: 5
-        }),
-        prisma.order.findMany({
+      });
+      const monthlySalesData = await prisma.order.findMany({
           where: { shopId, createdAt: { gte: sixMonthsAgo }, status: { not: 'CANCELLED' as any } },
           select: { totalAmount: true, createdAt: true, items: { select: { costPrice: true, quantity: true } } }
-        }),
-        prisma.$queryRaw<any[]>`
+      });
+      const categorySalesResult = await prisma.$queryRaw<any[]>`
           SELECT c.name as "categoryName", SUM(oi.total) as "totalAmount"
           FROM "Category" c
           JOIN "Product" p ON p."categoryId" = c.id
@@ -207,8 +196,7 @@ export const AnalyticsService = {
           JOIN "Order" o ON oi."orderId" = o.id
           WHERE c."shopId" = ${shopId} AND o.status != 'CANCELLED'
           GROUP BY c.name
-        `
-      ]);
+      `;
       const lowStockItems = Number(lowStockResult?.[0]?.count || 0);
 
       const categorySales: Record<string, number> = {};
