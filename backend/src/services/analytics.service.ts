@@ -399,26 +399,22 @@ export const AnalyticsService = {
         }
       };
 
-      const [
-        stats,
-        recentOrders,
-        profitList,
-        forecasting,
-        heatmap,
-        financialSummary
-      ] = await Promise.all([
-        safeFetch(AnalyticsService.calculateDashboardStats(shopId), { totalRevenue: 0, totalOrders: 0 }, 'Stats'),
-        safeFetch(prisma.order.findMany({
-          where: { shopId },
-          take: 10,
-          orderBy: { createdAt: 'desc' },
-          select: { id: true, invoiceNumber: true, totalAmount: true, status: true, createdAt: true, customer: { select: { name: true } } }
-        }), [], 'Orders'),
-        safeFetch(AnalyticsService.getDailyProfit(shopId), [], 'Profit'),
-        safeFetch(AnalyticsService.getInventoryForecast(shopId), [], 'Forecast'),
-        safeFetch(AnalyticsService.getPeakHours(shopId), {}, 'PeakHours'),
-        safeFetch(AnalyticsService.getFinancialSummary(shopId, 30), { netProfit: 0, totalRevenue: 0 }, 'Finance')
-      ]);
+      /** 
+       * SEQUENTIAL SAFE MODE (Production Stability Fix)
+       * We execute these one-by-one to avoid 'max clients reached' in Session mode (Port 5432).
+       * Each fetch handles its own error to prevent a total dashboard blackout.
+       */
+      const stats = await safeFetch(AnalyticsService.calculateDashboardStats(shopId), { totalRevenue: 0, totalOrders: 0 }, 'Stats');
+      const recentOrders = await safeFetch(prisma.order.findMany({
+        where: { shopId },
+        take: 10,
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, invoiceNumber: true, totalAmount: true, status: true, createdAt: true, customer: { select: { name: true } } }
+      }), [], 'Orders');
+      const profitList = await safeFetch(AnalyticsService.getDailyProfit(shopId), [], 'Profit');
+      const forecasting = await safeFetch(AnalyticsService.getInventoryForecast(shopId), [], 'Forecast');
+      const heatmap = await safeFetch(AnalyticsService.getPeakHours(shopId), {}, 'PeakHours');
+      const financialSummary = await safeFetch(AnalyticsService.getFinancialSummary(shopId, 30), { netProfit: 0, totalRevenue: 0 }, 'Finance');
 
       return {
         stats,
