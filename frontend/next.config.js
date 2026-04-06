@@ -1,10 +1,14 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001',
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'https://cafe-oss.onrender.com',
   },
   images: {
     remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'cafe-oss.onrender.com',
+      },
       {
         protocol: 'http',
         hostname: 'localhost',
