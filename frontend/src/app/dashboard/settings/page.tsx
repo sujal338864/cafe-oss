@@ -9,21 +9,21 @@ export default function SettingsPage() {
   const { user } = useAuth();
 
   // Shop profile
-  const [shop,       setShop]       = useState<any>(null);
-  const [shopForm,   setShopForm]   = useState({ name: '', phone: '', email: '', address: '', upiId: '', currency: 'Rs.' });
+  const [shop, setShop] = useState<any>(null);
+  const [shopForm, setShopForm] = useState({ name: '', phone: '', email: '', address: '', upiId: '', currency: 'Rs.' });
   const [shopSaving, setShopSaving] = useState(false);
-  const [shopMsg,    setShopMsg]    = useState('');
+  const [shopMsg, setShopMsg] = useState('');
 
   // Invoice settings
-  const [invForm,   setInvForm]   = useState({ template: 'standard', footer: '', showGst: true });
+  const [invForm, setInvForm] = useState({ template: 'standard', footer: '', showGst: true });
   const [invSaving, setInvSaving] = useState(false);
-  const [invMsg,    setInvMsg]    = useState('');
+  const [invMsg, setInvMsg] = useState('');
 
   // Password
-  const [pwForm,   setPwForm]   = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [pwSaving, setPwSaving] = useState(false);
-  const [pwMsg,    setPwMsg]    = useState('');
-  const [pwErr,    setPwErr]    = useState('');
+  const [pwMsg, setPwMsg] = useState('');
+  const [pwErr, setPwErr] = useState('');
 
   useEffect(() => { loadShop(); }, []);
 
@@ -32,11 +32,11 @@ export default function SettingsPage() {
       const { data } = await api.get('/api/shop/profile');
       setShop(data);
       setShopForm({
-        name:     data.name     || '',
-        phone:    data.phone    || '',
-        email:    data.email    || '',
-        address:  data.address  || '',
-        upiId:    data.upiId    || '',
+        name: data.name || '',
+        phone: data.phone || '',
+        email: data.email || '',
+        address: data.address || '',
+        upiId: data.upiId || '',
         currency: data.currency || 'Rs.',
       });
 
@@ -48,7 +48,7 @@ export default function SettingsPage() {
             footer: inv.footer || '',
             showGst: inv.showGst !== false
           });
-        } catch (e) {}
+        } catch (e) { }
       }
     } catch (e) { console.error(e); }
   };
@@ -77,7 +77,7 @@ export default function SettingsPage() {
 
   const savePassword = async () => {
     setPwErr(''); setPwMsg('');
-    if (!pwForm.currentPassword)     { setPwErr('Enter current password'); return; }
+    if (!pwForm.currentPassword) { setPwErr('Enter current password'); return; }
     if (pwForm.newPassword.length < 6) { setPwErr('New password must be at least 6 characters'); return; }
     if (pwForm.newPassword !== pwForm.confirmPassword) { setPwErr('Passwords do not match'); return; }
     setPwSaving(true);
@@ -91,17 +91,17 @@ export default function SettingsPage() {
     } finally { setPwSaving(false); }
   };
 
-  const card: React.CSSProperties  = { background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, marginBottom: 16 };
+  const card: React.CSSProperties = { background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, marginBottom: 16 };
   const cardHead: React.CSSProperties = { padding: '16px 20px', borderBottom: `1px solid ${theme.border}` };
   const cardBody: React.CSSProperties = { padding: '20px' };
   const inp: React.CSSProperties = { background: theme.inputBg, border: `1px solid ${theme.border}`, color: theme.text, borderRadius: 9, padding: '10px 13px', fontSize: 13, width: '100%', outline: 'none', boxSizing: 'border-box' as const };
   const lbl: React.CSSProperties = { display: 'block', fontSize: 11, color: theme.textFaint, fontWeight: 700, textTransform: 'uppercase' as const, marginBottom: 5 };
 
   const themeOptions: { name: ThemeName; label: string; preview: string[]; desc: string }[] = [
-    { name: 'dark',   label: 'Dark',   preview: ['#0f0f12','#15151d','#a78bfa'], desc: 'Classic dark mode'  },
-    { name: 'light',  label: 'Light',  preview: ['#f1f5f9','#ffffff','#7c3aed'], desc: 'Clean light mode'   },
-    { name: 'purple', label: 'Purple', preview: ['#13111a','#1a1625','#c084fc'], desc: 'Deep purple night'  },
-    { name: 'ocean',  label: 'Ocean',  preview: ['#0a1628','#0f1e35','#38bdf8'], desc: 'Deep ocean blue'    },
+    { name: 'dark', label: 'Dark', preview: ['#0f0f12', '#15151d', '#a78bfa'], desc: 'Classic dark mode' },
+    { name: 'light', label: 'Light', preview: ['#f1f5f9', '#ffffff', '#7c3aed'], desc: 'Clean light mode' },
+    { name: 'purple', label: 'Purple', preview: ['#13111a', '#1a1625', '#c084fc'], desc: 'Deep purple night' },
+    { name: 'ocean', label: 'Ocean', preview: ['#0a1628', '#0f1e35', '#38bdf8'], desc: 'Deep ocean blue' },
   ];
 
   return (
@@ -120,10 +120,10 @@ export default function SettingsPage() {
         <div style={cardBody}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             {[
-              { l: 'Shop Name',    k: 'name',    ph: 'e.g. Kirana King' },
-              { l: 'Phone',        k: 'phone',   ph: '03xx-xxxxxxx' },
-              { l: 'Email',        k: 'email',   ph: 'shop@email.com', type: 'email' },
-              { l: 'Currency',     k: 'currency',ph: 'Rs.' },
+              { l: 'Shop Name', k: 'name', ph: 'e.g. Kirana King' },
+              { l: 'Phone', k: 'phone', ph: '03xx-xxxxxxx' },
+              { l: 'Email', k: 'email', ph: 'shop@email.com', type: 'email' },
+              { l: 'Currency', k: 'currency', ph: 'Rs.' },
             ].map(({ l, k, ph, type }) => (
               <div key={k}>
                 <label style={lbl}>{l}</label>
@@ -184,8 +184,8 @@ export default function SettingsPage() {
             <div>
               <label style={lbl}>Layout Template</label>
               <select value={invForm.template} onChange={e => setInvForm(v => ({ ...v, template: e.target.value }))} style={inp}>
-                <option value="standard" style={{background: theme.card || '#111827'}}>Standard Layout (A5 Receipt)</option>
-                <option value="thermal" style={{background: theme.card || '#111827'}}>Small Thermal Layout (58mm Roll)</option>
+                <option value="standard" style={{ background: theme.card || '#111827' }}>Standard Layout (A5 Receipt)</option>
+                <option value="thermal" style={{ background: theme.card || '#111827' }}>Small Thermal Layout (58mm Roll)</option>
               </select>
             </div>
 
@@ -249,9 +249,9 @@ export default function SettingsPage() {
           {pwMsg && <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 8, padding: '10px 14px', color: '#10b981', fontSize: 13, marginBottom: 14 }}>{pwMsg}</div>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {[
-              { l: 'Current Password',  k: 'currentPassword' },
-              { l: 'New Password',      k: 'newPassword' },
-              { l: 'Confirm Password',  k: 'confirmPassword' },
+              { l: 'Current Password', k: 'currentPassword' },
+              { l: 'New Password', k: 'newPassword' },
+              { l: 'Confirm Password', k: 'confirmPassword' },
             ].map(({ l, k }) => (
               <div key={k}>
                 <label style={lbl}>{l}</label>
@@ -275,16 +275,16 @@ export default function SettingsPage() {
               <h2 style={{ fontSize: 18, fontWeight: 800, color: theme.text, margin: 0 }}>
                 {shop?.plan === 'PRO' ? '💎 ShopOS PRO' : '🚀 Upgrade to PRO'}
               </h2>
-              <span style={{ 
-                background: shop?.plan === 'PRO' ? 'linear-gradient(135deg,#f59e0b,#ef4444)' : 'linear-gradient(135deg,#7c3aed,#3b82f6)', 
-                color: 'white', borderRadius: 8, padding: '2px 10px', fontSize: 10, fontWeight: 900 
+              <span style={{
+                background: shop?.plan === 'PRO' ? 'linear-gradient(135deg,#f59e0b,#ef4444)' : 'linear-gradient(135deg,#7c3aed,#3b82f6)',
+                color: 'white', borderRadius: 8, padding: '2px 10px', fontSize: 10, fontWeight: 900
               }}>
                 {shop?.plan || 'STARTER'}
               </span>
             </div>
             <p style={{ fontSize: 13, color: theme.textMuted, margin: 0 }}>
-              {shop?.plan === 'PRO' 
-                ? 'All premium features are active for your shop. Thank you for your support!' 
+              {shop?.plan === 'PRO'
+                ? 'All premium features are active for your shop. Thank you for your support!'
                 : 'Unlock AI Analytics, WhatsApp integration, and unlimited staff management.'}
             </p>
             {shop?.plan !== 'PRO' && (
@@ -296,7 +296,7 @@ export default function SettingsPage() {
             )}
           </div>
           <div style={{ textAlign: 'right' }}>
-            <button 
+            <button
               onClick={() => {
                 const newPlan = shop?.plan === 'PRO' ? 'STARTER' : 'PRO';
                 if (confirm(`Simulate ${newPlan === 'PRO' ? 'Upgrade' : 'Downgrade'} to ${newPlan}?`)) {
@@ -306,8 +306,8 @@ export default function SettingsPage() {
                 }
               }}
               style={{
-                background: 'linear-gradient(135deg,#7c3aed,#3b82f6)', 
-                color: 'white', border: 'none', padding: '10px 22px', 
+                background: 'linear-gradient(135deg,#7c3aed,#3b82f6)',
+                color: 'white', border: 'none', padding: '10px 22px',
                 borderRadius: 11, fontWeight: 700, fontSize: 13, cursor: 'pointer',
                 boxShadow: '0 4px 15px rgba(124,58,237,0.3)'
               }}>
@@ -319,7 +319,7 @@ export default function SettingsPage() {
 
       <div style={{ padding: '0 10px 40px', textAlign: 'center' }}>
         <div style={{ fontSize: 11, color: theme.textFaint }}>
-          ShopOS Version 1.0.4 • Made with ❤️ in Pakistan
+          ShopOS Version 1.0.4 •
         </div>
       </div>
     </div>
