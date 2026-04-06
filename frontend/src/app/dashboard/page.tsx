@@ -5,6 +5,12 @@ import { useTheme } from '@/context/ThemeContext';
 import { useSocket } from '@/context/SocketContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
+import dynamic from 'next/dynamic';
+
+const DashboardCharts = dynamic(() => import('./DashboardCharts'), { 
+  loading: () => <div style={{ height: 350, background: 'rgba(0,0,0,0.02)', borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: '#999' }}>Loading Staffing Intelligence...</div>,
+  ssr: false 
+});
 
 const fmt = (n: any) => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -15,14 +21,21 @@ export default function DashboardPage() {
   const queryClient = useQueryClient();
   const [showInfo, setShowInfo] = useState<{ title: string, breakdown: any[], resultLabel: string, finalValue: number } | null>(null);
 
-  // Queries
-  // Single Consolidated Mega-Query (The Performance Nuclear Option)
-  const { data: megaData, isLoading: megaLoading } = useQuery({ 
-    queryKey: ['mega_dashboard'], 
-    queryFn: () => api.get('/api/analytics/dashboard-mega').then(r => r.data),
-    staleTime: 30000, // 30 seconds
-    gcTime: 60000     // 1 minute
+  // 1. FAST STATS query
+  const { data: statsData, isLoading: statsLoading } = useQuery({ 
+    queryKey: ['dashboard_stats'], 
+    queryFn: () => api.get('/api/analytics/dashboard/stats').then(r => r.data),
+    staleTime: 30000,
   });
+
+  // 2. HEAVY CHARTS query
+  const { data: chartsData, isLoading: chartsLoading } = useQuery({ 
+    queryKey: ['dashboard_charts'], 
+    queryFn: () => api.get('/api/analytics/dashboard/charts').then(r => r.data),
+    staleTime: 60000,
+  });
+
+  // 3. AI Insights
 
   const { data: aiData, isLoading: aiLoading } = useQuery({ 
     queryKey: ['ai_insights'], 
@@ -51,12 +64,13 @@ export default function DashboardPage() {
     }
   }, [socket, queryClient]);
 
-  const stats = megaData?.stats;
-  const orders = megaData?.recentOrders?.orders || [];
-  const profitList = megaData?.profitList?.profitList || [];
-  const forecasting = megaData?.forecasting?.forecasting || [];
-  const heatmap = megaData?.heatmap?.heatmap || null;
-  const financialSummary = megaData?.financialSummary?.summary || null;
+  const stats = statsData;
+  const recentOrdersQuery = useQuery({ 
+    queryKey: ['recent_orders'], 
+    queryFn: () => api.get('/api/analytics/recent').then(r => r.data) 
+  });
+  const orders = recentOrdersQuery.data?.orders || [];
+  const financialSummary = stats?.financialSummary;
   const aiInsight = aiData?.insight || '';
 
   const [mounted, setMounted] = useState(false);
@@ -100,7 +114,7 @@ export default function DashboardPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {megaLoading && (
+      {statsLoading && (
         <div style={{ color: theme.textMuted, padding: 10, textAlign: 'center', fontSize: 12, background: 'rgba(0,0,0,0.02)', borderRadius: 10 }}>
           Refreshing metrics...
         </div>
@@ -171,57 +185,8 @@ export default function DashboardPage() {
         {aiLoading ? <div style={{ color: theme.textMuted, fontSize: 13 }}>Analyzing...</div> : <div style={{ fontSize: 13, color: theme.text, whiteSpace: 'pre-wrap' }}>{aiInsight}</div>}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
-        {/* Peak-Hour Heatmap */}
-        <div style={{ ...card, gridColumn: '1 / -1' }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 15, color: theme.text }}>Peak-Hour Staffing Intelligence 📊</h3>
-          <div style={{ overflowX: 'auto' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '80px repeat(24, 1fr)', gap: 4, minWidth: 800 }}>
-              <div />
-              {Array.from({ length: 24 }).map((_, h) => (<div key={h} style={{ fontSize: 9, color: theme.textFaint, textAlign: 'center' }}>{h}h</div>))}
-              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, d) => (
-                <Fragment key={day}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: theme.text }}>{day}</div>
-                  {Array.from({ length: 24 }).map((_, h) => {
-                    const count = heatmap?.[d]?.[h] || 0;
-                    return <div key={h} style={{ height: 24, background: count > 0 ? `rgba(124, 58, 237, ${0.1 + Math.min(count/10, 0.9)})` : 'rgba(0,0,0,0.02)', borderRadius: 4 }} title={`${count} orders`} />;
-                  })}
-                </Fragment>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Daily Profit Pulse */}
-        <div style={{ ...card }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 15, color: theme.text }}>Daily Profit Pulse 💰</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {profitList.map(p => (
-              <div key={p.date} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 12px', background: 'rgba(0,0,0,0.02)', borderRadius: 10 }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{new Date(p.date).toLocaleDateString()}</div>
-                  <div style={{ fontSize: 11, color: theme.textFaint }}>{p.orderCount} Orders</div>
-                </div>
-                <div style={{ textAlign: 'right', fontWeight: 800, color: p.profit >= 0 ? '#4ade80' : '#ef4444' }}>{fmt(p.profit)}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Inventory Forecast */}
-        <div style={{ ...card }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 15, color: theme.text }}>Stockout Prediction 📈</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {forecasting.filter(f => f.status !== 'HEALTHY').map(f => (
-              <div key={f.productId} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 12px', background: 'rgba(0,0,0,0.02)', borderRadius: 10 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{f.name}</div>
-                <div style={{ fontSize: 12, fontWeight: 800, color: f.status === 'CRITICAL' ? '#ef4444' : '#fbbf24' }}>{f.daysRemaining} days left</div>
-              </div>
-            ))}
-            {forecasting.filter(f => f.status !== 'HEALTHY').length === 0 && <div style={{ textAlign: 'center', fontSize: 13, color: theme.textFaint }}>All inventory healthy.</div>}
-          </div>
-        </div>
-      </div>
+      {/* Parallel Load: Premium Charts & intelligence */}
+      <DashboardCharts data={chartsData} theme={theme} />
 
       {/* Recent Orders Table */}
       <div style={{ ...card, padding: 0, overflow: 'hidden' }}>

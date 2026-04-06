@@ -185,6 +185,8 @@ model Product {
   stockHistory  StockHistory[]
 
   @@unique([shopId, sku])
+  @@index([shopId, isActive])
+  @@index([shopId, stock])
   @@index([shopId, name])
   @@index([shopId, isActive, stock])
   @@index([shopId, categoryId])
@@ -227,6 +229,7 @@ model Customer {
 
   orders  Order[]
 
+  @@index([shopId])
   @@index([shopId, phone])
   @@index([shopId, name])
   @@index([shopId, outstandingBalance])
@@ -281,9 +284,9 @@ model Order {
 
   items  OrderItem[]
 
-  @@index([shopId, invoiceNumber])
   @@index([shopId, createdAt])
   @@index([shopId, status])
+  @@index([shopId, invoiceNumber])
   @@index([shopId, customerId])
   @@index([shopId, notes])
 }
@@ -366,6 +369,7 @@ model Expense {
   date        DateTime        @default(now())
   createdAt   DateTime        @default(now())
 
+  @@index([shopId, createdAt])
   @@index([shopId, date])
   @@index([shopId, category])
 }

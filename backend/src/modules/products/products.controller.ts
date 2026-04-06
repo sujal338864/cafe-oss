@@ -9,6 +9,15 @@ export const getProducts = async (req: AuthRequest, res: Response) => {
   const limitNum = Math.min(100, parseInt(limit as string) || 20);
   const skip = (pageNum - 1) * limitNum;
 
+  const cacheKey = `products:${req.user!.shopId}:${pageNum}:${limitNum}:${search}:${category}:${lowStock}`;
+
+  // 1. Try Cache
+  try {
+    const { getCache, setCache } = await import('../../common/cache');
+    const cached = await getCache<any>(cacheKey);
+    if (cached) return res.json(cached);
+  } catch (e) { /* Silent fail to DB */ }
+
   const { products, total } = await productService.getProducts(req.user!.shopId, {
     skip,
     take: limitNum,
@@ -17,7 +26,7 @@ export const getProducts = async (req: AuthRequest, res: Response) => {
     lowStock: lowStock === 'true'
   });
 
-  res.json({
+  const response = {
     products,
     pagination: {
       total,
@@ -25,7 +34,15 @@ export const getProducts = async (req: AuthRequest, res: Response) => {
       limit: limitNum,
       pages: Math.ceil(total / limitNum)
     }
-  });
+  };
+
+  // 2. Set Cache (30s)
+  try {
+    const { setCache } = await import('../../common/cache');
+    await setCache(cacheKey, response, 30);
+  } catch (e) { /* Silent fail */ }
+
+  res.json(response);
 };
 
 export const getProductById = async (req: AuthRequest, res: Response) => {

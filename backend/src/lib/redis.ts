@@ -37,7 +37,13 @@ export const logRedisError = (source: string, err: any) => {
 // has our quiet error handler attached immediately upon creation.
 const OriginalRedis = Redis;
 const ProxiedRedis: any = function (this: any, ...args: any[]) {
-  const instance = new (OriginalRedis as any)(...args);
+  const opts = args[0] || {};
+  const instance = new (OriginalRedis as any)({
+    ...redisConnection,
+    ...opts,
+    connectTimeout: 5000,
+    maxRetriesPerRequest: 1
+  });
   instance.on('error', (err: any) => logRedisError('InternalClient', err));
   return instance;
 };
@@ -53,10 +59,19 @@ export { ProxiedRedis as Redis };
 export const redis = new OriginalRedis(redisConnection);
 
 // Global interceptor for any "shadow" Redis errors that escape handlers
+const originalStderrWrite = process.stderr.write;
+
 process.on('uncaughtException', (err: any) => {
   if (err?.code === 'ECONNREFUSED' || err?.message?.includes('Connection is closed')) return;
   logger.error('Uncaught Exception:', err);
 });
+
+process.stderr.write = function (chunk: string | Uint8Array, ...args: any[]) {
+  const content = typeof chunk === 'string' ? chunk : chunk.toString();
+  const isRedisError = content.includes('ECONNREFUSED 127.0.0.1:6379');
+  if (isRedisError) return true; // Silence Redis connection noise while app remains stable
+  return originalStderrWrite.apply(process.stderr, [chunk, ...args] as any);
+} as any;
 
 process.on('unhandledRejection', (reason: any) => {
   const msg = (reason as any)?.message || String(reason);

@@ -1,17 +1,22 @@
 const { PrismaClient } = require('@prisma/client');
-require('dotenv').config();
+const dotenv = require('dotenv');
+dotenv.config();
 
-const prisma = new PrismaClient({
-  datasources: { db: { url: process.env.DATABASE_URL } }
-});
+console.log('--- DB CONNECTION TEST ---');
+console.log('URL:', process.env.DATABASE_URL);
+
+const prisma = new PrismaClient();
 
 async function main() {
-  console.log('Testing connection to:', process.env.DATABASE_URL.replace(/:.*@/, ':****@'));
+  console.log('Attemping to connect...');
   try {
-    const result = await prisma.$queryRaw`SELECT 1 as connected`;
-    console.log('SUCCESS:', result);
-  } catch (e) {
-    console.error('FAILURE:', e.message);
+    const start = Date.now();
+    const result = await prisma.$queryRaw`SELECT 1 as test`;
+    const end = Date.now();
+    console.log('✅ SUCCESS:', result);
+    console.log(`⏱️ Latency: ${end - start}ms`);
+  } catch (err) {
+    console.error('❌ FAILED:', err.message);
   } finally {
     await prisma.$disconnect();
   }

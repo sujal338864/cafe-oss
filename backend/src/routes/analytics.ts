@@ -28,28 +28,33 @@ router.get('/dashboard', authenticate, authorize('ADMIN', 'MANAGER'), asyncHandl
 }));
 
 /**
- * GET /api/analytics/mega-dashboard
- * The "Nuclear Option" for performance. Returns EVERYTHING in one call.
+ * GET /api/analytics/dashboard/stats
+ * FAST: Instant summary stats.
+ */
+router.get('/dashboard/stats', authenticate, authorize('ADMIN', 'MANAGER'), asyncHandler(async (req: AuthRequest, res) => {
+  const shopId = req.user!.shopId;
+  const stats = await AnalyticsService.getDashboardStats(shopId);
+  res.json(stats);
+}));
+
+/**
+ * GET /api/analytics/dashboard/charts
+ * HEAVY: Periodic/Group-by calculations for visualizations.
+ */
+router.get('/dashboard/charts', authenticate, authorize('ADMIN', 'MANAGER'), asyncHandler(async (req: AuthRequest, res) => {
+  const shopId = req.user!.shopId;
+  const charts = await AnalyticsService.getDashboardCharts(shopId);
+  res.json(charts);
+}));
+
+/**
+ * GET /api/analytics/mega-dashboard (Legacy Bridge)
+ * Still maintained for backward compatibility.
  */
 router.get('/dashboard-mega', authenticate, authorize('ADMIN', 'MANAGER'), asyncHandler(async (req: AuthRequest, res) => {
   const shopId = req.user!.shopId;
-  const cacheKey = `mega_dashboard:${shopId}`;
-
-  const cached = await getCache(cacheKey);
-  if (cached) return res.json(cached);
-
-  const { AnalyticsService } = await import('../services/analytics.service');
-  
-  // 30s timeout — never hang forever
-  const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Dashboard timeout after 30s')), 30000));
-  try {
-    const data = await Promise.race([AnalyticsService.getMegaDashboardData(shopId), timeout]);
-    await setCache(cacheKey, data, 30); // Increased to 30s for better egress reduction
-    res.json(data);
-  } catch (err: any) {
-    console.error(`[MEGA-DASHBOARD] Error: ${err.message}`);
-    res.status(200).json({ stats: { totalRevenue: 0, totalOrders: 0, totalCustomers: 0, totalProducts: 0, lowStockItems: 0, avgOrderValue: 0, totalInventoryValue: 0, todayRevenue: 0, todayMargin: 0, todayOrdersCount: 0 }, recentOrders: { orders: [] }, profitList: { profitList: [] }, forecasting: { forecasting: [] }, heatmap: { heatmap: null }, financialSummary: { summary: null }, timestamp: new Date(), error: err.message });
-  }
+  const data = await AnalyticsService.getMegaDashboardData(shopId);
+  res.json(data);
 }));
 
 /**
