@@ -390,12 +390,11 @@ export const AnalyticsService = {
    */
   getMegaDashboardData: async (shopId: string) => {
     try {
-      // Execute with individual error boundaries and defaults to prevent a single hang from killing the dashboard
-      const safeFetch = async (fn: any, def: any) => {
+      const safeFetch = async (fn: any, def: any, label: string) => {
         try {
           return await fn;
         } catch (e: any) {
-          logger.warn(`[MEGA-DASHBOARD] Sub-task failed: ${e.message}`);
+          logger.error(`[MEGA-DASHBOARD] ${label} failed: ${e.message}`);
           return def;
         }
       };
@@ -408,20 +407,17 @@ export const AnalyticsService = {
         heatmap,
         financialSummary
       ] = await Promise.all([
-        safeFetch(AnalyticsService.calculateDashboardStats(shopId), { totalRevenue: 0, totalOrders: 0 }),
+        safeFetch(AnalyticsService.calculateDashboardStats(shopId), { totalRevenue: 0, totalOrders: 0 }, 'Stats'),
         safeFetch(prisma.order.findMany({
           where: { shopId },
           take: 10,
           orderBy: { createdAt: 'desc' },
-          select: {
-            id: true, invoiceNumber: true, totalAmount: true, paymentMethod: true, paymentStatus: true, createdAt: true,
-            customer: { select: { name: true } }
-          }
-        }), []),
-        safeFetch(AnalyticsService.getDailyProfit(shopId, 7), []),
-        safeFetch(AnalyticsService.getInventoryForecast(shopId), []),
-        safeFetch(AnalyticsService.getPeakHours(shopId), {}),
-        safeFetch(AnalyticsService.getFinancialSummary(shopId, 30), { netProfit: 0, totalRevenue: 0 })
+          select: { id: true, invoiceNumber: true, totalAmount: true, status: true, createdAt: true, customer: { select: { name: true } } }
+        }), [], 'Orders'),
+        safeFetch(AnalyticsService.getDailyProfit(shopId), [], 'Profit'),
+        safeFetch(AnalyticsService.getInventoryForecast(shopId), [], 'Forecast'),
+        safeFetch(AnalyticsService.getPeakHours(shopId), {}, 'PeakHours'),
+        safeFetch(AnalyticsService.getFinancialSummary(shopId, 30), { netProfit: 0, totalRevenue: 0 }, 'Finance')
       ]);
 
       return {
