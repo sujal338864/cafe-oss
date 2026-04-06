@@ -112,7 +112,7 @@ export const AnalyticsService = {
         select: { id: true, name: true, stock: true }
       });
 
-      return products.map(p => {
+      const results = products.map(p => {
         const totalSold = sales.find(s => s.productId === p.id)?._sum?.quantity || 0;
         const avgDailySales = totalSold / windowDays;
         
@@ -134,6 +134,9 @@ export const AnalyticsService = {
           status
         };
       }).sort((a, b) => a.daysRemaining - b.daysRemaining);
+
+      // Egress Optimization: Only return top 15 critical items for dashboard overview
+      return results.slice(0, 15);
     } catch (error: any) {
       logger.error(`[ANALYTICS] Forecasting failed: ${error.message}`);
       throw error;

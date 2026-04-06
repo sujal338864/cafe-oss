@@ -27,7 +27,7 @@ export const authenticate = (req: AuthRequest, res: Response, next: NextFunction
     req.user = {
       id: payload.id,
       shopId: payload.shopId,
-      role: payload.role,
+      role: payload.role as Role,
       email: payload.email
     };
 
@@ -46,13 +46,15 @@ export const authenticate = (req: AuthRequest, res: Response, next: NextFunction
 export const authorize = (...allowedRoles: Role[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      return res.status(401).json({ error: 'Authentication required' });
     }
+
+    console.log(`[AUTH DEBUG] User: ${req.user.email}, Role: ${req.user.role}, Allowed: ${allowedRoles.join(', ')}`);
 
     if (!allowedRoles.includes(req.user.role)) {
+      console.warn(`[AUTH FAIL] User ${req.user.email} (${req.user.role}) attempted restricted action. Needs: ${allowedRoles.join(', ')}`);
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
-
     next();
   };
 };

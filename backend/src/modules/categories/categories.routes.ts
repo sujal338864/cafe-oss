@@ -25,29 +25,23 @@ router.get(
 router.post(
   '/',
   authenticate as any,
-  authorize('ADMIN', 'MANAGER'),
+  authorize('ADMIN', 'MANAGER', 'EMPLOYEE'),
   validateRequest(categorySchema),
   asyncHandler(categoryController.createCategory)
 );
 
-/**
- * PUT /api/categories/:id
- */
 router.put(
   '/:id',
   authenticate as any,
-  authorize('ADMIN', 'MANAGER'),
+  authorize('ADMIN', 'MANAGER', 'EMPLOYEE'),
   validateRequest(categorySchema.partial()),
   asyncHandler(categoryController.updateCategory)
 );
 
-/**
- * DELETE /api/categories/:id
- */
 router.delete(
   '/:id',
   authenticate as any,
-  authorize('ADMIN'),
+  authorize('ADMIN', 'MANAGER'),
   asyncHandler(categoryController.deleteCategory)
 );
 

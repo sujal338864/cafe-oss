@@ -84,7 +84,7 @@ router.get(
 router.delete(
   '/:id',
   authenticate,
-  authorize('ADMIN'),
+  authorize('ADMIN', 'MANAGER'),
   asyncHandler(async (req: AuthRequest, res) => {
     const expense = await prisma.expense.findFirst({
       where: { id: req.params.id, shopId: req.user!.shopId }

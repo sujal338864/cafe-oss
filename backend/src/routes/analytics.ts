@@ -2,14 +2,15 @@
 // Fixes: too many parallel Prisma queries causing connection pool timeout
 
 import { Router } from 'express';
-import { authenticate, asyncHandler, AuthRequest } from '../middleware/auth';
+import { authenticate, authorize, asyncHandler, AuthRequest } from '../middleware/auth';
 import { getCache, setCache } from '../common/cache';
-import { calculateDashboardStats } from '../services/analytics.service';
+import { calculateDashboardStats, AnalyticsService } from '../services/analytics.service';
+import { AnalyticsServiceV2 } from '../services/analytics.service.v2';
 import { prisma } from '../index';
 
 const router = Router();
 
-router.get('/dashboard', authenticate, asyncHandler(async (req: AuthRequest, res) => {
+router.get('/dashboard', authenticate, authorize('ADMIN', 'MANAGER'), asyncHandler(async (req: AuthRequest, res) => {
   const shopId = req.user!.shopId;
 
     // 2. Cache Miss -> Fallback to Calculate Inline
@@ -30,7 +31,7 @@ router.get('/dashboard', authenticate, asyncHandler(async (req: AuthRequest, res
  * GET /api/analytics/mega-dashboard
  * The "Nuclear Option" for performance. Returns EVERYTHING in one call.
  */
-router.get('/dashboard-mega', authenticate, asyncHandler(async (req: AuthRequest, res) => {
+router.get('/dashboard-mega', authenticate, authorize('ADMIN', 'MANAGER'), asyncHandler(async (req: AuthRequest, res) => {
   const shopId = req.user!.shopId;
   const cacheKey = `mega_dashboard:${shopId}`;
 
@@ -55,7 +56,7 @@ router.get('/dashboard-mega', authenticate, asyncHandler(async (req: AuthRequest
  * GET /api/analytics/financial-summary
  * Returns the true P&L (Profit & Loss) after subtracting COGS and OpEx.
  */
-router.get('/financial-summary', authenticate, asyncHandler(async (req: AuthRequest, res) => {
+router.get('/financial-summary', authenticate, authorize('ADMIN', 'MANAGER'), asyncHandler(async (req: AuthRequest, res) => {
   const shopId = req.user!.shopId;
   const days = parseInt(req.query.days as string) || 30;
 
@@ -69,7 +70,7 @@ router.get('/financial-summary', authenticate, asyncHandler(async (req: AuthRequ
  * GET /api/analytics/daily-profit
  * Returns aggregated profit/revenue for the last N days.
  */
-router.get('/daily-profit', authenticate, asyncHandler(async (req: AuthRequest, res) => {
+router.get('/daily-profit', authenticate, authorize('ADMIN', 'MANAGER'), asyncHandler(async (req: AuthRequest, res) => {
   const shopId = req.user!.shopId;
   const days = parseInt(req.query.days as string) || 7;
   
@@ -83,7 +84,7 @@ router.get('/daily-profit', authenticate, asyncHandler(async (req: AuthRequest, 
  * GET /api/analytics/inventory-forecast
  * Returns stockout predictions based on sales velocity.
  */
-router.get('/inventory-forecast', authenticate, asyncHandler(async (req: AuthRequest, res) => {
+router.get('/inventory-forecast', authenticate, authorize('ADMIN', 'MANAGER'), asyncHandler(async (req: AuthRequest, res) => {
   const shopId = req.user!.shopId;
   
   const { AnalyticsService } = await import('../services/analytics.service');
@@ -97,7 +98,7 @@ router.get('/inventory-forecast', authenticate, asyncHandler(async (req: AuthReq
  * Returns a 24/7 heatmap of order volume for staffing optimization.
  * Helps owners decide when to schedule more or fewer staff members.
  */
-router.get('/peak-hours', authenticate, asyncHandler(async (req: AuthRequest, res) => {
+router.get('/peak-hours', authenticate, authorize('ADMIN', 'MANAGER'), asyncHandler(async (req: AuthRequest, res) => {
   const shopId = req.user!.shopId;
   const { AnalyticsService } = await import('../services/analytics.service');
   const heatmap = await AnalyticsService.getPeakHours(shopId);
@@ -105,7 +106,7 @@ router.get('/peak-hours', authenticate, asyncHandler(async (req: AuthRequest, re
 }));
 
 // Recent activity
-router.get('/recent', authenticate, asyncHandler(async (req: AuthRequest, res) => {
+router.get('/recent', authenticate, authorize('ADMIN', 'MANAGER'), asyncHandler(async (req: AuthRequest, res) => {
   const shopId = req.user!.shopId;
   const orders = await prisma.order.findMany({
     where: { shopId },
@@ -117,6 +118,44 @@ router.get('/recent', authenticate, asyncHandler(async (req: AuthRequest, res) =
     }
   });
   res.json({ orders });
+}));
+
+// --- NEW REPORTS API (V2) ---
+
+/**
+ * GET /api/analytics/reports/daily?date=YYYY-MM-DD
+ */
+router.get('/reports/daily', authenticate, authorize('ADMIN', 'MANAGER'), asyncHandler(async (req: AuthRequest, res) => {
+  const shopId = req.user!.shopId;
+  const dateStr = req.query.date as string;
+  const date = dateStr ? new Date(dateStr) : new Date();
+
+  const report = await AnalyticsServiceV2.getDailyReport(shopId, date);
+  res.json(report);
+}));
+
+/**
+ * GET /api/analytics/reports/weekly?endDate=YYYY-MM-DD
+ */
+router.get('/reports/weekly', authenticate, authorize('ADMIN', 'MANAGER'), asyncHandler(async (req: AuthRequest, res) => {
+  const shopId = req.user!.shopId;
+  const dateStr = req.query.endDate as string;
+  const date = dateStr ? new Date(dateStr) : new Date();
+
+  const report = await AnalyticsServiceV2.getWeeklyReport(shopId, date);
+  res.json(report);
+}));
+
+/**
+ * GET /api/analytics/reports/monthly?month=MM&year=YYYY
+ */
+router.get('/reports/monthly', authenticate, authorize('ADMIN', 'MANAGER'), asyncHandler(async (req: AuthRequest, res) => {
+  const shopId = req.user!.shopId;
+  const year = parseInt(req.query.year as string) || new Date().getFullYear();
+  const month = parseInt(req.query.month as string) || new Date().getMonth(); // 0-11
+
+  const report = await AnalyticsServiceV2.getMonthlyReport(shopId, year, month);
+  res.json(report);
 }));
 
 export default router;

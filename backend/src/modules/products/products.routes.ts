@@ -44,7 +44,7 @@ router.get(
 router.post(
   '/',
   authenticate as any,
-  authorize('ADMIN', 'MANAGER'),
+  authorize('ADMIN', 'MANAGER', 'EMPLOYEE'),
   validateRequest(productSchema),
   asyncHandler(productController.createProduct)
 );
@@ -55,7 +55,7 @@ router.post(
 router.put(
   '/:id',
   authenticate as any,
-  authorize('ADMIN', 'MANAGER'),
+  authorize('ADMIN', 'MANAGER', 'EMPLOYEE'),
   validateRequest(productSchema.partial()),
   asyncHandler(productController.updateProduct)
 );
@@ -66,7 +66,7 @@ router.put(
 router.delete(
   '/:id',
   authenticate as any,
-  authorize('ADMIN'),
+  authorize('ADMIN', 'MANAGER'),
   asyncHandler(productController.deleteProduct)
 );
 
@@ -85,7 +85,7 @@ router.get(
 router.post(
   '/:id/adjust-stock',
   authenticate as any,
-  authorize('ADMIN', 'MANAGER'),
+  authorize('ADMIN', 'MANAGER', 'EMPLOYEE'),
   asyncHandler(productController.adjustStock)
 );
 

@@ -255,7 +255,18 @@ export const getKitchenOrders = async (shopId: string) => {
           { notes: { contains: '[KITCHEN:' } },
           { status: { in: ['PENDING', 'PREPARING', 'READY'] as any } },
         ],
-        status: { not: { in: ['CANCELLED', 'COMPLETED'] as any } }, // Exclude done orders
+        // status: { not: { in: ['CANCELLED', 'COMPLETED'] as any } }, 
+        // Logic: Exclude CANCELLED always. 
+        // Exclude COMPLETED ONLY IF it DOES NOT have a KITCHEN tag.
+        AND: [
+          { status: { not: 'CANCELLED' as any } },
+          {
+            OR: [
+              { status: { not: 'COMPLETED' as any } },
+              { notes: { contains: '[KITCHEN:' } }
+            ]
+          }
+        ]
       },
       select: {
         id: true, invoiceNumber: true, status: true,

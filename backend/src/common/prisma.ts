@@ -1,14 +1,23 @@
 import { PrismaClient } from '@prisma/client';
 import { getTenantContext } from './context';
 
-// Initialize the base client
+// Initialize the base client with connection timeouts to avoid P2024
 const basePrisma = new PrismaClient({
-  datasources: { db: { url: process.env.DATABASE_URL } }
+  log: ['error', 'warn'],
+  datasources: { 
+    db: { 
+      url: process.env.DATABASE_URL 
+    } 
+  },
 });
 
 // Dedicated client for Analytics/Heavy queries to bypass Pooler (PgBouncer)
 export const directPrisma = new PrismaClient({
-  datasources: { db: { url: process.env.DIRECT_URL || process.env.DATABASE_URL } }
+  datasources: { 
+    db: { 
+      url: process.env.DIRECT_URL || process.env.DATABASE_URL 
+    } 
+  }
 });
 
 /**

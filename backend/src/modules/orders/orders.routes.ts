@@ -51,7 +51,7 @@ router.get(
 router.put(
   '/:id/cancel',
   authenticate as any,
-  authorize('ADMIN', 'MANAGER'),
+  authorize('ADMIN', 'MANAGER', 'EMPLOYEE'),
   asyncHandler(orderController.cancelOrder)
 );
 
@@ -61,7 +61,7 @@ router.put(
 router.put(
   '/:id/payment',
   authenticate as any,
-  authorize('ADMIN', 'MANAGER'),
+  authorize('ADMIN', 'MANAGER', 'EMPLOYEE'),
   idempotency,
   asyncHandler(orderController.updatePaymentStatus)
 );

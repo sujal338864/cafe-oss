@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import bcrypt from 'bcryptjs';
 import { prisma } from '../index';
 import { authenticate, authorize, asyncHandler, AuthRequest } from '../middleware/auth';
 
@@ -10,7 +11,7 @@ const router = Router();
 router.get(
   '/',
   authenticate,
-  authorize('ADMIN'),
+  authorize('ADMIN', 'MANAGER'),
   asyncHandler(async (req: AuthRequest, res) => {
     const users = await prisma.user.findMany({
       where: { shopId: req.user!.shopId },
@@ -32,24 +33,28 @@ router.get(
 
 /**
  * POST /api/users
- * Invite staff member
+ * Create staff member directly (Admin control)
  */
 router.post(
   '/',
   authenticate,
-  authorize('ADMIN'),
+  authorize('ADMIN', 'MANAGER'),
   asyncHandler(async (req: AuthRequest, res) => {
-    const { name, email, role } = req.body;
+    const { name, email, role, password } = req.body;
+
+    if (!password || password.length < 6) {
+      return res.status(400).json({ error: 'Password is required (min 6 chars)' });
+    }
 
     const existing = await prisma.user.findFirst({
-      where: { email, shopId: req.user!.shopId }
+      where: { email }
     });
 
     if (existing) {
-      return res.status(400).json({ error: 'User already exists' });
+      return res.status(400).json({ error: 'User with this email already exists' });
     }
 
-    // TODO: Send invitation email with setup link
+    const passwordHash = await bcrypt.hash(password, 12);
 
     const user = await prisma.user.create({
       data: {
@@ -57,7 +62,8 @@ router.post(
         name,
         email,
         role,
-        passwordHash: '', // Will be set when user accepts invitation
+        passwordHash,
+        isEmailVerified: true, // Admin-created users are pre-verified
         isActive: true
       }
     });
@@ -72,33 +78,44 @@ router.post(
 );
 
 /**
- * PUT /api/users/:id/role
+ * PUT /api/users/:id
+ * General update (Name, Role, Password, Active status)
  */
 router.put(
-  '/:id/role',
+  '/:id',
   authenticate,
-  authorize('ADMIN'),
+  authorize('ADMIN', 'MANAGER'),
   asyncHandler(async (req: AuthRequest, res) => {
-    const { role } = req.body;
+    const { name, role, password, isActive } = req.body;
+    const { id } = req.params;
 
     const user = await prisma.user.findFirst({
-      where: { id: req.params.id, shopId: req.user!.shopId }
+      where: { id, shopId: req.user!.shopId }
     });
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
+    const data: any = {};
+    if (name) data.name = name;
+    if (role) data.role = role;
+    if (isActive !== undefined) data.isActive = isActive;
+    if (password) {
+      data.passwordHash = await bcrypt.hash(password, 12);
+    }
+
     const updated = await prisma.user.update({
-      where: { id: req.params.id },
-      data: { role }
+      where: { id },
+      data
     });
 
     res.json({
       id: updated.id,
       name: updated.name,
       email: updated.email,
-      role: updated.role
+      role: updated.role,
+      isActive: updated.isActive
     });
   })
 );
@@ -109,25 +126,19 @@ router.put(
 router.delete(
   '/:id',
   authenticate,
-  authorize('ADMIN'),
+  authorize('ADMIN', 'MANAGER'),
   asyncHandler(async (req: AuthRequest, res) => {
+    const { id } = req.params;
     const user = await prisma.user.findFirst({
-      where: { id: req.params.id, shopId: req.user!.shopId }
+      where: { id, shopId: req.user!.shopId }
     });
 
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
+    if (!user) return res.status(404).json({ error: 'User not found' });
     if (user.role === 'ADMIN') {
-      return res.status(400).json({ error: 'Cannot delete admin user' });
+      return res.status(400).json({ error: 'Cannot delete the Admin account' });
     }
 
-    await prisma.user.update({
-      where: { id: req.params.id },
-      data: { isActive: false }
-    });
-
+    await prisma.user.delete({ where: { id } });
     res.json({ success: true });
   })
 );
