@@ -44,7 +44,7 @@ router.get('/dashboard-mega', authenticate, authorize('ADMIN', 'MANAGER'), async
   const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Dashboard timeout after 30s')), 30000));
   try {
     const data = await Promise.race([AnalyticsService.getMegaDashboardData(shopId), timeout]);
-    await setCache(cacheKey, data, 10);
+    await setCache(cacheKey, data, 30); // Increased to 30s for better egress reduction
     res.json(data);
   } catch (err: any) {
     console.error(`[MEGA-DASHBOARD] Error: ${err.message}`);

@@ -186,7 +186,7 @@ model Product {
 
   @@unique([shopId, sku])
   @@index([shopId, name])
-  @@index([shopId, isActive])
+  @@index([shopId, isActive, stock])
   @@index([shopId, categoryId])
 }
 
@@ -281,12 +281,11 @@ model Order {
 
   items  OrderItem[]
 
-  @@unique([shopId, invoiceNumber])
+  @@index([shopId, invoiceNumber])
   @@index([shopId, createdAt])
   @@index([shopId, status])
   @@index([shopId, customerId])
   @@index([shopId, notes])
-  @@index([createdAt])
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -307,8 +306,9 @@ model OrderItem {
   discount  Decimal  @default(0) @db.Decimal(10, 2)
   total     Decimal  @db.Decimal(10, 2)
 
-  @@index([orderId])
+  @@index([orderId, productId])
   @@index([productId])
+  @@index([orderId])
 }
 
 // ─────────────────────────────────────────────────────────────

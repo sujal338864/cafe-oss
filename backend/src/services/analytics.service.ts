@@ -35,15 +35,17 @@ export const AnalyticsService = {
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - days);
 
-      // SEQUENTIAL: Save connection pool
-      const orders = await prisma.order.findMany({
-        where: { shopId, createdAt: { gte: startDate } },
-        select: { totalAmount: true, createdAt: true, items: { select: { costPrice: true, quantity: true } } },
-        orderBy: { createdAt: 'asc' }
-      });
-      const expenses = await prisma.expense.findMany({
-        where: { shopId, date: { gte: startDate } }
-      });
+      const [orders, expenses] = await Promise.all([
+        prisma.order.findMany({
+          where: { shopId, createdAt: { gte: startDate } },
+          select: { totalAmount: true, createdAt: true, items: { select: { costPrice: true, quantity: true } } },
+          orderBy: { createdAt: 'asc' }
+        }),
+        prisma.expense.findMany({
+          where: { shopId, date: { gte: startDate } },
+          select: { amount: true, date: true }
+        })
+      ]);
 
       const dailyData: Record<string, DailyProfit> = {};
 
@@ -160,44 +162,54 @@ export const AnalyticsService = {
       const sixMonthsAgo = new Date();
       sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-      // SEQUENTIAL EXECUTION: Prevents "MaxClientsInSessionMode" by only using 1 connection at a time
-      const revenueResult = await prisma.order.aggregate({
-        where: { shopId, status: { not: 'CANCELLED' as any } },
-        _sum: { totalAmount: true },
-        _count: { id: true }
-      });
-      const totalOrders = await prisma.order.count({ where: { shopId, status: { not: 'CANCELLED' as any } } });
-      const totalCustomers = await prisma.customer.count({ where: { shopId } });
-      const totalProducts = await prisma.product.count({ where: { shopId, isActive: true } });
-      // Raw SQL because prisma doesn't have .fields (that's an extended-client feature)
-      const lowStockResult = await prisma.$queryRaw<{ count: bigint }[]>`SELECT COUNT(*)::bigint as count FROM "Product" WHERE "shopId" = ${shopId} AND "isActive" = true AND "stock" <= "lowStockAlert"`;
+      const [
+        revenueResult,
+        totalOrders,
+        totalCustomers,
+        totalProducts,
+        lowStockResult,
+        todayOrdersData,
+        inventoryValueResult,
+        topProductsData,
+        monthlySalesData,
+        categorySalesResult
+      ] = await Promise.all([
+        prisma.order.aggregate({
+          where: { shopId, status: { not: 'CANCELLED' as any } },
+          _sum: { totalAmount: true },
+          _count: { id: true }
+        }),
+        prisma.order.count({ where: { shopId, status: { not: 'CANCELLED' as any } } }),
+        prisma.customer.count({ where: { shopId } }),
+        prisma.product.count({ where: { shopId, isActive: true } }),
+        prisma.$queryRaw<{ count: bigint }[]>`SELECT COUNT(*)::bigint as count FROM "Product" WHERE "shopId" = ${shopId} AND "isActive" = true AND "stock" <= "lowStockAlert"`,
+        prisma.order.findMany({
+          where: { shopId, createdAt: { gte: safeToday }, status: { not: 'CANCELLED' as any } },
+          select: { totalAmount: true, items: { select: { costPrice: true, quantity: true } } }
+        }),
+        prisma.$queryRaw<{ sum: number }[]>`SELECT SUM("stock" * CAST("costPrice" AS numeric)) as sum FROM "Product" WHERE "shopId" = ${shopId} AND "isActive" = true`,
+        prisma.orderItem.groupBy({
+          by: ['productId', 'name'],
+          _sum: { quantity: true, total: true },
+          where: { order: { shopId, status: { not: 'CANCELLED' as any } } },
+          orderBy: { _sum: { total: 'desc' } },
+          take: 5
+        }),
+        prisma.order.findMany({
+          where: { shopId, createdAt: { gte: sixMonthsAgo }, status: { not: 'CANCELLED' as any } },
+          select: { totalAmount: true, createdAt: true, items: { select: { costPrice: true, quantity: true } } }
+        }),
+        prisma.$queryRaw<any[]>`
+          SELECT c.name as "categoryName", SUM(oi.total) as "totalAmount"
+          FROM "Category" c
+          JOIN "Product" p ON p."categoryId" = c.id
+          JOIN "OrderItem" oi ON oi."productId" = p.id
+          JOIN "Order" o ON oi."orderId" = o.id
+          WHERE c."shopId" = ${shopId} AND o.status != 'CANCELLED'
+          GROUP BY c.name
+        `
+      ]);
       const lowStockItems = Number(lowStockResult?.[0]?.count || 0);
-      const todayOrdersData = await prisma.order.findMany({
-        where: { shopId, createdAt: { gte: safeToday }, status: { not: 'CANCELLED' as any } },
-        select: { totalAmount: true, items: { select: { costPrice: true, quantity: true } } }
-      });
-      const inventoryValueResult = await prisma.$queryRaw<{ sum: number }[]>`SELECT SUM("stock" * CAST("costPrice" AS numeric)) as sum FROM "Product" WHERE "shopId" = ${shopId} AND "isActive" = true`;
-
-      const topProductsData = await prisma.orderItem.groupBy({
-        by: ['productId', 'name'],
-        _sum: { quantity: true, total: true },
-        where: { order: { shopId, status: { not: 'CANCELLED' as any } } },
-        orderBy: { _sum: { total: 'desc' } },
-        take: 5
-      });
-      const monthlySalesData = await prisma.order.findMany({
-        where: { shopId, createdAt: { gte: sixMonthsAgo }, status: { not: 'CANCELLED' as any } },
-        select: { totalAmount: true, createdAt: true, items: { select: { costPrice: true, quantity: true } } }
-      });
-      const categorySalesResult = await prisma.$queryRaw<any[]>`
-        SELECT c.name as "categoryName", SUM(oi.total) as "totalAmount"
-        FROM "Category" c
-        JOIN "Product" p ON p."categoryId" = c.id
-        JOIN "OrderItem" oi ON oi."productId" = p.id
-        JOIN "Order" o ON oi."orderId" = o.id
-        WHERE c."shopId" = ${shopId} AND o.status != 'CANCELLED'
-        GROUP BY c.name
-      `;
 
       const categorySales: Record<string, number> = {};
       categorySalesResult.forEach(row => {
@@ -388,23 +400,29 @@ export const AnalyticsService = {
         }
       };
 
-      const stats = await safeFetch(AnalyticsService.calculateDashboardStats(shopId), { totalRevenue: 0, totalOrders: 0 });
-      
-      // FULLY SEQUENTIAL BATCHING: Ensuring 100% stability
-      const recentOrders = await safeFetch(prisma.order.findMany({
-        where: { shopId },
-        take: 10,
-        orderBy: { createdAt: 'desc' },
-        select: {
-          id: true, invoiceNumber: true, totalAmount: true, paymentMethod: true, paymentStatus: true, createdAt: true,
-          customer: { select: { name: true } }
-        }
-      }), []);
-
-      const profitList = await safeFetch(AnalyticsService.getDailyProfit(shopId, 7), []);
-      const forecasting = await safeFetch(AnalyticsService.getInventoryForecast(shopId), []);
-      const heatmap = await safeFetch(AnalyticsService.getPeakHours(shopId), {});
-      const financialSummary = await safeFetch(AnalyticsService.getFinancialSummary(shopId, 30), { netProfit: 0, totalRevenue: 0 });
+      const [
+        stats,
+        recentOrders,
+        profitList,
+        forecasting,
+        heatmap,
+        financialSummary
+      ] = await Promise.all([
+        safeFetch(AnalyticsService.calculateDashboardStats(shopId), { totalRevenue: 0, totalOrders: 0 }),
+        safeFetch(prisma.order.findMany({
+          where: { shopId },
+          take: 10,
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true, invoiceNumber: true, totalAmount: true, paymentMethod: true, paymentStatus: true, createdAt: true,
+            customer: { select: { name: true } }
+          }
+        }), []),
+        safeFetch(AnalyticsService.getDailyProfit(shopId, 7), []),
+        safeFetch(AnalyticsService.getInventoryForecast(shopId), []),
+        safeFetch(AnalyticsService.getPeakHours(shopId), {}),
+        safeFetch(AnalyticsService.getFinancialSummary(shopId, 30), { netProfit: 0, totalRevenue: 0 })
+      ]);
 
       return {
         stats,
