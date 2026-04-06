@@ -232,41 +232,48 @@ export const AnalyticsService = {
         month, ...data, profit: data.revenue - data.cogs
       }));
 
-      const totalRevenueValue = Number(revenueResult._sum.totalAmount || 0);
+      const totalRevenueValue = Number(revenueResult?._sum?.totalAmount || 0);
       const avgOrderValue = totalOrders > 0 ? Math.round((totalRevenueValue / totalOrders) * 100) / 100 : 0;
 
       // 1. Format Top Products
-      const topProducts = topProductsData.map(p => ({
-        name: p.name,
-        quantity: p._sum.quantity || 0,
-        revenue: Number(p._sum.total || 0)
+      const topProducts = (topProductsData || []).map(p => ({
+        name: p.name || 'Unknown',
+        quantity: p._sum?.quantity || 0,
+        revenue: Number(p._sum?.total || 0)
       }));
 
       // 2. Format Category Breakdown
-      const categoryBreakdown = Object.entries(categorySales).map(([name, revenue]) => ({
-        name, revenue: Number(revenue)
+      const categoryBreakdown = Object.entries(categorySales || {}).map(([name, revenue]) => ({
+        name, revenue: Number(revenue || 0)
       }));
 
       return {
         totalRevenue: totalRevenueValue,
-        totalOrders,
-        totalCustomers,
-        totalProducts,
+        totalOrders: totalOrders || 0,
+        totalCustomers: totalCustomers || 0,
+        totalProducts: totalProducts || 0,
         avgOrderValue,
-        todayRevenue,
-        todayCogs,
-        todayMargin,
-        totalInventoryValue,
-        todayOrdersCount: todayOrdersData.length,
-        lowStockItems,
+        todayRevenue: todayRevenue || 0,
+        todayCogs: todayCogs || 0,
+        todayMargin: todayMargin || 0,
+        totalInventoryValue: totalInventoryValue || 0,
+        todayOrdersCount: (todayOrdersData || []).length,
+        lowStockItems: lowStockItems || 0,
         topProducts,
-        monthlySales,
+        monthlySales: monthlySales || [],
         categoryBreakdown,
         timestamp: new Date()
       };
     } catch (error: any) {
       logger.error(`[ANALYTICS] Stats calculation failed: ${error.message}`);
-      throw error;
+      // Return zeroed stats instead of throwing to keep UI alive
+      return {
+        totalRevenue: 0, totalOrders: 0, totalCustomers: 0, totalProducts: 0,
+        avgOrderValue: 0, todayRevenue: 0, todayCogs: 0, todayMargin: 0,
+        totalInventoryValue: 0, todayOrdersCount: 0, lowStockItems: 0,
+        topProducts: [], monthlySales: [], categoryBreakdown: [],
+        timestamp: new Date(), error: error.message
+      };
     }
   },
 

@@ -158,4 +158,22 @@ router.get('/reports/monthly', authenticate, authorize('ADMIN', 'MANAGER'), asyn
   res.json(report);
 }));
 
+/**
+ * GET /api/analytics/debug/db-stats
+ * (Public health check with counts only)
+ */
+router.get('/debug/db-stats', asyncHandler(async (req, res) => {
+  const [orders, products, shops, users] = await Promise.all([
+    prisma.order.count(),
+    prisma.product.count(),
+    prisma.shop.count(),
+    prisma.user.count()
+  ]);
+  res.json({
+    status: 'ok',
+    counts: { orders, products, shops, users },
+    database: process.env.DATABASE_URL?.split('@')[1] // Show host for verification
+  });
+}));
+
 export default router;
