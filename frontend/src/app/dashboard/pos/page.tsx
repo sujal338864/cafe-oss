@@ -37,6 +37,7 @@ export default function POSPage() {
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [waSending, setWaSending] = useState(false);
   const [waSent, setWaSent] = useState(false);
+  const [shop, setShop] = useState<any>(null);
 
   // Phone-first customer lookup
   const [phoneInput, setPhoneInput] = useState('');
@@ -55,7 +56,7 @@ export default function POSPage() {
 
   const receiptRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { loadProducts(); }, []);
+  useEffect(() => { loadProducts(); loadShop(); }, []);
   useEffect(() => { if (tab === 'pending') loadPending(); }, [tab]);
 
   // WebSocket: instant pending order updates instead of 30s polling (saves ~0.8GB/month)
@@ -73,6 +74,13 @@ export default function POSPage() {
       setProducts(pRes.data.products || []);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
+  };
+
+  const loadShop = async () => {
+    try {
+      const res = await api.get('/api/shop/profile');
+      setShop(res.data);
+    } catch (e) { console.error('Failed to load shop profile'); }
   };
 
   const loadPending = async () => {
@@ -268,7 +276,7 @@ export default function POSPage() {
       {/* Printable bill */}
       <div style={{ background: '#fff', color: '#000', border: '1px solid #e5e7eb', borderRadius: 12, padding: '20px 22px', width: '100%', maxWidth: 320, boxShadow: '0 4px 20px rgba(0,0,0,0.12)' }}>
         <div ref={receiptRef}>
-          <div className="shop" style={{ fontSize: 16, fontWeight: 'bold', textAlign: 'center', fontFamily: 'Courier New, monospace' }}>KIRANA KING</div>
+          <div className="shop" style={{ fontSize: 16, fontWeight: 'bold', textAlign: 'center', fontFamily: 'Courier New, monospace' }}>{shop?.name || 'Cafe OS'}</div>
           <div style={{ textAlign: 'center', fontSize: 11, color: '#666', marginBottom: 6, fontFamily: 'Courier New, monospace' }}>
             {new Date(receipt.date).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
           </div>
@@ -456,7 +464,7 @@ export default function POSPage() {
                     onMouseLeave={e => { if (!isOutOfStock) (e.currentTarget as HTMLElement).style.borderColor = theme.border; }}>
                     <div style={{ width: '100%', aspectRatio: '1', background: COLORS[idx % COLORS.length] + '22', border: '1px solid ' + COLORS[idx % COLORS.length] + '44', borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10, position: 'relative' }}>
                       {p.imageUrl
-                        ? <img src={p.imageUrl} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 9 }} />
+                        ? <img src={p.imageUrl} alt={p.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 9 }} />
                         : <span style={{ fontSize: 28, fontWeight: 900, color: COLORS[idx % COLORS.length] }}>{p.name[0].toUpperCase()}</span>
                       }
                       {isOutOfStock && (

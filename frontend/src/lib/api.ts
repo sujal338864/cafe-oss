@@ -18,8 +18,10 @@ api.interceptors.response.use(
     if (err.response?.status === 401 && typeof window !== 'undefined') {
       // Don't redirect for optional/background endpoints
       const url = err.config?.url || '';
+      const isAuth = url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/google');
       const isOptional = url.includes('/ai/') || url.includes('/analytics/') || url.includes('/menu/');
-      if (!isOptional) {
+      
+      if (!isOptional && !isAuth) {
         localStorage.removeItem('shop_os_token');
         window.location.href = '/login';
       }

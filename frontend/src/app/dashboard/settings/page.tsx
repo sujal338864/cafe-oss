@@ -267,17 +267,59 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* ── About ────────────────────────────────────────────────────── */}
-      <div style={{ ...card, marginBottom: 0 }}>
-        <div style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      {/* ── Subscription & PRO Features ─────────────────────────────── */}
+      <div style={{ ...card, background: 'linear-gradient(145deg, rgba(124,58,237,0.05), rgba(59,130,246,0.05))', borderColor: '#7c3aed', marginBottom: 20 }}>
+        <div style={{ padding: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 14, color: theme.text }}>Shop OS</div>
-            <div style={{ fontSize: 12, color: theme.textFaint, marginTop: 2 }}>Version 1.0 · Built with Next.js 14 + Express</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 800, color: theme.text, margin: 0 }}>
+                {shop?.plan === 'PRO' ? '💎 ShopOS PRO' : '🚀 Upgrade to PRO'}
+              </h2>
+              <span style={{ 
+                background: shop?.plan === 'PRO' ? 'linear-gradient(135deg,#f59e0b,#ef4444)' : 'linear-gradient(135deg,#7c3aed,#3b82f6)', 
+                color: 'white', borderRadius: 8, padding: '2px 10px', fontSize: 10, fontWeight: 900 
+              }}>
+                {shop?.plan || 'STARTER'}
+              </span>
+            </div>
+            <p style={{ fontSize: 13, color: theme.textMuted, margin: 0 }}>
+              {shop?.plan === 'PRO' 
+                ? 'All premium features are active for your shop. Thank you for your support!' 
+                : 'Unlock AI Analytics, WhatsApp integration, and unlimited staff management.'}
+            </p>
+            {shop?.plan !== 'PRO' && (
+              <div style={{ display: 'flex', gap: 15, marginTop: 12 }}>
+                <span style={{ fontSize: 11, color: theme.textFaint }}>✓ 10+ Staff Members</span>
+                <span style={{ fontSize: 11, color: theme.textFaint }}>✓ AI Sales Prediction</span>
+                <span style={{ fontSize: 11, color: theme.textFaint }}>✓ WhatsApp Invoices</span>
+              </div>
+            )}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-            <span style={{ background: 'linear-gradient(135deg,#7c3aed,#3b82f6)', color: 'white', borderRadius: 8, padding: '4px 12px', fontSize: 11, fontWeight: 800 }}>{shop?.plan || 'STARTER'}</span>
-            <a href="/dashboard/settings/subscription" style={{ fontSize: 12, color: '#7c3aed', fontWeight: 600, textDecoration: 'none' }}>Upgrade Plan →</a>
+          <div style={{ textAlign: 'right' }}>
+            <button 
+              onClick={() => {
+                const newPlan = shop?.plan === 'PRO' ? 'STARTER' : 'PRO';
+                if (confirm(`Simulate ${newPlan === 'PRO' ? 'Upgrade' : 'Downgrade'} to ${newPlan}?`)) {
+                  api.post('/api/shop/upgrade', { plan: newPlan }).then(() => {
+                    loadShop();
+                  });
+                }
+              }}
+              style={{
+                background: 'linear-gradient(135deg,#7c3aed,#3b82f6)', 
+                color: 'white', border: 'none', padding: '10px 22px', 
+                borderRadius: 11, fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                boxShadow: '0 4px 15px rgba(124,58,237,0.3)'
+              }}>
+              {shop?.plan === 'PRO' ? 'Manage Billing' : 'Upgrade Now →'}
+            </button>
           </div>
+        </div>
+      </div>
+
+      <div style={{ padding: '0 10px 40px', textAlign: 'center' }}>
+        <div style={{ fontSize: 11, color: theme.textFaint }}>
+          ShopOS Version 1.0.4 • Made with ❤️ in Pakistan
         </div>
       </div>
     </div>

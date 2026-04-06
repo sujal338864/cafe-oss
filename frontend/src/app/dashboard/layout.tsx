@@ -7,29 +7,41 @@ import { useTheme } from '@/context/ThemeContext';
 import { useSocket } from '@/context/SocketContext';
 import api from '@/lib/api';
 
-const NAV = [
-  { href: '/dashboard',            label: 'Dashboard',  icon: '▦' },
-  { href: '/dashboard/pos',        label: 'New Sale',   icon: '⊕' },
-  { href: '/dashboard/kitchen',    label: 'Kitchen',    icon: '🍳' },
-  { href: '/dashboard/products',   label: 'Products',   icon: '📦' },
-  { href: '/dashboard/categories', label: 'Categories', icon: '🏷️' },
-  { href: '/dashboard/orders',     label: 'Orders',     icon: '🧾' },
-  { href: '/dashboard/customers',  label: 'Customers',  icon: '👤' },
-  { href: '/dashboard/suppliers',  label: 'Suppliers',  icon: '🚚' },
-  { href: '/dashboard/purchases',  label: 'Purchases',  icon: '🛒' },
-  { href: '/dashboard/expenses',   label: 'Expenses',   icon: '💸' },
-  { href: '/dashboard/analytics',  label: 'Analytics',  icon: '📊' },
-  { href: '/dashboard/qr',         label: 'QR Codes',   icon: '📱' },
-  { href: '/dashboard/settings',   label: 'Settings',   icon: '⚙️' },
+const ALL_NAV = [
+  { href: '/dashboard',            label: 'Dashboard',  icon: '▦',   roles: ['ADMIN', 'MANAGER'] },
+  { href: '/dashboard/pos',        label: 'New Sale',   icon: '⊕',   roles: ['ADMIN', 'MANAGER', 'EMPLOYEE'] },
+  { href: '/dashboard/kitchen',    label: 'Kitchen',    icon: '🍳',  roles: ['ADMIN', 'MANAGER', 'EMPLOYEE'] },
+  { href: '/dashboard/products',   label: 'Products',   icon: '📦',  roles: ['ADMIN', 'MANAGER', 'EMPLOYEE'] },
+  { href: '/dashboard/categories', label: 'Categories', icon: '🏷️',  roles: ['ADMIN', 'MANAGER', 'EMPLOYEE'] },
+  { href: '/dashboard/orders',     label: 'Orders',     icon: '🧾',  roles: ['ADMIN', 'MANAGER', 'EMPLOYEE'] },
+  { href: '/dashboard/customers',  label: 'Customers',  icon: '👤',  roles: ['ADMIN', 'MANAGER', 'EMPLOYEE'] },
+  { href: '/dashboard/suppliers',  label: 'Suppliers',  icon: '🚚',  roles: ['ADMIN', 'MANAGER'] },
+  { href: '/dashboard/purchases',  label: 'Purchases',  icon: '🛒',  roles: ['ADMIN', 'MANAGER'] },
+  { href: '/dashboard/expenses',   label: 'Expenses',   icon: '💸',  roles: ['ADMIN', 'MANAGER'] },
+  { href: '/dashboard/analytics',  label: 'Analytics',  icon: '📊',  roles: ['ADMIN', 'MANAGER'] },
+  { href: '/dashboard/reports',    label: 'Reports',    icon: '📈',  roles: ['ADMIN', 'MANAGER'] },
+  { href: '/dashboard/qr',         label: 'QR Codes',   icon: '📱',  roles: ['ADMIN', 'MANAGER'] },
+  { href: '/dashboard/staff',      label: 'Staff Management', icon: '👥', roles: ['ADMIN', 'MANAGER'] },
+  { href: '/dashboard/settings',   label: 'Settings',   icon: '⚙️',  roles: ['ADMIN', 'MANAGER'] },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname  = usePathname();
   const router    = useRouter();
-  const { user, logout } = useAuth();
+  const { user, shop, logout, loading: authLoading } = useAuth();
   const { theme, isDark, toggleTheme } = useTheme();
   const { socket } = useSocket();
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, authLoading, router]);
+
+  // Filter nav based on role
+  const userRole = user?.role || 'EMPLOYEE';
+  const NAV = ALL_NAV.filter(item => item.roles.includes(userRole));
 
   const [mounted, setMounted] = useState(false);
   const [showNotifs, setShowNotifs] = useState(false);
@@ -91,6 +103,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       display: 'flex', flexDirection: 'column' as const,
     },
   };
+
+  if (authLoading) {
+    return (
+      <div style={{ minHeight: '100vh', background: theme.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: theme.text }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ width: 32, height: 32, borderRadius: '50%', border: `3px solid ${theme.border}`, borderTopColor: '#7c3aed', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
+          <div style={{ fontSize: 13, fontWeight: 700 }}>Checking session...</div>
+        </div>
+        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+      </div>
+    );
+  }
+
+  if (!user) return null; // Component will redirect in useEffect
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: theme.bg }}>
@@ -217,8 +243,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               )}
             </div>
 
-            {/* Starter badge */}
-            <div style={{ background: 'linear-gradient(135deg,#7c3aed,#3b82f6)', borderRadius: 8, padding: '4px 12px', fontSize: 11, fontWeight: 800, color: 'white' }}>STARTER</div>
+            {/* Shop plan badge */}
+            <div style={{ 
+              background: shop?.plan === 'PRO' 
+                ? 'linear-gradient(135deg,#f59e0b,#ef4444)' 
+                : 'linear-gradient(135deg,#7c3aed,#3b82f6)', 
+              borderRadius: 8, padding: '4px 12px', fontSize: 11, fontWeight: 800, color: 'white' 
+            }}>
+              {shop?.plan || 'STARTER'}
+            </div>
           </div>
         </div>
 
