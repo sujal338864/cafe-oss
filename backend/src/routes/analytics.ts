@@ -6,7 +6,7 @@ import { authenticate, authorize, asyncHandler, AuthRequest } from '../middlewar
 import { getCache, setCache } from '../common/cache';
 import { calculateDashboardStats, AnalyticsService } from '../services/analytics.service';
 import { AnalyticsServiceV2 } from '../services/analytics.service.v2';
-import { prisma } from '../index';
+import { prisma } from '../common/prisma';
 
 const router = Router();
 

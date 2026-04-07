@@ -1,14 +1,3 @@
-import Redis from 'ioredis';
-// --- ULTIMATE LOG SILENCE ---
-// Intercept stderr to filter out Redis connection noise from nested dependencies (like BullMQ's internal ioredis)
-const originalStderrWrite = process.stderr.write;
-process.stderr.write = function (chunk: string | Uint8Array, ...args: any[]) {
-  const content = typeof chunk === 'string' ? chunk : chunk.toString();
-  const isRedisNoise = content.includes('ECONNREFUSED 127.0.0.1:6379') || content.includes('Connection is closed');
-  if (isRedisNoise) return true; // Silence it
-  return originalStderrWrite.apply(process.stderr, [chunk, ...args] as any);
-} as any;
-
 import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -179,23 +168,46 @@ app.use((_req: Request, res: Response) => {
 import { startWorkers } from './jobs';
 import { initSocket } from './lib/socket';
 
-const startServer = async () => {
+// --- STARTUP CONFIGURATION ---
+const REQUIRED_ENV = ['DATABASE_URL', 'JWT_SECRET', 'REDIS_URL', 'FRONTEND_URL'];
+REQUIRED_ENV.forEach(key => {
+  if (!process.env[key]) {
+    logger.error(`❌ CRITICAL: Missing environment variable ${key}`);
+    process.exit(1);
+  }
+});
+
+const startServer = async (retryCount = 0) => {
+  const MAX_RETRIES = 5;
+  const RETRY_DELAY = 5000;
+
   try {
-    // 1. Database Ping (Graceful)
+    // 1. Database Ping (with block-and-retry logic)
     try {
       await prisma.$queryRaw`SELECT 1`;
-      logger.info('✅ Database connected');
+      logger.info("✅ Database connected");
     } catch (dbErr: any) {
-      logger.warn(`⚠️ Database ping failed at startup (continuing anyway...): ${dbErr.message}`);
+      if (retryCount < MAX_RETRIES) {
+        logger.warn(
+          `⚠️ Database ping failed at startup (Retry ${retryCount + 1}/${MAX_RETRIES}): ${dbErr.message}`
+        );
+        await new Promise((res) => setTimeout(res, RETRY_DELAY));
+        return startServer(retryCount + 1);
+      } else {
+        logger.error(
+          `💥 CRITICAL: Database connection failed after ${MAX_RETRIES} attempts. App exiting.`
+        );
+        process.exit(1);
+      }
     }
 
     // 2. Multi-headed compute separation 🐳
-    if (process.env.RUN_WORKERS !== 'false') {
+    if (process.env.RUN_WORKERS !== "false") {
       startWorkers();
-      logger.info('👷🏽 Background Worker queue consumers started');
+      logger.info("👷🏽 Background Worker queue consumers started");
     }
 
-    if (process.env.RUN_API !== 'false') {
+    if (process.env.RUN_API !== "false") {
       const server = http.createServer(app);
       initSocket(server);
 
@@ -203,10 +215,11 @@ const startServer = async () => {
         logger.info(`🚀 Shop OS API with WebSockets running on port ${PORT}`);
       });
     } else {
-      logger.info('🛑 API endpoints disabled (Worker node only)');
+      logger.info("🛑 API endpoints disabled (Worker node only)");
     }
   } catch (err) {
-    logger.error('💥 Failed to start:', err);
+    logger.error("💥 Failed to start:", err);
+    process.exit(1);
   }
 };
 

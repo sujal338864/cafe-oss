@@ -12,6 +12,7 @@ let connectionOptions: RedisOptions = {
   password: process.env.REDIS_PASSWORD || undefined,
   maxRetriesPerRequest: null, // Critical requirement for BullMQ
   lazyConnect: true, 
+  enableOfflineQueue: false, // Prevents hanging when Redis is down
   retryStrategy: (times) => Math.min(times * 200, 3000), 
 };
 
