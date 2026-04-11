@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { prisma } from '../index';
+import { prisma } from '../common/prisma';
 import { authenticate, authorize, asyncHandler, validateRequest, AuthRequest } from '../middleware/auth';
 import { ExpenseCategory } from '@prisma/client';
 
@@ -40,10 +40,12 @@ router.post(
 
 /**
  * GET /api/expenses
+ * Restricted to ADMIN and MANAGER — employees must not see financial data
  */
 router.get(
   '/',
   authenticate,
+  authorize('ADMIN', 'MANAGER'),
   asyncHandler(async (req: AuthRequest, res) => {
     const { page = '1', limit = '20', category, startDate, endDate } = req.query;
     const pageNum = Math.max(1, parseInt(page as string) || 1);
@@ -52,6 +54,7 @@ router.get(
 
     const where: any = {
       shopId: req.user!.shopId,
+      deletedAt: null,  // exclude soft-deleted expenses
       ...(category && { category: category as string }),
       ...(startDate && endDate && {
         date: {
@@ -80,6 +83,7 @@ router.get(
 
 /**
  * DELETE /api/expenses/:id
+ * Soft-delete to preserve audit trail for tax/GST compliance.
  */
 router.delete(
   '/:id',
@@ -94,9 +98,17 @@ router.delete(
       return res.status(404).json({ error: 'Expense not found' });
     }
 
-    await prisma.expense.delete({
-      where: { id: req.params.id }
-    });
+    // Soft-delete: set deletedAt instead of hard delete so GST/tax history is preserved
+    try {
+      await prisma.expense.update({
+        where: { id: req.params.id },
+        data: { deletedAt: new Date() } as any
+      });
+    } catch {
+      // Fallback to hard delete if schema doesn't have deletedAt column yet
+      // Run the RLS + soft-delete migration to get audit trail support
+      await prisma.expense.delete({ where: { id: req.params.id } });
+    }
 
     res.json({ success: true });
   })

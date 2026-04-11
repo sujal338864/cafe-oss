@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
-import { prisma } from '../index';
+import { prisma } from '../common/prisma';
 import { authenticate, authorize, asyncHandler, AuthRequest } from '../middleware/auth';
 
 const router = Router();
@@ -122,11 +122,12 @@ router.put(
 
 /**
  * DELETE /api/users/:id
+ * Admin only — prevents MANAGER from deleting peers (privilege escalation)
  */
 router.delete(
   '/:id',
   authenticate,
-  authorize('ADMIN', 'MANAGER'),
+  authorize('ADMIN'),
   asyncHandler(async (req: AuthRequest, res) => {
     const { id } = req.params;
     const user = await prisma.user.findFirst({

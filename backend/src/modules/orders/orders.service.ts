@@ -1,4 +1,4 @@
-import { prisma } from '../../index';
+import { prisma } from '../../common/prisma';
 import { logger } from '../../lib/logger';
 
 // Loyalty constants removed - now fetched dynamically per-shop inside transactions
@@ -24,6 +24,13 @@ export const createOrder = async (shopId: string, userId: string, data: any) => 
       const LOYALTY_RATE = Number((shop as any).loyaltyRate || 0.1);
       const REDEEM_VALUE = Number((shop as any).redeemRate || 10);
       
+      if (redeemPoints > 0) {
+        if (!customerId) throw new Error('Customer ID is required to redeem points');
+        const customer = await tx.customer.findUnique({ where: { id: customerId } });
+        if (!customer) throw new Error('Customer not found');
+        if (customer.loyaltyPoints < redeemPoints) throw new Error(`Insufficient points. Customer only has ${customer.loyaltyPoints}`);
+      }
+
       const pointsDiscount = redeemPoints > 0 ? (redeemPoints / REDEEM_VALUE) : 0;
       const totalDiscount = discountAmount + pointsDiscount;
       // 1. Fetch products inside transaction to hold locks

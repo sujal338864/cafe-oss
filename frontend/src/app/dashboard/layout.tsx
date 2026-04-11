@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { usePathname, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { useSocket } from '@/context/SocketContext';
@@ -142,7 +143,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             const active = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
             const isProducts = href === '/dashboard/products';
             return (
-              <a key={href} href={href}
+              <Link key={href} href={href}
                 style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 9, marginBottom: 2, textDecoration: 'none', background: active ? 'linear-gradient(135deg,rgba(124,58,237,.25),rgba(59,130,246,.15))' : 'transparent', color: active ? '#a78bfa' : theme.textMuted, fontWeight: active ? 700 : 500, fontSize: 13, transition: 'all .15s', position: 'relative' }}
                 onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = theme.hover; }}
                 onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}>
@@ -153,7 +154,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <span style={{ background: '#ef4444', color: 'white', borderRadius: 99, fontSize: 10, fontWeight: 800, padding: '1px 6px', minWidth: 18, textAlign: 'center' }}>{lowStock}</span>
                 )}
                 {active && <span style={{ width: 3, height: 20, borderRadius: 99, background: '#7c3aed', position: 'absolute', right: 0 }} />}
-              </a>
+              </Link>
             );
           })}
         </nav>
@@ -214,7 +215,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <div style={{ maxHeight: 320, overflowY: 'auto' }}>
                     {/* Low stock warning */}
                     {lowStock > 0 && (
-                      <a href="/dashboard/products" style={{ display: 'block', padding: '12px 16px', borderBottom: `1px solid ${theme.border}`, textDecoration: 'none', background: 'rgba(239,68,68,0.05)' }}>
+                      <Link href="/dashboard/products" style={{ display: 'block', padding: '12px 16px', borderBottom: `1px solid ${theme.border}`, textDecoration: 'none', background: 'rgba(239,68,68,0.05)' }}>
                         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                           <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
                           <div>
@@ -222,7 +223,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                             <div style={{ fontSize: 12, color: theme.textFaint, marginTop: 2 }}>{lowStock} product{lowStock > 1 ? 's are' : ' is'} running low on stock</div>
                           </div>
                         </div>
-                      </a>
+                      </Link>
                     )}
                     {notifications.length === 0 && lowStock === 0 && (
                       <div style={{ padding: 28, textAlign: 'center', color: theme.textFaint, fontSize: 13 }}>All clear! No notifications.</div>

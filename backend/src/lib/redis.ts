@@ -32,39 +32,21 @@ export const logRedisError = (source: string, err: any) => {
   }
 };
 
-// --- ABSOLUTE SILENCE PROXY ---
-// This wraps the Redis constructor to ensure EVERY client in the app (including BullMQ/Socket internals)
-// has our quiet error handler attached immediately upon creation.
-const OriginalRedis = Redis;
-const ProxiedRedis: any = function (this: any, ...args: any[]) {
-  const opts = args[0] || {};
-  const instance = new (OriginalRedis as any)({
-    ...redisConnection,
-    ...opts,
-    connectTimeout: 5000,
-    maxRetriesPerRequest: 1
-  });
-  instance.on('error', (err: any) => logRedisError('InternalClient', err));
-  return instance;
-};
-ProxiedRedis.prototype = OriginalRedis.prototype;
-Object.assign(ProxiedRedis, OriginalRedis);
-
-// Override the export so everything uses the proxied version
-export { ProxiedRedis as Redis }; 
+// NOTE: We do NOT globally patch the Redis constructor.
+// BullMQ requires maxRetriesPerRequest: null, which is set in jobs/config.ts.
+// Patching the constructor here was silently overwriting that to 1, breaking BullMQ.
+// Each Redis client (singleton redis below, BullMQ internal clients) is configured directly.
 
 /**
  * Singleton Redis client for general application caching
  */
-export const redis = new OriginalRedis(redisConnection);
+export const redis = new Redis(redisConnection);
 
 // Global interceptor for any "shadow" Redis errors that escape handlers
 const originalStderrWrite = process.stderr.write;
 
-process.on('uncaughtException', (err: any) => {
-  if (err?.code === 'ECONNREFUSED' || err?.message?.includes('Connection is closed')) return;
-  logger.error('Uncaught Exception:', err);
-});
+// Note: uncaughtException is handled globally in src/index.ts
+// Do NOT add process.on('uncaughtException') here as it would swallow non-Redis errors too.
 
 process.stderr.write = function (chunk: string | Uint8Array, ...args: any[]) {
   const content = typeof chunk === 'string' ? chunk : chunk.toString();

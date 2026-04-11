@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { prisma } from '../index';
+import { prisma } from '../common/prisma';
 import { authenticate, authorize, asyncHandler, validateRequest, AuthRequest } from '../middleware/auth';
 import { sendWhatsAppBill } from '../lib/whatsapp';
 import { emitToShop } from '../lib/socket';
@@ -41,19 +41,54 @@ router.post(
     const pointsDiscount = redeemPoints > 0 ? (redeemPoints / redeemRate) : 0;
     const totalDiscount = discountAmount + pointsDiscount;
 
+    // Guard: ensure customer has enough loyalty points to redeem
+    if (redeemPoints > 0 && customerId) {
+      const customer = await prisma.customer.findFirst({ where: { id: customerId, shopId: req.user!.shopId } });
+      if (!customer) return res.status(404).json({ error: 'Customer not found' });
+      if ((customer as any).loyaltyPoints < redeemPoints) {
+        return res.status(400).json({ error: `Insufficient loyalty points. Available: ${(customer as any).loyaltyPoints}` });
+      }
+    }
+
     let subtotal = 0;
     let taxAmount = 0;
+    // Fetch authoritative prices from DB — never trust client-sent prices (OWASP A01)
+    const productIds = items.map((i: any) => i.productId);
+    const dbProductMap = new Map<string, any>();
+    const dbProducts = await prisma.product.findMany({
+      where: { id: { in: productIds }, shopId: req.user!.shopId, isActive: true },
+      select: { id: true, sellingPrice: true, costPrice: true, taxRate: true, name: true }
+    });
+    dbProducts.forEach((p: any) => dbProductMap.set(p.id, p));
+
     for (const item of items) {
-      const itemSubtotal = item.unitPrice * item.quantity;
+      if (!dbProductMap.has(item.productId)) {
+        return res.status(400).json({ error: `Product ${item.productId} not found in your shop` });
+      }
+    }
+
+    for (const item of items) {
+      const dbP = dbProductMap.get(item.productId);
+      const unitPrice = Number(dbP.sellingPrice);
+      const taxRate = Number(dbP.taxRate) || 0;
+      const itemSubtotal = unitPrice * item.quantity;
       subtotal += itemSubtotal;
-      taxAmount += itemSubtotal * (item.taxRate / 100);
+      taxAmount += itemSubtotal * (taxRate / 100);
+      // Overwrite client-sent prices with DB values
+      item.unitPrice = unitPrice;
+      item.costPrice = Number(dbP.costPrice);
+      item.taxRate = taxRate;
+      item.name = item.name || dbP.name; // allow name override for variants
     }
     const totalAmount = Math.max(0, subtotal + taxAmount - totalDiscount);
 
-    const count = await prisma.order.count({ where: { shopId: req.user!.shopId } });
-    const invoiceNumber = `INV-${String(count + 1).padStart(6, '0')}`;
+    // Invoice number is generated INSIDE the transaction (atomic — prevents race conditions)
 
     const order = await prisma.$transaction(async (tx) => {
+      // Atomic count inside transaction prevents duplicate invoice numbers under concurrency
+      const count = await tx.order.count({ where: { shopId: req.user!.shopId } });
+      const invoiceNumber = `INV-${String(count + 1).padStart(6, '0')}`;
+
       const newOrder = await tx.order.create({
         data: {
           shopId: req.user!.shopId,
@@ -74,9 +109,9 @@ router.post(
               productId: item.productId,
               name: item.name,
               quantity: item.quantity,
-              costPrice: item.costPrice,
-              unitPrice: item.unitPrice,
-              taxRate: item.taxRate || 0,
+              costPrice: item.costPrice,       // DB-sourced
+              unitPrice: item.unitPrice,       // DB-sourced
+              taxRate: item.taxRate || 0,      // DB-sourced
               discount: item.discount || 0,
               total: item.unitPrice * item.quantity
             }))
@@ -85,8 +120,12 @@ router.post(
         include: { items: true, customer: true, user: { select: { name: true } } }
       });
 
-      // Deduct stock
+      // Deduct stock — verify availability first to prevent negative stock
       for (const item of items) {
+        const product = await tx.product.findUnique({ where: { id: item.productId }, select: { stock: true, name: true } });
+        if (!product || product.stock < item.quantity) {
+          throw new Error(`Insufficient stock for "${product?.name || item.productId}". Available: ${product?.stock ?? 0}, Requested: ${item.quantity}`);
+        }
         await tx.product.update({
           where: { id: item.productId },
           data: { stock: { decrement: item.quantity } }
@@ -191,8 +230,6 @@ router.get(
       ...o,
       status: o.status // Now using native OrderStatus enum
     })).filter(o => o.status !== 'COMPLETED' && o.status !== 'CANCELLED' && o.status !== 'REFUNDED');
-
-    res.json({ orders });
 
     res.json({ orders });
   })

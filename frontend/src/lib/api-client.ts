@@ -15,8 +15,8 @@ async function request(url: string, method: string, body?: any, signal?: AbortSi
         method,
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('shop_os_token')}`,
         },
+        credentials: 'include', // Automatically send HttpOnly cookies
         body: body ? JSON.stringify(body) : undefined,
         signal
       });

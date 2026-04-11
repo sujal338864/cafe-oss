@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
+import { verifyToken } from '../lib/jwt';
 import { Role } from '@prisma/client';
+import { logger } from '../lib/logger';
 
 export interface AuthRequest extends Request {
   user?: {
@@ -16,13 +17,21 @@ export interface AuthRequest extends Request {
  */
 export const authenticate = (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Missing or invalid authorization header' });
+    // 1. Try to get token from HttpOnly cookie (Production secure way)
+    let token = req.cookies?.shop_os_token;
+
+    // 2. Fallback to Authorization header (for Postman, mobile apps, etc.)
+    if (!token) {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+      }
     }
 
-    const token = authHeader.substring(7);
-    const payload = jwt.verify(token, process.env.JWT_SECRET!) as any;
+    if (!token) {
+      return res.status(401).json({ error: 'Missing or invalid authentication token' });
+    }
+    const payload = verifyToken(token) as any;
 
     req.user = {
       id: payload.id,
@@ -49,10 +58,11 @@ export const authorize = (...allowedRoles: Role[]) => {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
-    console.log(`[AUTH DEBUG] User: ${req.user.email}, Role: ${req.user.role}, Allowed: ${allowedRoles.join(', ')}`);
+    // Use logger.debug — PII stays out of production logs
+    logger.debug(`[AUTH] User: ${req.user.email}, Role: ${req.user.role}, Checking: ${allowedRoles.join(', ')}`);
 
     if (!allowedRoles.includes(req.user.role)) {
-      console.warn(`[AUTH FAIL] User ${req.user.email} (${req.user.role}) attempted restricted action. Needs: ${allowedRoles.join(', ')}`);
+      logger.warn(`[AUTH] Forbidden: ${req.user.email} (${req.user.role}) attempted action requiring: ${allowedRoles.join(', ')}`);
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
     next();

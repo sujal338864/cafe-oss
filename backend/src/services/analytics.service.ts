@@ -550,10 +550,23 @@ export const AnalyticsService = {
 
   /**
    * Sequential Safe Mode (Fallback)
+   * Runs stats and charts sequentially to avoid connection pool exhaustion.
    */
   getMegaDashboardDataSequential: async (shopId: string) => {
-     // ... (The old logic preserved for safety)
-     return { stats: { totalRevenue: 0 }, timestamp: new Date() };
+    try {
+      const stats = await AnalyticsService.getDashboardStats(shopId);
+      const charts = await AnalyticsService.getDashboardCharts(shopId);
+      return { stats, ...charts, timestamp: new Date() };
+    } catch (error: any) {
+      logger.error(`[SEQUENTIAL-DASHBOARD] Failed: ${error.message}`);
+      return {
+        stats: { totalRevenue: 0, totalOrders: 0, totalCustomers: 0, totalProducts: 0,
+                 avgOrderValue: 0, todayRevenue: 0, todayCogs: 0, todayMargin: 0,
+                 todayOrdersCount: 0, lowStockItems: 0, totalInventoryValue: 0 },
+        timestamp: new Date(),
+        error: error.message
+      };
+    }
   }
 };
 

@@ -4,18 +4,17 @@ import helmet from 'helmet';
 import compression from 'compression';
 import morgan from 'morgan';
 import http from 'http';
-import rateLimit from 'express-rate-limit';
-import { PrismaClient } from '@prisma/client';
+import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 dotenv.config();
 
-import { prisma as extendedPrisma } from './common/prisma';
+import { prisma as extendedPrisma, directPrisma } from './common/prisma';
 import { logger } from './lib/logger';
 import { requestLogger } from './middleware/requestLogger';
-import { logRedisError } from './lib/redis';
 import { distributedRateLimiter } from './middleware/rateLimiter';
 import { metricsCollector, metricsEndpoint } from './middleware/metrics';
 
+// Re-exported for any legacy code still importing from index (being phased out)
 export const prisma = extendedPrisma;
 
 const app: Express = express();
@@ -25,19 +24,20 @@ const PORT = process.env.PORT || process.env.SHOP_OS_PORT || 4001;
 
 // Centralized logger imported from src/lib/logger above
 
-// Allow any Netlify URL + localhost. No need to change env vars
-// when Netlify generates preview deploy URLs.
+// CORS: exact URL whitelist only — no wildcard *.netlify.app (OWASP A05)
+const ALLOWED_ORIGINS = new Set([
+  process.env.FRONTEND_URL,
+  process.env.STAGING_URL,
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://127.0.0.1:3000',
+].filter(Boolean) as string[]);
+
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin) return callback(null, true); // curl, mobile, etc.
-    const ok =
-      origin.endsWith('.netlify.app') ||
-      origin.endsWith('.netlify.live') ||
-      origin.endsWith('.vercel.app') ||
-      origin.startsWith('http://localhost') ||
-      origin.startsWith('http://127.0.0.1') ||
-      origin === (process.env.FRONTEND_URL || '');
-    if (ok) return callback(null, true);
+    // Allow requests with no origin (mobile app, curl, Postman)
+    if (!origin) return callback(null, true);
+    if (ALLOWED_ORIGINS.has(origin)) return callback(null, true);
     logger.warn(`CORS blocked origin: ${origin}`);
     callback(new Error('Not allowed by CORS'));
   },
@@ -46,7 +46,23 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
-app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'same-origin' },  // was 'cross-origin' — too permissive
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],  // inline styles needed for PDF gen
+      imgSrc: ["'self'", 'data:', 'https://res.cloudinary.com'],
+      connectSrc: ["'self'"],
+      frameSrc: ["'none'"],
+      objectSrc: ["'none'"],
+    }
+  },
+  hidePoweredBy: true,
+  noSniff: true,
+  xssFilter: true,
+}));
 app.use(compression());
 app.use(morgan('combined', {
   skip: (req, res) => {
@@ -58,13 +74,12 @@ app.use(morgan('combined', {
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(cookieParser());
 
-/**
- * Auth Rate Limiter
- * Currently a pass-through for development; should be connected to 
- * distributedRateLimiter in production environments.
- */
-export const authLimiter = (req: any, res: any, next: any) => next();
+// Auth-specific rate limiter: 10 attempts per 15 minutes per IP (prevents brute force)
+// Applied directly to the route mount below — NOT a no-op
+const AUTH_RATE_LIMIT_MAX = parseInt(process.env.AUTH_RATE_LIMIT_MAX || '10');
+const AUTH_RATE_LIMIT_WINDOW = parseInt(process.env.AUTH_RATE_LIMIT_WINDOW || '900'); // 15 min
 
 import uploadRoutes from './routes/upload';
 import menuRoutes from './routes/menu';
@@ -84,17 +99,21 @@ import notificationRoutes from './routes/notifications';
 import subscriptionRoutes from './routes/subscriptions';
 import userRoutes from './routes/users';
 
-// Health check also hit by keep-alive to prevent Render free-tier sleep
+// Health check — minimal info exposed publicly (no uptime to prevent fingerprinting)
 app.get('/health', (_req: Request, res: Response) => {
-  res.json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 import { authenticate } from './middleware/auth';
 import { withTenantContext } from './middleware/tenant';
 
+// Trust exactly 1 reverse proxy (Render/Netlify/Railway) so req.ip is accurate
+app.set('trust proxy', 1);
+
 app.use('/api/upload', uploadRoutes);
 app.use('/api/menu', menuRoutes);
-app.use('/api/auth', authRoutes);
+// Auth endpoints: rate-limited to prevent brute force & registration spam
+app.use('/api/auth', distributedRateLimiter(AUTH_RATE_LIMIT_MAX, AUTH_RATE_LIMIT_WINDOW), authRoutes);
 
 // --- Authenticated Dashboard Scope ---
 const dashboardRouter = express.Router();
@@ -235,7 +254,7 @@ process.on('unhandledRejection', (reason: any) => {
   logger.error('Unhandled Rejection:', reason);
 });
 
-process.on('SIGTERM', async () => { await prisma.$disconnect(); process.exit(0); });
-process.on('SIGINT', async () => { await prisma.$disconnect(); process.exit(0); });
+process.on('SIGTERM', async () => { await prisma.$disconnect(); await directPrisma.$disconnect(); process.exit(0); });
+process.on('SIGINT',  async () => { await prisma.$disconnect(); await directPrisma.$disconnect(); process.exit(0); });
 
 startServer();

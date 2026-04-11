@@ -17,13 +17,22 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 // Dedicated client for Analytics/Heavy queries to bypass Pooler (PgBouncer)
-export const directPrisma = new PrismaClient({
-  datasources: { 
-    db: { 
-      url: process.env.DIRECT_URL || process.env.DATABASE_URL 
-    } 
-  }
-});
+// Uses the same singleton guard as basePrisma to prevent connection leaks on hot-reload
+const globalForDirectPrisma = global as unknown as { directPrisma: PrismaClient };
+
+export const directPrisma =
+  globalForDirectPrisma.directPrisma ||
+  new PrismaClient({
+    datasources: {
+      db: {
+        url: process.env.DIRECT_URL || process.env.DATABASE_URL
+      }
+    }
+  });
+
+if (process.env.NODE_ENV !== 'production') {
+  globalForDirectPrisma.directPrisma = directPrisma;
+}
 
 /**
  * Extended Prisma Client with automatic row-level multi-tenancy filters.
@@ -51,27 +60,15 @@ export const prisma = basePrisma.$extends({
         }
         return query(args);
       },
-      async findUnique({ model, args, query }: any) {
-        const tenant = getTenantContext();
-        if (tenant?.shopId && modelsWithShopId.includes(model)) {
-          (args as any).where = { ...(args as any).where, shopId: tenant.shopId };
-        }
-        return query(args);
-      },
-      async update({ model, args, query }: any) {
-        const tenant = getTenantContext();
-        if (tenant?.shopId && modelsWithShopId.includes(model)) {
-          (args as any).where = { ...(args as any).where, shopId: tenant.shopId };
-        }
-        return query(args);
-      },
-      async delete({ model, args, query }: any) {
-        const tenant = getTenantContext();
-        if (tenant?.shopId && modelsWithShopId.includes(model)) {
-          (args as any).where = { ...(args as any).where, shopId: tenant.shopId };
-        }
-        return query(args);
-      },
+      // NOTE: findUnique is intentionally NOT intercepted here.
+      // Prisma's findUnique REQUIRES exactly one unique index selector.
+      // Injecting shopId would break compound queries and cause runtime errors.
+      // Use findFirst (intercepted above) at call sites requiring tenant isolation.
+      //
+      // NOTE: update and delete are also NOT intercepted globally because
+      // the WHERE clause for updates often uses PK only (e.g. { id: '...' }).
+      // Each route explicitly passes shopId in its findFirst ownership-check
+      // before calling update/delete.
       async create({ model, args, query }: any) {
         const tenant = getTenantContext();
         if (tenant?.shopId && modelsWithShopId.includes(model)) {

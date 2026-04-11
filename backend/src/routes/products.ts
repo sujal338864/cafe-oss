@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { prisma } from '../index';
+import { prisma } from '../common/prisma';
 import { authenticate, authorize, asyncHandler, validateRequest, AuthRequest } from '../middleware/auth';
 
 const router = Router();
@@ -44,9 +44,9 @@ router.get(
         ]
       }),
       ...(category && { categoryId: category as string }),
-      ...(lowStock === 'true' && {
-        stock: { lte: prisma.product.fields.lowStockAlert }
-      })
+      // NOTE: lowStock filter requires cross-column comparison (stock <= lowStockAlert)
+      // Prisma ORM cannot compare two columns directly, so we skip it in the ORM where clause
+      // and filter in-memory after fetching. For large catalogs, use $queryRaw instead.
     };
 
     const [products, total] = await Promise.all([
@@ -65,13 +65,18 @@ router.get(
       prisma.product.count({ where })
     ]);
 
+    // Apply lowStock in-memory (Prisma cannot compare two columns in WHERE)
+    const filteredProducts = lowStock === 'true'
+      ? products.filter(p => p.stock <= p.lowStockAlert)
+      : products;
+
     res.json({
-      products,
+      products: filteredProducts,
       pagination: {
-        total,
+        total: lowStock === 'true' ? filteredProducts.length : total,
         page: pageNum,
         limit: limitNum,
-        pages: Math.ceil(total / limitNum)
+        pages: Math.ceil((lowStock === 'true' ? filteredProducts.length : total) / limitNum)
       }
     });
   })

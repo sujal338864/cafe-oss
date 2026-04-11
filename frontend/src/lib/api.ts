@@ -1,10 +1,11 @@
 import axios from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001';
 export const API = API_URL;
 
 const api = axios.create({
   baseURL: API_URL,
+  withCredentials: true, // Sends HttpOnly cookies with every request
 });
 
 api.interceptors.request.use((config) => {
@@ -21,7 +22,7 @@ api.interceptors.response.use(
     if (err.response?.status === 401 && typeof window !== 'undefined') {
       // Don't redirect for optional/background endpoints
       const url = err.config?.url || '';
-      const isAuth = url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/google');
+      const isAuth = url.includes('/auth/');
       const isOptional = url.includes('/ai/') || url.includes('/analytics/') || url.includes('/menu/');
       
       if (!isOptional && !isAuth) {

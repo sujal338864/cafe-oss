@@ -6,6 +6,7 @@ import { useSocket } from '@/context/SocketContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 
 const DashboardCharts = dynamic(() => import('./DashboardCharts'), { 
   loading: () => <div style={{ height: 350, background: 'rgba(0,0,0,0.02)', borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: '#999' }}>Loading Staffing Intelligence...</div>,
@@ -48,18 +49,20 @@ export default function DashboardPage() {
 
 
   useEffect(() => {
-
     if (socket) {
-      const handleEvent = () => {
-        queryClient.invalidateQueries({ queryKey: ['mega_dashboard'] });
+      const handleOrderEvent = () => {
+        // Invalidate the actual query keys used by the dashboard
+        queryClient.invalidateQueries({ queryKey: ['dashboard_stats'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboard_charts'] });
+        queryClient.invalidateQueries({ queryKey: ['recent_orders'] });
       };
-      socket.on('ORDER_CREATED', handleEvent);
-      socket.on('ORDER_UPDATED', handleEvent);
-      socket.on('ORDER_CANCELLED', handleEvent);
+      socket.on('ORDER_CREATED', handleOrderEvent);
+      socket.on('ORDER_UPDATED', handleOrderEvent);
+      socket.on('ORDER_CANCELLED', handleOrderEvent);
       return () => {
-        socket.off('ORDER_CREATED', handleEvent);
-        socket.off('ORDER_UPDATED', handleEvent);
-        socket.off('ORDER_CANCELLED', handleEvent);
+        socket.off('ORDER_CREATED', handleOrderEvent);
+        socket.off('ORDER_UPDATED', handleOrderEvent);
+        socket.off('ORDER_CANCELLED', handleOrderEvent);
       };
     }
   }, [socket, queryClient]);
@@ -131,15 +134,15 @@ export default function DashboardPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
-          <a href="/dashboard/products" style={{ background: theme.card, border: `1px solid ${theme.border}`, color: theme.text, padding: '10px 16px', borderRadius: 10, fontWeight: 600, fontSize: 13, textDecoration: 'none' }}>
+          <Link href="/dashboard/products" style={{ background: theme.card, border: `1px solid ${theme.border}`, color: theme.text, padding: '10px 16px', borderRadius: 10, fontWeight: 600, fontSize: 13, textDecoration: 'none' }}>
             + Product
-          </a>
-          <a href="/dashboard/expenses" style={{ background: theme.card, border: `1px solid ${theme.border}`, color: theme.text, padding: '10px 16px', borderRadius: 10, fontWeight: 600, fontSize: 13, textDecoration: 'none' }}>
+          </Link>
+          <Link href="/dashboard/expenses" style={{ background: theme.card, border: `1px solid ${theme.border}`, color: theme.text, padding: '10px 16px', borderRadius: 10, fontWeight: 600, fontSize: 13, textDecoration: 'none' }}>
             + Expense
-          </a>
-          <a href="/dashboard/pos" style={{ background: 'linear-gradient(135deg,#7c3aed,#3b82f6)', color: 'white', padding: '10px 20px', borderRadius: 10, fontWeight: 700, fontSize: 13, textDecoration: 'none' }}>
+          </Link>
+          <Link href="/dashboard/pos" style={{ background: 'linear-gradient(135deg,#7c3aed,#3b82f6)', color: 'white', padding: '10px 20px', borderRadius: 10, fontWeight: 700, fontSize: 13, textDecoration: 'none' }}>
             + New Sale
-          </a>
+          </Link>
         </div>
       </div>
 

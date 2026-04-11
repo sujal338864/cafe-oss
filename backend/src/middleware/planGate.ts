@@ -1,6 +1,6 @@
 import { Response, NextFunction } from 'express';
 import { AuthRequest } from './auth';
-import { prisma } from '../index';
+import { prisma } from '../common/prisma';
 
 export const checkPlan = (requiredPlan: 'PRO' | 'ENTERPRISE') => {
   return async (req: AuthRequest, res: Response, next: NextFunction) => {

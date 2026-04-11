@@ -7,8 +7,9 @@
 
 [build.environment]
   NEXT_USE_NETLIFY_EDGE = "true"
+  # IMPORTANT: Set NEXT_PUBLIC_API_URL in the Netlify UI dashboard
+  # to your backend URL, e.g. https://your-api.render.com
+  # Do NOT set it here to avoid exposing it in source control.
 
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+# Note: Do NOT add [[redirects]] for Next.js apps using @netlify/plugin-nextjs.
+# The plugin handles all routing automatically including dynamic routes and SSR.

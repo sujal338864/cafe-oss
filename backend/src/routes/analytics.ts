@@ -167,7 +167,11 @@ router.get('/reports/monthly', authenticate, authorize('ADMIN', 'MANAGER'), asyn
  * GET /api/analytics/debug/db-stats
  * (Public health check with counts only)
  */
-router.get('/debug/db-stats', asyncHandler(async (req, res) => {
+/**
+ * GET /api/analytics/debug/db-stats
+ * (Admin-only health check — counts per resource)
+ */
+router.get('/debug/db-stats', authenticate, authorize('ADMIN'), asyncHandler(async (req, res) => {
   const [orders, products, shops, users] = await Promise.all([
     prisma.order.count(),
     prisma.product.count(),
@@ -176,8 +180,8 @@ router.get('/debug/db-stats', asyncHandler(async (req, res) => {
   ]);
   res.json({
     status: 'ok',
-    counts: { orders, products, shops, users },
-    database: process.env.DATABASE_URL?.split('@')[1] // Show host for verification
+    counts: { orders, products, shops, users }
+    // Note: database host intentionally omitted for security
   });
 }));
 

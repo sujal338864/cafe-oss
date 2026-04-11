@@ -1,7 +1,8 @@
 import { Router } from 'express';
-import { prisma } from '../index';
-import { asyncHandler } from '../middleware/auth';
+import { prisma } from '../common/prisma';
+import { asyncHandler, validateRequest } from '../middleware/auth';
 import { PaymentMethod } from '@prisma/client';
+import { z } from 'zod';
 import { sendWhatsAppBill } from '../lib/whatsapp';
 import { getCache, setCache, deleteCache } from '../common/cache';
 import { emitToShop } from '../lib/socket';
@@ -165,12 +166,26 @@ router.get('/recommendations', menuLimiter, asyncHandler(async (req, res) => {
 }));
 
 
+const publicOrderSchema = z.object({
+  shopId: z.string().min(1),
+  customerName: z.string().optional().nullable(),
+  customerPhone: z.string().max(20).optional().nullable(),
+  tableNumber: z.string().optional().nullable(),
+  notes: z.string().max(255).optional().nullable(),
+  paymentMethod: z.enum(['CASH', 'UPI', 'CARD']).optional(),
+  redeemPoints: z.number().int().nonnegative().optional().default(0),
+  items: z.array(z.object({
+    productId: z.string(),
+    quantity: z.number().int().positive() // Automatically rejects negative quantities
+  })).min(1)
+});
+
 /**
  * POST /api/menu/order
  * Public endpoint for scanner menu orders.
  * Handles customer creation, loyalty points, and real-time kitchen notification.
  */
-router.post('/order', orderLimiter, asyncHandler(async (req, res) => {
+router.post('/order', orderLimiter, validateRequest(publicOrderSchema), asyncHandler(async (req, res) => {
   const { customerName, customerPhone, tableNumber, notes, paymentMethod, items, redeemPoints = 0, shopId } = req.body;
   if (!items?.length) return res.status(400).json({ error: 'No items in order' });
   if (!shopId || typeof shopId !== 'string') return res.status(400).json({ error: 'shopId is required' });
@@ -191,25 +206,51 @@ router.post('/order', orderLimiter, asyncHandler(async (req, res) => {
       return res.status(500).json({ error: 'Server configuration error' });
     }
 
-    // Resolve Customer
+    // Resolve Customer — normalize phone FIRST to prevent duplicate records
+    // Same normalization logic as /customer lookup endpoint
     let customerId: string | null = null;
     if (customerPhone) {
-      const digits = customerPhone.replace(/\D/g, '').replace(/^91/, '').replace(/^0/, '');
-      let cust = await prisma.customer.findFirst({ where: { shopId: shop.id, phone: { contains: digits } } });
+      const normalizedPhone = customerPhone.replace(/\D/g, '').replace(/^91/, '').replace(/^0/, '');
+      let cust = await prisma.customer.findFirst({
+        where: {
+          shopId: shop.id,
+          OR: [
+            { phone: normalizedPhone },
+            { phone: { contains: normalizedPhone } }
+          ]
+        }
+      });
       if (!cust) {
         cust = await prisma.customer.create({
-          data: { shopId: shop.id, name: customerName || 'Walk-in', phone: customerPhone }
+          data: { shopId: shop.id, name: customerName || 'Walk-in', phone: normalizedPhone }
         });
       }
+      if (redeemPoints > 0 && cust.loyaltyPoints < redeemPoints) {
+        return res.status(400).json({ error: `Insufficient points. You only have ${cust.loyaltyPoints}` });
+      }
       customerId = cust.id;
+    } else if (redeemPoints > 0) {
+      return res.status(400).json({ error: 'A valid phone number is required to redeem points' });
     }
 
-    // Pricing & Validation
+    // Pricing & Validation — always fetch from DB with shopId guard (NEVER trust client prices)
     const productIds = items.map((i: any) => i.productId);
     const dbProducts = await prisma.product.findMany({ 
-      where: { id: { in: productIds } },
-      select: { id: true, name: true, sellingPrice: true, costPrice: true, taxRate: true, categoryId: true }
+      where: { 
+        id: { in: productIds },
+        shopId: shop.id,          // ← CRITICAL: verify all products belong to THIS shop
+        isActive: true            // only orderable active products
+      },
+      select: { id: true, name: true, sellingPrice: true, costPrice: true, taxRate: true, categoryId: true, stock: true }
     });
+
+    // Ensure every requested product was found in this shop
+    const foundIds = new Set(dbProducts.map((p: any) => p.id));
+    for (const item of items) {
+      if (!foundIds.has(item.productId)) {
+        return res.status(400).json({ error: `Product not found or not available in this menu.` });
+      }
+    }
 
     let subtotal = 0;
     // Apply Pricing Rules for backend Price protection
@@ -219,6 +260,7 @@ router.post('/order', orderLimiter, asyncHandler(async (req, res) => {
       const p = productsWithPricing.find((x: any) => x.id === i.productId);
       if (!p) throw new Error('Product not found: ' + i.productId);
       
+      // Price is ALWAYS taken from DB — client-sent price is ignored entirely
       const priceToUse = p.discountedPrice || Number(p.sellingPrice);
       const amount = priceToUse * i.quantity;
       subtotal += amount;
@@ -226,7 +268,7 @@ router.post('/order', orderLimiter, asyncHandler(async (req, res) => {
         productId: p.id,
         name: p.name,
         quantity: i.quantity,
-        unitPrice: priceToUse,
+        unitPrice: priceToUse,    // DB price, never client price
         costPrice: p.costPrice || 0,
         taxRate: p.taxRate || 0,
         discount: 0,
@@ -239,34 +281,36 @@ router.post('/order', orderLimiter, asyncHandler(async (req, res) => {
     const pointsDiscount = Number(redeemPoints) / ((shop as any).redeemRate || 10);
     const finalTotal = Math.max(0, totalAmount - pointsDiscount);
 
-    // Meta Generation
-    const count = await prisma.order.count({ where: { shopId: shop.id } });
-    const invoiceNumber = `ONL-${String(count + 1).padStart(6, '0')}`;
-    const tokenNumber = ((count % 9999) + 1).toString().padStart(4, '0');
-
     // Payment Strategy
     const pm = (paymentMethod as PaymentMethod) || PaymentMethod.CASH;
     const paymentStatus = pm === 'CASH' ? 'UNPAID' : 'PAID';
 
-    // Create Order
-    const order = await prisma.order.create({
-      data: {
-        shopId: shop.id,
-        userId,
-        customerId,
-        invoiceNumber,
-        subtotal,
-        taxAmount,
-        discountAmount: pointsDiscount,
-        totalAmount: finalTotal,
-        paidAmount: paymentStatus === 'PAID' ? finalTotal : 0,
-        paymentMethod: pm,
-        paymentStatus: paymentStatus as any,
-        status: 'PENDING' as any,
-        notes: (tableNumber ? 'Table: ' + tableNumber + '. ' : '') + (notes || ''),
-        items: { create: orderItems },
-      },
-      include: { items: true },
+    // Create Order atomically — count inside transaction prevents duplicate invoice numbers
+    const { order, invoiceNumber, tokenNumber } = await prisma.$transaction(async (tx) => {
+      const count = await tx.order.count({ where: { shopId: shop.id } });
+      const newInvoiceNumber = `ONL-${String(count + 1).padStart(6, '0')}`;
+      const newTokenNumber = ((count % 9999) + 1).toString().padStart(4, '0');
+
+      const order = await tx.order.create({
+        data: {
+          shopId: shop.id,
+          userId,
+          customerId,
+          invoiceNumber: newInvoiceNumber,
+          subtotal,
+          taxAmount,
+          discountAmount: pointsDiscount,
+          totalAmount: finalTotal,
+          paidAmount: paymentStatus === 'PAID' ? finalTotal : 0,
+          paymentMethod: pm,
+          paymentStatus: paymentStatus as any,
+          status: 'PENDING' as any,
+          notes: (tableNumber ? 'Table: ' + tableNumber + '. ' : '') + (notes || ''),
+          items: { create: orderItems },
+        },
+        include: { items: true },
+      });
+      return { order, invoiceNumber: newInvoiceNumber, tokenNumber: newTokenNumber };
     });
 
     // Side Effects
@@ -274,7 +318,7 @@ router.post('/order', orderLimiter, asyncHandler(async (req, res) => {
     emitToShop(shop.id, 'ORDER_CREATED', { ...order, status: 'PENDING' });
 
     // Stock & Loyalty updates (Deferred for performance)
-    updatePostOrderMetrics(shop.id, items, customerId, Number(redeemPoints), finalTotal, paymentStatus, customerPhone, loyaltyRate).catch(err => {
+    updatePostOrderMetrics(shop.id, items, orderItems, invoiceNumber, customerId, Number(redeemPoints), finalTotal, paymentStatus, pm, customerPhone, loyaltyRate).catch(err => {
       logger.warn(`[MENU] Deferred updates failed for ${invoiceNumber}: ${err.message}`);
     });
 
@@ -359,8 +403,12 @@ router.get('/orders', asyncHandler(async (req, res) => {
  * Polling endpoint for scanner menu clients.
  */
 router.get('/order/:id/status', asyncHandler(async (req, res) => {
-  const order = await prisma.order.findUnique({
-    where: { id: req.params.id },
+  const { shopId } = req.query;
+  if (!shopId || typeof shopId !== 'string') {
+    return res.status(400).json({ error: 'shopId query parameter is required' });
+  }
+  const order = await prisma.order.findFirst({
+    where: { id: req.params.id, shopId },
     select: { paymentStatus: true, status: true }
   });
   if (!order) return res.status(404).json({ error: 'Order not found' });
@@ -368,13 +416,17 @@ router.get('/order/:id/status', asyncHandler(async (req, res) => {
 }));
 
 /**
- * GET /api/menu/order/:id/invoice
- * Generates PDF invoice for public download.
+ * GET /api/menu/order/:id/invoice?shopId=...
+ * Generates PDF invoice. shopId required to prevent cross-shop PII leak.
  */
 router.get('/order/:id/invoice', asyncHandler(async (req, res) => {
+  const { shopId } = req.query;
+  if (!shopId || typeof shopId !== 'string') {
+    return res.status(400).json({ error: 'shopId query parameter is required' });
+  }
   try {
-    const order = await prisma.order.findUnique({
-      where: { id: req.params.id },
+    const order = await prisma.order.findFirst({
+      where: { id: req.params.id, shopId },
       include: { items: true, customer: true, shop: true }
     });
     if (!order) return res.status(404).json({ error: 'Order not found' });
@@ -395,12 +447,15 @@ router.get('/order/:id/invoice', asyncHandler(async (req, res) => {
  * Deducts stock, updates loyalty, and sends WhatsApp notifications.
  */
 async function updatePostOrderMetrics(
-  shopId: string, 
-  items: any[], 
-  customerId: string | null, 
+  shopId: string,
+  items: any[],
+  orderItems: any[],      // resolved order items with actual prices
+  invoiceNumber: string,  // real invoice number for WhatsApp
+  customerId: string | null,
   redeemPoints: number,
   finalTotal: number,
   paymentStatus: string,
+  paymentMethod: any,     // actual payment method (not hardcoded)
   customerPhone: string | null,
   loyaltyRate: number
 ) {
@@ -434,14 +489,17 @@ async function updatePostOrderMetrics(
       const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { name: true } });
       
       await sendWhatsAppBill(customerPhone, {
-          invoiceNumber: 'AUTO', // Re-fetching would be heavy, use summary
-          items: [], 
-          subtotal: 0, taxAmount: 0, discountAmount: 0, 
-          totalAmount: Number(finalTotal), 
-          paymentMethod: 'UPI', paymentStatus: 'PAID'
-        }, 
-        shop?.name || 'Shop', 
-        pointsEarned, 
+          invoiceNumber,
+          items: orderItems.map((i: any) => ({ name: i.name, quantity: i.quantity, unitPrice: Number(i.unitPrice), total: Number(i.total) })),
+          subtotal: orderItems.reduce((s: number, i: any) => s + Number(i.total), 0),
+          taxAmount: orderItems.reduce((s: number, i: any) => s + Number(i.total) * (Number(i.taxRate) / 100), 0),
+          discountAmount: redeemPoints > 0 ? redeemPoints / 10 : 0,
+          totalAmount: Number(finalTotal),
+          paymentMethod,
+          paymentStatus: 'PAID'
+        },
+        shop?.name || 'Shop',
+        pointsEarned,
         updatedCustomer?.loyaltyPoints
       ).catch(e => logger.warn(`[MENU] WhatsApp failed: ${e.message}`));
     }

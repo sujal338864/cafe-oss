@@ -1,4 +1,4 @@
-import { prisma } from '../../index';
+import { prisma } from '../../common/prisma';
 import { redis } from '../../lib/redis';
 
 /**

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { prisma } from '../index';
+import { prisma } from '../common/prisma';
 import { authenticate, authorize, asyncHandler, validateRequest, AuthRequest } from '../middleware/auth';
 
 const router = Router();
@@ -70,11 +70,17 @@ router.post(
         include: { items: true, supplier: true }
       });
 
-      // Increment stock
+      // Increment stock — verify product belongs to THIS shop first (prevents cross-tenant poisoning)
       for (const item of items) {
+        const product = await tx.product.findFirst({
+          where: { id: item.productId, shopId: req.user!.shopId }
+        });
+        if (!product) {
+          throw new Error(`Product ${item.productId} not found in your shop`);
+        }
         await tx.product.update({
           where: { id: item.productId },
-          data: { stock: { increment: item.quantity } }
+          data: { stock: { increment: item.quantity }, costPrice: item.costPrice }
         });
 
         await tx.stockHistory.create({
@@ -131,7 +137,11 @@ router.get(
         where,
         skip,
         take: limitNum,
-        include: { items: true, supplier: true },
+        // List view: use _count for performance, not full items (N+1 mitigation)
+        include: {
+          supplier: { select: { id: true, name: true, phone: true } },
+          _count: { select: { items: true } }
+        },
         orderBy: { purchaseDate: 'desc' }
       }),
       prisma.purchase.count({ where })

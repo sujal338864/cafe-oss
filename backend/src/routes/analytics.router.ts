@@ -3,7 +3,7 @@
  * Analytics Router with 20s Prisma Timeout race.
  */
 import { Router } from 'express';
-import { prisma } from '../index';
+import { prisma } from '../common/prisma';
 import { authenticate } from '../middleware/auth';
 import { withTenantContext } from '../middleware/tenant';
 import { calculateDashboardStats } from '../services/analytics.service';

@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../../middleware/auth';
 import * as orderService from './orders.service';
-import { prisma } from '../../index';
+import { prisma } from '../../common/prisma';
 import { addWhatsAppJob } from '../../jobs/queues/whatsapp.queue';
 import { addDashboardUpdateJob } from '../../jobs/queues/dashboard.queue';
 import { emitToShop } from '../../lib/socket';
@@ -80,7 +80,7 @@ export const getOrders = async (req: AuthRequest, res: Response) => {
   try {
     const { page = '1', limit = '20', startDate, endDate, customerId, status, paymentStatus, sort } = req.query;
     const pageNum = Math.max(1, parseInt(page as string) || 1);
-    const limitNum = Math.min(100000, parseInt(limit as string) || 20);
+    const limitNum = Math.min(100, parseInt(limit as string) || 20);
     const skip = (pageNum - 1) * limitNum;
     console.log(`[ORDER_LIST] Shop: ${req.user!.shopId}, Limit: ${limitNum}, Skip: ${skip}, Sort: ${sort}`);
 

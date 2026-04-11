@@ -1,4 +1,4 @@
-import { prisma } from '../index';
+import { prisma } from '../common/prisma';
 import { logger } from '../lib/logger';
 
 /**
@@ -8,12 +8,15 @@ import { logger } from '../lib/logger';
 export const AnalyticsServiceV2 = {
   getDailyReport: async (shopId: string, date: Date) => {
     try {
-      const istOffset = 5.5 * 60 * 60 * 1000;
-      const istDate = new Date(date.getTime() + (date.getTimezoneOffset() === 0 ? istOffset : 0));
-      const startOfIst = new Date(istDate);
-      startOfIst.setUTCHours(0, 0, 0, 0);
-      const start = new Date(startOfIst.getTime() - istOffset);
-      const end = new Date(start.getTime() + (24 * 60 * 60 * 1000) - 1);
+      // IST = UTC+5:30. Calculate day boundaries in IST, store as UTC.
+      // This is server-timezone-agnostic (works whether server is UTC or IST).
+      const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+      // Parse date as IST midnight
+      const dateStr = typeof date === 'string' ? date : date.toISOString().split('T')[0];
+      const [year, month, day] = dateStr.split('T')[0].split('-').map(Number);
+      // IST start-of-day in UTC = midnight IST - 5h30m = previous day 18:30 UTC
+      const start = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0) - IST_OFFSET_MS);
+      const end = new Date(start.getTime() + 24 * 60 * 60 * 1000 - 1);
 
       // Aggregations using Prisma native features
       const [orderStats, expenseStats, topItems] = await Promise.all([
@@ -62,7 +65,8 @@ export const AnalyticsServiceV2 = {
       start.setDate(start.getDate() - 6);
       start.setHours(0, 0, 0, 0);
 
-      const [orderStats, expenseStats] = await Promise.all([
+      // Single query for aggregate + daily breakdown (replaces findMany loop)
+      const [orderStats, expenseStats, dailyOrders] = await Promise.all([
         prisma.order.aggregate({
           where: { shopId, status: { not: 'CANCELLED' as any }, createdAt: { gte: start, lte: endDate } },
           _sum: { totalAmount: true },
@@ -71,26 +75,33 @@ export const AnalyticsServiceV2 = {
         prisma.expense.aggregate({
           where: { shopId, date: { gte: start, lte: endDate } },
           _sum: { amount: true }
-        })
+        }),
+        // groupBy date gives us daily breakdown in ONE query instead of fetching all rows
+        prisma.$queryRaw<{ date: string; revenue: number; orders: number }[]>`
+          SELECT 
+            TO_CHAR("createdAt" AT TIME ZONE 'IST', 'YYYY-MM-DD') as date,
+            SUM("totalAmount")::float as revenue,
+            COUNT("id")::int as orders
+          FROM "Order"
+          WHERE "shopId" = ${shopId}
+            AND status != 'CANCELLED'
+            AND "createdAt" >= ${start}
+            AND "createdAt" <= ${endDate}
+          GROUP BY TO_CHAR("createdAt" AT TIME ZONE 'IST', 'YYYY-MM-DD')
+          ORDER BY date ASC
+        `
       ]);
 
-      const orders = await prisma.order.findMany({
-        where: { shopId, status: { not: 'CANCELLED' as any }, createdAt: { gte: start, lte: endDate } },
-        select: { totalAmount: true, createdAt: true }
-      });
-
-      const breakdownMap: Record<string, { revenue: number, orders: number }> = {};
+      // Build 7-day map (fills in zeros for days with no orders)
+      const breakdownMap: Record<string, { revenue: number; orders: number }> = {};
       for (let i = 0; i < 7; i++) {
         const d = new Date(start);
         d.setDate(d.getDate() + i);
         breakdownMap[d.toISOString().split('T')[0]] = { revenue: 0, orders: 0 };
       }
-
-      orders.forEach(o => {
-        const key = o.createdAt.toISOString().split('T')[0];
-        if (breakdownMap[key]) {
-          breakdownMap[key].revenue += Number(o.totalAmount);
-          breakdownMap[key].orders += 1;
+      dailyOrders.forEach((row: any) => {
+        if (breakdownMap[row.date]) {
+          breakdownMap[row.date] = { revenue: Number(row.revenue), orders: Number(row.orders) };
         }
       });
 

@@ -1,4 +1,4 @@
-import { prisma } from '../../index';
+import { prisma } from '../../common/prisma';
 
 export const getCategories = async (shopId: string) => {
   return prisma.category.findMany({
