@@ -37,7 +37,17 @@ app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (mobile app, curl, Postman)
     if (!origin) return callback(null, true);
+    
+    // 1. Exact match from whitelist
     if (ALLOWED_ORIGINS.has(origin)) return callback(null, true);
+    
+    // 2. SaaS Domain Wildcard Match (Safely allow Netlify/Vercel previews)
+    const isSaaSPreview = origin.endsWith('.netlify.app') || 
+                          origin.endsWith('.vercel.app') ||
+                          origin.includes('sujal338864s-projects.vercel.app');
+                          
+    if (isSaaSPreview) return callback(null, true);
+
     logger.warn(`CORS blocked origin: ${origin}`);
     callback(new Error('Not allowed by CORS'));
   },
