@@ -46,17 +46,36 @@ router.post(
       return res.status(400).json({ error: 'Password is required (min 6 chars)' });
     }
 
-    const existing = await prisma.user.findFirst({
+    let user = await prisma.user.findFirst({
       where: { email }
     });
 
-    if (existing) {
-      return res.status(400).json({ error: 'User with this email already exists' });
+    if (user) {
+      // FIX: If user exists, simply add/update their membership in THIS shop
+      // This is the CRITICAL change for multi-shop support
+      await (prisma as any).membership.upsert({
+        where: { userId_shopId: { userId: user.id, shopId: req.user!.shopId } },
+        update: { role, isActive: true },
+        create: {
+          userId: user.id,
+          shopId: req.user!.shopId,
+          role,
+          isActive: true
+        }
+      });
+      
+      return res.status(200).json({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role,
+        message: 'Existing user added to this shop'
+      });
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
 
-    const user = await prisma.user.create({
+    user = await prisma.user.create({
       data: {
         shopId: req.user!.shopId,
         name,
@@ -65,6 +84,15 @@ router.post(
         passwordHash,
         isEmailVerified: true, // Admin-created users are pre-verified
         isActive: true
+      }
+    });
+
+    // Also create membership for new user
+    await (prisma as any).membership.create({
+      data: {
+        userId: user.id,
+        shopId: req.user!.shopId,
+        role
       }
     });
 

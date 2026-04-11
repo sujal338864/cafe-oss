@@ -1,0 +1,7 @@
+🛠️ REPAIRING VISIBILITY FOR: admin@cafeosz.com
+✅ Found 4 user records associated with admin@cafeosz.com.
+✅ Shops detected: cmnlfu5y30000wyttsnlr9qsd, cmnudgfix0001n61ueklg72q1, d8bd17c9-c001-4d56-8351-2c73214083d1, cmnu347lr0001il7pys2nxgp8
+✅ User identities detected: cmnlfu6b90002wyttgf7zrxbe, cmnudgfmu0003n61uz3rr4fyg, 4f527c4b-00cd-4e0b-9944-7439b26f099e, cmnu347ob0003il7pbuu6qx25
+✅ SUCCESSFULLY LINKED 16 SHOP-USER COMBINATIONS.
+--- REPAIR COMPLETE ---
+The user should now be able to use the "Switch Shop" dropdown to access their old shop.

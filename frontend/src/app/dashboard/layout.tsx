@@ -29,7 +29,7 @@ const ALL_NAV = [
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname  = usePathname();
   const router    = useRouter();
-  const { user, shop, logout, loading: authLoading } = useAuth();
+  const { user, shop, logout, switchShop, loading: authLoading } = useAuth();
   const { theme, isDark, toggleTheme } = useTheme();
   const { socket } = useSocket();
   const queryClient = useQueryClient();
@@ -46,6 +46,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const [mounted, setMounted] = useState(false);
   const [showNotifs, setShowNotifs] = useState(false);
+  const [showShopPicker, setShowShopPicker] = useState(false);
+
 
   // Queries
   const { data: megaData } = useQuery({ 
@@ -130,12 +132,97 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <div style={{ width: 32, height: 32, borderRadius: 9, background: 'linear-gradient(135deg,#7c3aed,#3b82f6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, color: 'white', fontSize: 14, flexShrink: 0 }}>
               {user?.name?.[0]?.toUpperCase() || 'S'}
             </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: theme.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Shop OS</div>
-              <div style={{ fontSize: 11, color: theme.textFaint, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name || 'Admin'}</div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <button 
+                onClick={() => setShowShopPicker(!showShopPicker)}
+                style={{ background: 'none', border: 'none', padding: 0, width: '100%', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: theme.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {shop?.name || 'Shop OS'}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#7c3aed', fontWeight: 600 }}>
+                    Switch Shop
+                  </div>
+                </div>
+                <div style={{ padding: '4px 8px', borderRadius: 6, background: 'rgba(124,58,237,0.1)', color: '#7c3aed', fontSize: 10, fontWeight: 700 }}>
+                  {showShopPicker ? '▲' : '▼'}
+                </div>
+              </button>
+
+              {/* Shop Switcher Dropdown */}
+              {showShopPicker && user?.memberships && user.memberships.length > 0 && (
+                <div 
+                  style={{ position: 'absolute', top: 58, left: 10, width: 230, background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 12, boxShadow: '0 10px 40px rgba(0,0,0,0.5)', zIndex: 600, padding: 6 }}
+                  onMouseLeave={() => setShowShopPicker(false)}
+                >
+                  <div style={{ padding: '6px 10px', fontSize: 11, fontWeight: 700, color: theme.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Your Shops</div>
+                  {user.memberships.map((m: any) => {
+                    const isActive = m.shopId === shop?.id;
+                    return (
+                      <div 
+                        key={m.shopId}
+                        onClick={() => { if (!isActive) switchShop(m.shopId); }}
+                        style={{ 
+                          display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, cursor: isActive ? 'default' : 'pointer',
+                          background: isActive ? 'rgba(124,58,237,0.1)' : 'transparent',
+                          transition: 'all 0.15s'
+                        }}
+                        onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = theme.hover; }}
+                        onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
+                      >
+                        <div style={{ width: 24, height: 24, borderRadius: 6, background: isActive ? 'linear-gradient(135deg,#7c3aed,#3b82f6)' : theme.border, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 900, color: 'white' }}>
+                          {m.shopName[0].toUpperCase()}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: theme.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.shopName}</div>
+                          <div style={{ fontSize: 10, color: theme.textFaint }}>{m.role}</div>
+                        </div>
+                        {isActive && <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#7c3aed' }} />}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>
+
+        {/* Expansion Prompt */}
+        {user?.role === 'ADMIN' && (
+          <div style={{ padding: '0 10px 10px' }}>
+            <button 
+              onClick={() => router.push('/dashboard/create-shop')}
+              style={{ 
+                width: '100%', 
+                background: 'rgba(124,58,237,0.1)', 
+                border: '1px solid rgba(124,58,237,0.2)', 
+                padding: '10px 12px', 
+                borderRadius: 10, 
+                textAlign: 'left', 
+                color: '#a78bfa', 
+                fontSize: 12, 
+                cursor: 'pointer', 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 10, 
+                fontWeight: 700,
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(124,58,237,0.18)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'rgba(124,58,237,0.1)'}
+            >
+              <div style={{ width: 22, height: 22, borderRadius: 6, background: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
+                <span style={{ fontSize: 16 }}>+</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontSize: 11, fontWeight: 800 }}>Create New Shop</span>
+                <span style={{ fontSize: 9, opacity: 0.7 }}>Expand your empire</span>
+              </div>
+            </button>
+          </div>
+        )}
+
 
         {/* Nav links */}
         <nav style={{ flex: 1, padding: '10px 10px', overflowY: 'auto' }}>

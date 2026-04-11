@@ -41,38 +41,40 @@ if (process.env.NODE_ENV !== 'production') {
 const modelsWithShopId = [
   'User', 'Product', 'Category', 'Customer', 'Order', 
   'Supplier', 'Purchase', 'Expense', 'Notification', 'Subscription'
+  // Note: 'Membership' is excluded here to allow cross-tenant shop switching via current user ID
 ];
 
 export const prisma = basePrisma.$extends({
   query: {
     $allModels: {
-      async findMany({ model, args, query }: any) {
+      async $allOperations({ model, operation, args, query }: any) {
         const tenant = getTenantContext();
+        
+        // Ensure args is always an object to prevent crashes
+        if (!args) args = {};
+
         if (tenant?.shopId && modelsWithShopId.includes(model)) {
-          (args as any).where = { ...(args as any).where, shopId: tenant.shopId };
-        }
-        return query(args);
-      },
-      async findFirst({ model, args, query }: any) {
-        const tenant = getTenantContext();
-        if (tenant?.shopId && modelsWithShopId.includes(model)) {
-          (args as any).where = { ...(args as any).where, shopId: tenant.shopId };
-        }
-        return query(args);
-      },
-      // NOTE: findUnique is intentionally NOT intercepted here.
-      // Prisma's findUnique REQUIRES exactly one unique index selector.
-      // Injecting shopId would break compound queries and cause runtime errors.
-      // Use findFirst (intercepted above) at call sites requiring tenant isolation.
-      //
-      // NOTE: update and delete are also NOT intercepted globally because
-      // the WHERE clause for updates often uses PK only (e.g. { id: '...' }).
-      // Each route explicitly passes shopId in its findFirst ownership-check
-      // before calling update/delete.
-      async create({ model, args, query }: any) {
-        const tenant = getTenantContext();
-        if (tenant?.shopId && modelsWithShopId.includes(model)) {
-          (args as any).data = { ...(args as any).data, shopId: tenant.shopId };
+          // 1. Inject filters into read operations
+          if (['findMany', 'findFirst', 'findUnique', 'count', 'aggregate', 'groupBy'].includes(operation)) {
+            args.where = { ...(args.where || {}), shopId: tenant.shopId };
+          }
+          // 2. Inject shopId into write operations if not explicitly provided
+          if (['create', 'createMany'].includes(operation)) {
+            if (operation === 'create') {
+              if (!args.data?.shopId) {
+                args.data = { ...(args.data || {}), shopId: tenant.shopId };
+              }
+            } else {
+              // createMany
+              if (Array.isArray(args.data)) {
+                args.data = args.data.map((d: any) => ({ ...d, shopId: tenant.shopId }));
+              }
+            }
+          }
+          // 3. Inject ownership validation into update/delete
+          if (['update', 'updateMany', 'delete', 'deleteMany', 'upsert'].includes(operation)) {
+            args.where = { ...(args.where || {}), shopId: tenant.shopId };
+          }
         }
         return query(args);
       }

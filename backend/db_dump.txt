@@ -1,0 +1,4 @@
+🔓 ATTEMPTING RAW DB ACCESS (BYPASSING RLS)...
+❌ Error: TypeError: Do not know how to serialize a BigInt
+    at JSON.stringify (<anonymous>)
+    at check (C:\Users\Lenovo\Downloads\files\backend\bypass_rls_check.js:11:55)

@@ -3,7 +3,19 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 
-interface User { id: string; name: string; email: string; role: string; shopId?: string; }
+interface User { 
+  id: string; 
+  name: string; 
+  email: string; 
+  role: string; 
+  shopId?: string; 
+  memberships: Array<{
+    shopId: string;
+    shopName: string;
+    role: string;
+  }>;
+}
+
 interface Shop { id: string; name: string; plan: string; }
 
 interface AuthContextType {
@@ -13,6 +25,7 @@ interface AuthContextType {
   loading: boolean;
   login:   (user: User, shop: Shop) => void;
   logout:  () => void;
+  switchShop: (shopId: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -55,6 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setShop(null);
         localStorage.removeItem('shop_os_user');
         localStorage.removeItem('shop_os_shop');
+        if (window.location.pathname.startsWith('/dashboard')) router.push('/login');
       })
       .finally(() => setLoading(false));
   }, []);
@@ -66,8 +80,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setShop(shop);
   };
 
+  const switchShop = async (shopId: string) => {
+    try {
+      setLoading(true);
+      const res = await api.post('/api/auth/switch', { shopId });
+      if (res.data.success) {
+        // Update local state with new shop info
+        setUser(res.data.user);
+        setShop(res.data.shop);
+        localStorage.setItem('shop_os_user', JSON.stringify(res.data.user));
+        localStorage.setItem('shop_os_shop', JSON.stringify(res.data.shop));
+        // Full refresh to clear all tenant-scoped state across all components
+        window.location.href = '/dashboard'; 
+      }
+    } catch (err) {
+      console.error('[Auth] Shop switch failed:', err);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const logout = async () => {
-    localStorage.removeItem('shop_os_token'); // Cleanup old local tokens if they exist
+    localStorage.removeItem('shop_os_token'); 
     localStorage.removeItem('shop_os_user');
     localStorage.removeItem('shop_os_shop');
     delete api.defaults.headers.common['Authorization'];
@@ -76,14 +111,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setShop(null);
     
     try {
-      await api.post('/api/auth/logout'); // Tell server to clear HttpOnly cookie
+      await api.post('/api/auth/logout');
     } catch { /* ignore */ }
     
     router.push('/login');
   };
 
   return (
-    <AuthContext.Provider value={{ user, shop, token, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, shop, token, loading, login, logout, switchShop }}>
       {children}
     </AuthContext.Provider>
   );

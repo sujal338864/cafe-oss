@@ -1,0 +1,7 @@
+🔍 FINDING ALL SHOPS FOR: admin@cafeosz.com
+✅ Found 2 user records:
+- Shop: Cafe OS (ID: cmnlfu5y30000wyttsnlr9qsd) - Role: ADMIN
+- Shop: csfeosss (ID: d8bd17c9-c001-4d56-8351-2c73214083d1) - Role: ADMIN
+✅ Found 2 memberships:
+- Member of: Cafe OS (ID: cmnlfu5y30000wyttsnlr9qsd) - Role: ADMIN
+- Member of: csfeosss (ID: d8bd17c9-c001-4d56-8351-2c73214083d1) - Role: ADMIN

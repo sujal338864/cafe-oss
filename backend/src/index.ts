@@ -78,8 +78,9 @@ app.use(cookieParser());
 
 // Auth-specific rate limiter: 10 attempts per 15 minutes per IP (prevents brute force)
 // Applied directly to the route mount below — NOT a no-op
-const AUTH_RATE_LIMIT_MAX = parseInt(process.env.AUTH_RATE_LIMIT_MAX || '10');
-const AUTH_RATE_LIMIT_WINDOW = parseInt(process.env.AUTH_RATE_LIMIT_WINDOW || '900'); // 15 min
+const AUTH_RATE_LIMIT_MAX = parseInt(process.env.AUTH_RATE_LIMIT_MAX || '100');
+const AUTH_RATE_LIMIT_WINDOW = parseInt(process.env.AUTH_RATE_LIMIT_WINDOW || '60'); // 1 min for Dev
+
 
 import uploadRoutes from './routes/upload';
 import menuRoutes from './routes/menu';

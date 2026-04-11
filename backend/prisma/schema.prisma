@@ -79,7 +79,7 @@ model Shop {
   name        String
   ownerName   String
   phone       String
-  email       String    @unique
+  email       String
   gstNumber   String?
   address     String?
   city        String?
@@ -108,6 +108,7 @@ model Shop {
   orders     Order[]
   purchases  Purchase[]
   expenses   Expense[]
+  memberships Membership[] // New relation
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -116,12 +117,12 @@ model Shop {
 
 model User {
   id              String    @id @default(cuid())
-  shopId          String
+  shopId          String // Legacy: Primary shop ID
   shop            Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
   name            String
   email           String
   passwordHash    String
-  role            Role      @default(EMPLOYEE)
+  role            Role      @default(EMPLOYEE) // Legacy: Primary role
   isEmailVerified Boolean   @default(false)
   verifyToken     String?
   resetToken      String?
@@ -131,9 +132,31 @@ model User {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  orders  Order[]
+  orders      Order[]
+  memberships Membership[] // New relation
 
-  @@unique([email, shopId])
+  @@unique([email, shopId]) // Keep legacy uniqueness for now
+  @@index([shopId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// MEMBERSHIP  (User roles within specific shops)
+// ─────────────────────────────────────────────────────────────
+
+model Membership {
+  id        String   @id @default(cuid())
+  userId    String
+  shopId    String
+  role      Role     @default(EMPLOYEE)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, shopId])
+  @@index([userId])
   @@index([shopId])
 }
 
