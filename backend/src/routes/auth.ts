@@ -42,7 +42,7 @@ export const userResponse = (user: any, shop: any, token: string, memberships: a
       shopName: shop?.name || 'Shop OS',
       memberships: memberships.map(m => ({
         shopId: m.shopId,
-        shopName: m.shop?.name || 'Untitled',
+        shopName: m.shop?.name || 'Untitled Shop',
         role: m.role
       }))
     },
@@ -71,13 +71,21 @@ router.post(
     if (!user.isActive) return res.status(403).json({ error: 'User account is inactive' });
     if (!user.shop.isActive) return res.status(403).json({ error: 'Shop account is inactive' });
 
-    // FIX: Fetch ALL memberships for this EMAIL globally, not just this specific user ID
-    // This solves the 'masked shop' issue caused by duplicate user records.
-    const allMemberships = await (prisma as any).membership.findMany({
-      where: { user: { email }, isActive: true },
+    // FETCH ALL MEMBERSHIPS FOR THIS EMAIL globally
+    const membershipsRaw = await (prisma as any).membership.findMany({
+      where: { user: { email: { equals: email, mode: 'insensitive' } }, isActive: true },
       include: { shop: true },
       orderBy: { createdAt: 'desc' }
     });
+
+    const seenIds = new Set();
+    const allMemberships: any[] = [];
+    for (const m of membershipsRaw) {
+      if (!seenIds.has(m.shopId)) {
+        seenIds.add(m.shopId);
+        allMemberships.push(m);
+      }
+    }
 
     const token = makeToken(user.id, user.shopId, user.role, user.email);
     setAuthCookie(res, token);
@@ -103,23 +111,16 @@ router.get(
 
     // FETCH ALL MEMBERSHIPS FOR THIS EMAIL
     const membershipsRaw = await (prisma.membership as any).findMany({
-      where: { user: { email: user.email }, isActive: true },
+      where: { user: { email: { equals: user.email, mode: 'insensitive' } }, isActive: true },
       include: { shop: true },
       orderBy: { createdAt: 'desc' }
     });
 
-    // AGGRESSIVE DEDUPLICATION
-    const seenShopIds = new Set();
-    const seenShopNames = new Set();
+    const seenIds = new Set();
     const allMemberships: any[] = [];
-    
     for (const m of membershipsRaw) {
-      const sId = m.shopId;
-      const sName = (m as any).shop?.name || 'Untitled Cafe';
-      
-      if (!seenShopIds.has(sId) && !seenShopNames.has(sName)) {
-        seenShopIds.add(sId);
-        seenShopNames.add(sName);
+      if (!seenIds.has(m.shopId)) {
+        seenIds.add(m.shopId);
         allMemberships.push(m);
       }
     }
@@ -145,43 +146,75 @@ router.post(
 
     const passwordHash = await bcrypt.hash(password, 10);
 
-    const result = await prisma.$transaction(async (tx: any) => {
-      const shop = await tx.shop.create({
-        data: {
-          name: shopName,
-          ownerName,
-          email,
-          phone: phone || "0000000000",
-          plan: 'STARTER',
-          currency: 'INR'
+    try {
+      const result = await prisma.$transaction(async (tx: any) => {
+        // 1. Create the new Shop
+        const shop = await tx.shop.create({
+          data: {
+            name: shopName,
+            ownerName,
+            email,
+            phone: phone || "0000000000",
+            plan: 'STARTER',
+            currency: 'INR'
+          }
+        });
+
+        // 2. CHECK GLOBAL IDENTITY: Does this email already have a User record?
+        let user = await tx.user.findUnique({
+          where: { email }
+        });
+
+        if (user) {
+          // SECURITY: Verify password before linking a new shop to an existing identity
+          const isValid = await bcrypt.compare(password, user.passwordHash);
+          if (!isValid) {
+            throw new Error('AUTH_INVALID_PASSWORD');
+          }
+          
+          // Reuse existing user, potentially update legacy shopId for consistency
+          user = await tx.user.update({
+            where: { id: user.id },
+            data: { shopId: shop.id } 
+          });
+        } else {
+          // Create brand new global identity
+          user = await tx.user.create({
+            data: {
+              email,
+              passwordHash,
+              name: ownerName,
+              role: 'ADMIN',
+              shopId: shop.id,
+              isActive: true
+            }
+          });
         }
+
+        // 3. Create Membership (Source of truth for access)
+        await tx.membership.upsert({
+          where: { userId_shopId: { userId: user.id, shopId: shop.id } },
+          update: { role: 'ADMIN', isActive: true },
+          create: {
+            userId: user.id,
+            shopId: shop.id,
+            role: 'ADMIN',
+            isActive: true
+          }
+        });
+
+        return { user, shop };
       });
 
-      const user = await tx.user.create({
-        data: {
-          email,
-          passwordHash,
-          name: ownerName,
-          role: 'ADMIN',
-          shopId: shop.id,
-          isActive: true
-        }
-      });
-
-      await tx.membership.create({
-        data: {
-          userId: user.id,
-          shopId: shop.id,
-          role: 'ADMIN'
-        }
-      });
-
-      return { user, shop };
-    });
-
-    const token = makeToken(result.user.id, result.shop.id, result.user.role, result.user.email);
-    setAuthCookie(res, token);
-    res.json(userResponse(result.user, result.shop, token, []));
+      const token = makeToken(result.user.id, result.shop.id, result.user.role, result.user.email);
+      setAuthCookie(res, token);
+      res.json(userResponse(result.user, result.shop, token, []));
+    } catch (err: any) {
+      if (err.message === 'AUTH_INVALID_PASSWORD') {
+        return res.status(401).json({ error: 'Incorrect password for existing account. Please log in first or use a different email.' });
+      }
+      throw err;
+    }
   })
 );
 
@@ -198,7 +231,7 @@ router.post(
     const membership = await (prisma.membership as any).findFirst({
       where: {
         shopId,
-        user: { email: req.user!.email },
+        user: { email: { equals: req.user!.email, mode: 'insensitive' } },
         isActive: true
       },
       include: { user: true, shop: true }
@@ -208,27 +241,33 @@ router.post(
       return res.status(403).json({ error: 'You do not have access to this shop' });
     }
 
+    // UPDATE LEGACY IDENTITY: Ensure the User's primary shopId join matches the switched shop
+    // This prevents the "flip back" issue where /me returns the old shop profile.
+    await prisma.user.update({
+      where: { id: membership.userId },
+      data: { shopId }
+    });
+
     const token = makeToken(membership.user.id, shopId, membership.role, membership.user.email);
     setAuthCookie(res, token);
     
-    const allMembershipsRaw = await (prisma.membership as any).findMany({
-      where: { user: { email: membership.user.email }, isActive: true },
+    // FETCH ALL MEMBERSHIPS FOR THIS EMAIL
+    const membershipsRaw = await (prisma.membership as any).findMany({
+      where: { user: { email: { equals: membership.user.email, mode: 'insensitive' } }, isActive: true },
       include: { shop: true },
       orderBy: { createdAt: 'desc' }
     });
 
     const seenIds = new Set();
-    const seenNames = new Set();
-    const cleanMemberships: any[] = [];
-    for (const m of allMembershipsRaw) {
-      if (!seenIds.has(m.shopId) && !seenNames.has(m.shop.name)) {
+    const allMemberships: any[] = [];
+    for (const m of membershipsRaw) {
+      if (!seenIds.has(m.shopId)) {
         seenIds.add(m.shopId);
-        seenNames.add(m.shop.name);
-        cleanMemberships.push(m);
+        allMemberships.push(m);
       }
     }
 
-    res.json(userResponse(membership.user, membership.shop, token, cleanMemberships));
+    res.json(userResponse(membership.user, membership.shop, token, allMemberships));
   })
 );
 

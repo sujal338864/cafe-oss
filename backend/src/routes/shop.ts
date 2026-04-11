@@ -109,34 +109,19 @@ router.post(
         }
       });
 
-      const newUser = await tx.user.create({
-        data: {
-          email: currentUser.email,
-          passwordHash: (currentUser as any).passwordHash,
-          name: currentUser.name,
-          role: 'ADMIN',
-          shopId: newShop.id,
-          isActive: true
-        }
-      });
-
-      await tx.membership.create({
-        data: {
-          userId: newUser.id,
-          shopId: newShop.id,
-          role: 'ADMIN'
-        }
-      });
+      // NO NEW USER CREATION HERE anymore. 
+      // Reuse the existing currentUser.id
 
       await tx.membership.create({
         data: {
           userId: currentUser.id,
           shopId: newShop.id,
-          role: 'ADMIN'
+          role: 'ADMIN',
+          isActive: true
         }
       });
 
-      return { shop: newShop, user: newUser };
+      return { shop: newShop };
     });
 
     res.status(201).json({ 

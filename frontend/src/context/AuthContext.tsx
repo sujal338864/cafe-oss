@@ -23,7 +23,7 @@ interface AuthContextType {
   shop:    Shop | null;
   token:   string | null;
   loading: boolean;
-  login:   (user: User, shop: Shop) => void;
+  login:   (user: User, shop: Shop, token: string) => void;
   logout:  () => void;
   switchShop: (shopId: string) => Promise<void>;
 }
@@ -57,10 +57,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Ping backend to verify HttpOnly cookie is valid
     api.get('/api/auth/me')
       .then(res => {
-        setUser(res.data.user);
-        setShop(res.data.shop);
-        localStorage.setItem('shop_os_user', JSON.stringify(res.data.user));
-        localStorage.setItem('shop_os_shop', JSON.stringify(res.data.shop));
+        const { user: newUser, shop: newShop, token: newToken } = res.data;
+        setUser(newUser);
+        setShop(newShop);
+        if (newToken) {
+          setToken(newToken);
+          localStorage.setItem('shop_os_token', newToken);
+        }
+        localStorage.setItem('shop_os_user', JSON.stringify(newUser));
+        localStorage.setItem('shop_os_shop', JSON.stringify(newShop));
       })
       .catch((err) => {
         // If 401/404, cookie is missing or invalid -> clear local state
@@ -73,11 +78,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const login = (user: User, shop: Shop) => {
+  const login = (user: User, shop: Shop, token: string) => {
     localStorage.setItem('shop_os_user', JSON.stringify(user));
     localStorage.setItem('shop_os_shop', JSON.stringify(shop));
+    localStorage.setItem('shop_os_token', token);
     setUser(user);
     setShop(shop);
+    setToken(token);
   };
 
   const switchShop = async (shopId: string) => {
@@ -85,11 +92,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       const res = await api.post('/api/auth/switch', { shopId });
       if (res.data.success) {
-        // Update local state with new shop info
-        setUser(res.data.user);
-        setShop(res.data.shop);
-        localStorage.setItem('shop_os_user', JSON.stringify(res.data.user));
-        localStorage.setItem('shop_os_shop', JSON.stringify(res.data.shop));
+        const { user: newUser, shop: newShop, token: newToken } = res.data;
+        // Update local state with new shop info AND new token
+        localStorage.setItem('shop_os_user', JSON.stringify(newUser));
+        localStorage.setItem('shop_os_shop', JSON.stringify(newShop));
+        localStorage.setItem('shop_os_token', newToken);
+        
+        setUser(newUser);
+        setShop(newShop);
+        setToken(newToken);
+
         // Full refresh to clear all tenant-scoped state across all components
         window.location.href = '/dashboard'; 
       }

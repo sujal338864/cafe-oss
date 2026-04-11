@@ -120,7 +120,7 @@ model User {
   shopId          String // Legacy: Primary shop ID
   shop            Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
   name            String
-  email           String
+  email           String    @unique // GLOBAL IDENTITY: One email per user
   passwordHash    String
   role            Role      @default(EMPLOYEE) // Legacy: Primary role
   isEmailVerified Boolean   @default(false)
@@ -135,7 +135,6 @@ model User {
   orders      Order[]
   memberships Membership[] // New relation
 
-  @@unique([email, shopId]) // Keep legacy uniqueness for now
   @@index([shopId])
 }
 
