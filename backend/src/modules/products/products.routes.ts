@@ -18,6 +18,7 @@ const productSchema = z.object({
   lowStockAlert: z.number().int().min(0).default(10),
   unit: z.string().default('pcs'),
   imageUrl: z.string().optional(),
+  isAvailable: z.boolean().optional(),
 });
 
 /**

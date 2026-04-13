@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search, ShoppingCart, Plus, Minus, ArrowLeft, Check, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
 import { getOptimizedImage } from '@/lib/cloudinary';
 
-type Product = { id: string; name: string; sellingPrice: number; description?: string; imageUrl?: string; categoryId?: string; stock: number; taxRate: number; originalPrice?: number; discountedPrice?: number; activeRule?: string | null; };
+type Product = { id: string; name: string; sellingPrice: number; description?: string; imageUrl?: string; categoryId?: string; stock: number; taxRate: number; originalPrice?: number; discountedPrice?: number; activeRule?: string | null; isAvailable?: boolean; };
 type Category = { id: string; name: string; color?: string };
 type CartItem = Product & { qty: number; note: string };
 
@@ -49,8 +49,11 @@ const ProductItem = memo(function ProductItem({ p, inCart, onAdd, onInc, onDec }
   p: Product; inCart?: CartItem; onAdd: () => void; onInc: () => void; onDec: () => void;
 }) {
   const outOfStock = p.stock <= 0;
+  const isAvailable = p.isAvailable !== false;
+  const isLocked = outOfStock || !isAvailable;
+
   return (
-    <div className={`group flex flex-col bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-md transition-all duration-300 relative ${outOfStock ? 'opacity-50 grayscale' : ''}`}>
+    <div className={`group flex flex-col bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-md transition-all duration-300 relative ${isLocked ? 'opacity-50 grayscale' : ''}`}>
       {/* Thumbnail */}
       <div className="w-full aspect-[4/3] relative overflow-hidden bg-slate-50 flex items-center justify-center">
         {p.imageUrl
@@ -80,8 +83,10 @@ const ProductItem = memo(function ProductItem({ p, inCart, onAdd, onInc, onDec }
           </div>
 
           <div className="flex items-center">
-            {outOfStock ? (
-              <span className="text-xs font-semibold text-slate-400 bg-slate-100 px-2 py-1 rounded-md">Sold out</span>
+            {isLocked ? (
+              <span className={`text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-tight ${!isAvailable ? 'bg-rose-50 text-rose-600 border border-rose-100' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>
+                {!isAvailable ? 'Unavailable' : 'Sold out'}
+              </span>
             ) : inCart ? (
               <div className="flex items-center bg-emerald-50 border border-emerald-200 rounded-lg overflow-hidden shadow-sm">
                 <button onClick={onDec} className="w-7 h-8 flex items-center justify-center text-emerald-700 hover:bg-emerald-100 transition-colors active:scale-95"><Minus size={14} strokeWidth={3} /></button>

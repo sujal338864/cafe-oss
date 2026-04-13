@@ -452,34 +452,41 @@ export default function POSPage() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, overflow: 'auto', paddingBottom: 8 }}>
               {filtered.map((p: any, idx: number) => {
                 const isOutOfStock = p.stock <= 0;
+                const isNotAvailable = p.isAvailable === false;
+                const isLocked = isOutOfStock || isNotAvailable;
+
                 return (
-                  <div key={p.id} onClick={() => !isOutOfStock && addToCart(p)}
+                  <div key={p.id} onClick={() => !isLocked && addToCart(p)}
                     style={{ 
                       background: theme.card, 
                       border: `1px solid ${theme.border}`, 
                       borderRadius: 12, padding: 14, 
-                      cursor: isOutOfStock ? 'not-allowed' : 'pointer', 
+                      cursor: isLocked ? 'not-allowed' : 'pointer', 
                       transition: 'border-color .15s',
-                      opacity: isOutOfStock ? 0.6 : 1 
+                      opacity: isLocked ? 0.6 : 1 
                     }}
-                    onMouseEnter={e => { if (!isOutOfStock) (e.currentTarget as HTMLElement).style.borderColor = '#7c3aed'; }}
-                    onMouseLeave={e => { if (!isOutOfStock) (e.currentTarget as HTMLElement).style.borderColor = theme.border; }}>
+                    onMouseEnter={e => { if (!isLocked) (e.currentTarget as HTMLElement).style.borderColor = '#7c3aed'; }}
+                    onMouseLeave={e => { if (!isLocked) (e.currentTarget as HTMLElement).style.borderColor = theme.border; }}>
                     <div style={{ width: '100%', aspectRatio: '1', background: COLORS[idx % COLORS.length] + '22', border: '1px solid ' + COLORS[idx % COLORS.length] + '44', borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10, position: 'relative' }}>
                       {p.imageUrl
                         ? <img src={getOptimizedImage(p.imageUrl, 200) || ''} alt={p.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 9 }} />
                         : <span style={{ fontSize: 28, fontWeight: 900, color: COLORS[idx % COLORS.length] }}>{p.name[0].toUpperCase()}</span>
                       }
-                      {isOutOfStock && (
+                      {isLocked && (
                         <div style={{ position: 'absolute', background: 'rgba(0,0,0,0.4)', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <span style={{ color: 'white', fontWeight: 800, fontSize: 11, padding: '4px 8px', background: '#ef4444', borderRadius: 5 }}>OUT OF STOCK</span>
+                          <span style={{ color: 'white', fontWeight: 800, fontSize: 11, padding: '4px 8px', background: isNotAvailable ? '#dc2626' : '#ef4444', borderRadius: 5 }}>
+                            {isNotAvailable ? 'UNAVAILABLE' : 'OUT OF STOCK'}
+                          </span>
                         </div>
                       )}
                     </div>
                     <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, lineHeight: 1.3, color: theme.text }}>{p.name}</div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ color: '#a78bfa', fontWeight: 800, fontSize: 14 }}>{fmt(p.sellingPrice)}</span>
-                      {isOutOfStock ? (
-                        <span style={{ background: 'rgba(239,68,68,.15)', color: '#ef4444', padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 800 }}>Sold Out</span>
+                      {isLocked ? (
+                        <span style={{ background: isNotAvailable ? 'rgba(220,38,38,.15)' : 'rgba(239,68,68,.15)', color: isNotAvailable ? '#dc2626' : '#ef4444', padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 800 }}>
+                          {isNotAvailable ? 'Unavailable' : 'Sold Out'}
+                        </span>
                       ) : (
                         <span style={{ background: p.stock <= (p.lowStockAlert || 5) ? 'rgba(239,68,68,.2)' : 'rgba(16,185,129,.2)', color: p.stock <= (p.lowStockAlert || 5) ? '#ef4444' : '#10b981', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>{p.stock}</span>
                       )}

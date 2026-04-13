@@ -6,10 +6,13 @@ export const getProducts = async (shopId: string, filters: {
   search?: string;
   category?: string;
   lowStock?: boolean;
+  available?: boolean;
 }) => {
   const where: any = {
     shopId,
     isActive: true,
+    ...(filters.available === true && { isAvailable: true }),
+    ...(filters.available === false && { isAvailable: false }),
     ...(filters.search && {
       OR: [
         { name: { contains: filters.search, mode: 'insensitive' } },

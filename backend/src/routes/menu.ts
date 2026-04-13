@@ -78,7 +78,8 @@ router.get('/', menuLimiter, asyncHandler(async (req, res) => {
         where: { shopId, isActive: true },
         select: {
           id: true, name: true, sellingPrice: true, stock: true,
-          imageUrl: true, description: true, taxRate: true, categoryId: true
+          imageUrl: true, description: true, taxRate: true, categoryId: true,
+          isAvailable: true
         },
         orderBy: [{ category: { name: 'asc' } }, { name: 'asc' }],
       }),
@@ -136,6 +137,7 @@ router.get('/recommendations', menuLimiter, asyncHandler(async (req, res) => {
       where: { 
         shopId, 
         isActive: true, 
+        isAvailable: true,
         id: { notIn: ignoreIds }
       },
       select: { 
@@ -239,7 +241,8 @@ router.post('/order', orderLimiter, validateRequest(publicOrderSchema), asyncHan
       where: { 
         id: { in: productIds },
         shopId: shop.id,          // ← CRITICAL: verify all products belong to THIS shop
-        isActive: true            // only orderable active products
+        isActive: true,           // only orderable active products
+        isAvailable: true         // only orderable available products
       },
       select: { id: true, name: true, sellingPrice: true, costPrice: true, taxRate: true, categoryId: true, stock: true }
     });

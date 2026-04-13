@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../common/prisma';
 import { authenticate, authorize, asyncHandler, validateRequest, AuthRequest } from '../middleware/auth';
+import { deleteCache } from '../common/cache';
 
 const router = Router();
 
@@ -18,6 +19,7 @@ const productSchema = z.object({
   lowStockAlert: z.number().int().min(0).default(10),
   unit: z.string().default('pcs'),
   imageUrl: z.string().optional(),
+  isAvailable: z.boolean().optional(),
 });
 
 /**
@@ -28,7 +30,7 @@ router.get(
   '/',
   authenticate,
   asyncHandler(async (req: AuthRequest, res) => {
-    const { page = '1', limit = '20', search = '', category, lowStock } = req.query;
+    const { page = '1', limit = '20', search = '', category, lowStock, available } = req.query;
     const pageNum = Math.max(1, parseInt(page as string) || 1);
     const limitNum = Math.min(1000, parseInt(limit as string) || 20);
     const skip = (pageNum - 1) * limitNum;
@@ -36,6 +38,7 @@ router.get(
     const where: any = {
       shopId: req.user!.shopId,
       isActive: true,
+      ...(available === 'true' && { isAvailable: true }),
       ...(search && {
         OR: [
           { name: { contains: search as string, mode: 'insensitive' } },
@@ -58,7 +61,8 @@ router.get(
           id: true, name: true, sku: true, barcode: true,
           sellingPrice: true, costPrice: true, stock: true,
           lowStockAlert: true, unit: true, imageUrl: true,
-          taxRate: true, category: { select: { id: true, name: true } }
+          taxRate: true, isAvailable: true,
+          category: { select: { id: true, name: true } }
         },
         orderBy: { name: 'asc' }
       }),
@@ -140,6 +144,9 @@ router.post(
       include: { category: true }
     });
 
+    // Invalidate menu cache
+    await deleteCache(`menu:${req.user!.shopId}`);
+
     res.status(201).json(product);
   })
 );
@@ -171,6 +178,9 @@ router.put(
       include: { category: true }
     });
 
+    // Invalidate menu cache
+    await deleteCache(`menu:${req.user!.shopId}`);
+
     res.json(updated);
   })
 );
@@ -199,6 +209,9 @@ router.delete(
       where: { id: req.params.id },
       data: { isActive: false }
     });
+
+    // Invalidate menu cache
+    await deleteCache(`menu:${req.user!.shopId}`);
 
     res.json({ success: true, message: 'Product deleted' });
   })

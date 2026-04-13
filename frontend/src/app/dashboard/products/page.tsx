@@ -11,10 +11,11 @@ const COLORS = ['#7c3aed','#2563eb','#059669','#d97706','#dc2626','#0891b2','#7c
 
 function exportCSV(products: any[]) {
   const rows = [
-    ['Name','SKU','Barcode','Category','Cost Price','Selling Price','Tax Rate','Stock','Low Stock Alert','Status'],
+    ['Name','SKU','Barcode','Category','Cost Price','Selling Price','Tax Rate','Stock','Low Stock Alert','Availability','Status'],
     ...products.map(p => {
       const status = p.stock === 0 ? 'Out of Stock' : p.stock <= p.lowStockAlert ? 'Low Stock' : 'OK';
-      return [p.name, p.sku||'', p.barcode||'', p.category?.name||'', p.costPrice, p.sellingPrice, p.taxRate||0, p.stock, p.lowStockAlert, status];
+      const availability = p.isAvailable ? 'Available' : 'Hidden';
+      return [p.name, p.sku||'', p.barcode||'', p.category?.name||'', p.costPrice, p.sellingPrice, p.taxRate||0, p.stock, p.lowStockAlert, availability, status];
     })
   ];
   const csv  = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
@@ -49,7 +50,7 @@ export default function ProductsPage() {
   const [editing,      setEditing]      = useState<any>(null);
   const [form,         setForm]         = useState({
     name: '', sku: '', barcode: '', costPrice: '', sellingPrice: '',
-    stock: '', lowStockAlert: '10', taxRate: '0', categoryId: '', imageUrl: '', unit: 'pcs'
+    stock: '', lowStockAlert: '10', taxRate: '0', categoryId: '', imageUrl: '', unit: 'pcs', isAvailable: true
   });
   const [imageFile,    setImageFile]    = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState('');
@@ -58,7 +59,7 @@ export default function ProductsPage() {
 
   const openAdd = () => {
     setEditing(null);
-    setForm({ name: '', sku: '', barcode: '', costPrice: '', sellingPrice: '', stock: '', lowStockAlert: '10', taxRate: '0', categoryId: '', imageUrl: '', unit: 'pcs' });
+    setForm({ name: '', sku: '', barcode: '', costPrice: '', sellingPrice: '', stock: '', lowStockAlert: '10', taxRate: '0', categoryId: '', imageUrl: '', unit: 'pcs', isAvailable: true });
     setImageFile(null); setImagePreview(''); setError(''); setShowModal(true);
   };
 
@@ -69,7 +70,7 @@ export default function ProductsPage() {
       costPrice: p.costPrice, sellingPrice: p.sellingPrice,
       stock: p.stock, lowStockAlert: p.lowStockAlert,
       taxRate: p.taxRate || 0, categoryId: p.categoryId || '',
-      imageUrl: p.imageUrl || '', unit: p.unit || 'pcs'
+      imageUrl: p.imageUrl || '', unit: p.unit || 'pcs', isAvailable: p.isAvailable ?? true
     });
     setImageFile(null); setImagePreview(p.imageUrl || ''); setError(''); setShowModal(true);
   };
@@ -115,6 +116,7 @@ export default function ProductsPage() {
         categoryId:    form.categoryId || undefined,
         imageUrl:      imageUrl || undefined,
         unit:          form.unit || 'pcs',
+        isAvailable:   form.isAvailable,
       };
       if (editing) await api.put(`/api/products/${editing.id}`, body);
       else         await api.post('/api/products', body);
@@ -233,7 +235,7 @@ export default function ProductsPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${theme.border}` }}>
-                  {['', 'Product', 'SKU / Barcode', 'Category', 'Cost', 'Price', 'Tax', 'Margin', 'Stock', 'Status', ''].map((h, i) => (
+                  {['', 'Product', 'SKU / Barcode', 'Category', 'Price', 'Stock', 'Availability', 'Status', ''].map((h, i) => (
                     <th key={i} style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, color: theme.textFaint, fontWeight: 700, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -282,6 +284,15 @@ export default function ProductsPage() {
                       <td style={{ padding: '10px 12px', fontWeight: 700, color: '#10b981' }}>{margin}%</td>
                       <td style={{ padding: '10px 12px', fontWeight: 700, color: isOut ? '#ef4444' : isLow ? '#f59e0b' : theme.text }}>
                         {p.stock} <span style={{ fontSize: 10, color: theme.textFaint, fontWeight: 400 }}>{p.unit || 'pcs'}</span>
+                      </td>
+                      <td style={{ padding: '10px 12px' }}>
+                        <span style={{ 
+                          background: p.isAvailable ? 'rgba(124,58,237,0.12)' : 'rgba(239,68,68,0.12)', 
+                          color: p.isAvailable ? '#a78bfa' : '#ef4444', 
+                          padding: '2px 9px', borderRadius: 20, fontSize: 10, fontWeight: 800 
+                        }}>
+                          {p.isAvailable ? 'AVAILABLE' : 'HIDDEN'}
+                        </span>
                       </td>
                       <td style={{ padding: '10px 12px' }}>
                         <span style={{ background: sbg, color: sc, padding: '2px 9px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>{sl}</span>
@@ -399,6 +410,25 @@ export default function ProductsPage() {
               <div style={{ gridColumn: 'span 2' }}>
                 <label style={lbl}>Image URL (optional)</label>
                 <input value={form.imageUrl} onChange={e => { setForm(v => ({ ...v, imageUrl: e.target.value })); setImagePreview(e.target.value); }} placeholder="https://..." style={inp} />
+              </div>
+
+              {/* Availability Toggle */}
+              <div style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center', gap: 12, background: theme.hover, padding: '12px 16px', borderRadius: 12, border: `1px solid ${theme.border}` }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>Show in POS & Scanner</div>
+                  <div style={{ fontSize: 11, color: theme.textFaint }}>When disabled, customers and staff cannot see this product.</div>
+                </div>
+                <button 
+                  onClick={() => setForm(v => ({...v, isAvailable: !v.isAvailable}))}
+                  style={{ 
+                    width: 48, height: 26, borderRadius: 20, border: 'none', cursor: 'pointer', position: 'relative',
+                    background: form.isAvailable ? '#7c3aed' : '#ef444433', transition: 'all 0.2s'
+                  }}>
+                  <div style={{ 
+                    width: 20, height: 20, borderRadius: '50%', background: 'white', position: 'absolute', top: 3,
+                    left: form.isAvailable ? 25 : 3, transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                  }} />
+                </button>
               </div>
             </div>
 

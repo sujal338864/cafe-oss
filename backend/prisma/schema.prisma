@@ -199,6 +199,7 @@ model Product {
   unit          String    @default("pcs")
   imageUrl      String?
   isActive      Boolean   @default(true)
+  isAvailable   Boolean   @default(true)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -208,6 +209,7 @@ model Product {
 
   @@unique([shopId, sku])
   @@index([shopId, isActive])
+  @@index([shopId, isAvailable])
   @@index([shopId, stock])
   @@index([shopId, name])
   @@index([shopId, isActive, stock])
