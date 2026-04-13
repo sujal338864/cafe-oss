@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search, ShoppingCart, Plus, Minus, ArrowLeft, Check, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
 import { getOptimizedImage } from '@/lib/cloudinary';
 
-type Product = { id: string; name: string; sellingPrice: number; description?: string; imageUrl?: string; categoryId?: string; stock: number; taxRate: number; originalPrice?: number; discountedPrice?: number; activeRule?: string | null; isAvailable?: boolean; };
+type Product = { id: string; name: string; sellingPrice: number; description?: string; imageUrl?: string; categoryId?: string; stock: number; taxRate: number; originalPrice?: number; discountedPrice?: number; activeRule?: string | null; };
 type Category = { id: string; name: string; color?: string };
 type CartItem = Product & { qty: number; note: string };
 
@@ -49,11 +49,8 @@ const ProductItem = memo(function ProductItem({ p, inCart, onAdd, onInc, onDec }
   p: Product; inCart?: CartItem; onAdd: () => void; onInc: () => void; onDec: () => void;
 }) {
   const outOfStock = p.stock <= 0;
-  const isAvailable = p.isAvailable !== false;
-  const isLocked = outOfStock || !isAvailable;
-
   return (
-    <div className={`group flex flex-col bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-md transition-all duration-300 relative ${isLocked ? 'opacity-50 grayscale' : ''}`}>
+    <div className={`group flex flex-col bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-md transition-all duration-300 relative ${outOfStock ? 'opacity-50 grayscale' : ''}`}>
       {/* Thumbnail */}
       <div className="w-full aspect-[4/3] relative overflow-hidden bg-slate-50 flex items-center justify-center">
         {p.imageUrl
@@ -71,7 +68,7 @@ const ProductItem = memo(function ProductItem({ p, inCart, onAdd, onInc, onDec }
       <div className="p-3 flex-1 flex flex-col">
         <div className="font-semibold text-sm text-slate-800 leading-tight mb-1 line-clamp-1">{p.name}</div>
         {p.description && <div className="text-xs text-slate-500 line-clamp-2 leading-snug mb-3 flex-1">{p.description}</div>}
-        
+
         <div className="mt-auto pt-2 flex items-center justify-between border-t border-slate-50/50">
           <div className="flex flex-col">
             <div className={`font-bold text-sm ${p.activeRule ? 'text-emerald-600' : 'text-slate-900'}`}>
@@ -83,10 +80,8 @@ const ProductItem = memo(function ProductItem({ p, inCart, onAdd, onInc, onDec }
           </div>
 
           <div className="flex items-center">
-            {isLocked ? (
-              <span className={`text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-tight ${!isAvailable ? 'bg-rose-50 text-rose-600 border border-rose-100' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>
-                {!isAvailable ? 'Unavailable' : 'Sold out'}
-              </span>
+            {outOfStock ? (
+              <span className="text-xs font-semibold text-slate-400 bg-slate-100 px-2 py-1 rounded-md">Sold out</span>
             ) : inCart ? (
               <div className="flex items-center bg-emerald-50 border border-emerald-200 rounded-lg overflow-hidden shadow-sm">
                 <button onClick={onDec} className="w-7 h-8 flex items-center justify-center text-emerald-700 hover:bg-emerald-100 transition-colors active:scale-95"><Minus size={14} strokeWidth={3} /></button>
@@ -342,11 +337,10 @@ function MenuContent() {
                   const active = i === currentStage;
                   return (
                     <div key={s} className="flex items-center gap-2">
-                      <div className={`flex items-center justify-center rounded-full transition-all duration-300 ${
-                        active ? 'w-10 h-10 bg-emerald-500 text-white shadow-[0_0_0_4px_rgba(16,185,129,0.2)] font-bold' : 
-                        done ? 'w-8 h-8 bg-emerald-500 text-white font-bold' : 
-                        'w-8 h-8 bg-slate-200 text-slate-400 font-bold'
-                      }`}>
+                      <div className={`flex items-center justify-center rounded-full transition-all duration-300 ${active ? 'w-10 h-10 bg-emerald-500 text-white shadow-[0_0_0_4px_rgba(16,185,129,0.2)] font-bold' :
+                          done ? 'w-8 h-8 bg-emerald-500 text-white font-bold' :
+                            'w-8 h-8 bg-slate-200 text-slate-400 font-bold'
+                        }`}>
                         {done && (!active || i === stages.length - 1) ? <Check size={16} strokeWidth={3} /> : i + 1}
                       </div>
                       {i < stages.length - 1 && (
@@ -377,7 +371,7 @@ function MenuContent() {
               <h1 className="text-2xl font-black text-slate-900 mb-1">Order Confirmed!</h1>
               <p className="text-slate-500 mb-1 font-medium">Thank you, <b className="text-slate-900">{name}</b></p>
               {result.invoiceNumber && <p className="text-emerald-600 font-bold text-sm mb-6">#{result.invoiceNumber}</p>}
-              
+
               {result.whatsappSent && phone && (
                 <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-6 text-sm text-emerald-800 font-medium flex items-center justify-center gap-2">
                   <span className="text-xl">📲</span> Bill sent to WhatsApp <b>{phone}</b>
@@ -391,7 +385,7 @@ function MenuContent() {
               </div>
               <h1 className="text-2xl font-black text-slate-900 mb-1">Order Placed!</h1>
               <p className="text-slate-500 mb-6 font-medium">Please pay at the counter</p>
-              
+
               <div className="bg-amber-50 border-2 border-amber-400 rounded-2xl p-8 mb-8 relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-2 bg-[repeating-linear-gradient(45deg,transparent,transparent_10px,rgba(251,191,36,0.5)_10px,rgba(251,191,36,0.5)_20px)]" />
                 <div className="text-xs font-bold text-amber-700 uppercase tracking-widest mb-2">Your Token</div>
@@ -420,9 +414,9 @@ function MenuContent() {
               📄 Download Invoice
             </button>
           )}
-          
+
           {table && <p className="text-slate-500 font-medium mb-6">🪑 Table <b className="text-slate-900">{table}</b></p>}
-          
+
           <button onClick={() => { setCart([]); setStep('menu'); setName(''); setPhone(''); setTable(''); setNotes(''); setResult(null); setPointsToRedeem(0); }}
             className="w-full bg-slate-900 border-none text-white p-4 rounded-xl font-bold text-base hover:bg-slate-800 transition-all active:scale-95 shadow-[0_4px_14px_rgba(0,0,0,0.15)]">
             Order More
@@ -442,14 +436,14 @@ function MenuContent() {
         </button>
         <div className="font-bold text-lg text-slate-900">Checkout</div>
       </div>
-      
+
       <div className="p-4 max-w-xl mx-auto space-y-6">
         {/* Order Summary */}
         <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
           <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 px-1">Order Summary</div>
-          
+
           <RecommendationRow items={recommendations} onAdd={addToCart} />
-          
+
           <div className="space-y-4 max-h-[40vh] overflow-y-auto pr-2 custom-scrollbar">
             {cart.map((item, i) => (
               <div key={i} className="flex flex-col">
@@ -475,15 +469,15 @@ function MenuContent() {
                     {noteFor === item.id ? <><Minus size={10} /> Hide note</> : <><Plus size={10} /> Add instruction</>}
                   </button>
                   {noteFor === item.id && (
-                     <div className="mt-2 animate-fade-in">
-                        <input value={item.note} onChange={e => setNote(item.id, e.target.value)} placeholder="e.g. less spice, no sugar..." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:outline-none transition-all placeholder:text-slate-400" />
-                     </div>
+                    <div className="mt-2 animate-fade-in">
+                      <input value={item.note} onChange={e => setNote(item.id, e.target.value)} placeholder="e.g. less spice, no sugar..." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:outline-none transition-all placeholder:text-slate-400" />
+                    </div>
                   )}
                 </div>
               </div>
             ))}
           </div>
-          
+
           <div className="mt-5 pt-4 border-t border-slate-100">
             <div className="flex justify-between text-sm text-slate-500 mb-1.5 px-1 font-medium"><span>Item Total</span><span>{fmt(subtotal)}</span></div>
             {tax > 0 && <div className="flex justify-between text-sm text-slate-500 mb-1.5 px-1 font-medium"><span>Taxes</span><span>{fmt(Math.round(tax))}</span></div>}
@@ -513,7 +507,7 @@ function MenuContent() {
               <span>Your Details</span>
               {loyaltyPoints > 0 && name && <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-[10px] lowercase flex items-center gap-1 tracking-normal"><Sparkles size={10} /> {loyaltyPoints} pts</span>}
             </div>
-            
+
             <div className="bg-white border border-slate-100 rounded-3xl p-5 space-y-3 shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
               <input value={name} onChange={e => setName(e.target.value)} placeholder="Full name *" className="w-full bg-slate-50 text-slate-900 border border-transparent rounded-xl px-4 py-3.5 text-sm focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:outline-none transition-all placeholder:text-slate-400 font-medium" />
               <div className="relative">
@@ -534,12 +528,12 @@ function MenuContent() {
                 { v: 'UPI', icon: '📱', l: 'Pay via UPI', s: 'GPay, PhonePe, Paytm' },
                 { v: 'CASH', icon: '💵', l: 'Pay at Counter', s: 'Collect token & pay' },
               ].map(m => (
-                 <button key={m.v} onClick={() => setPay(m.v as any)} 
-                    className={`p-4 rounded-3xl border-2 text-left transition-all active:scale-95 ${pay === m.v ? 'border-slate-900 bg-slate-900 text-white shadow-lg shadow-slate-900/20' : 'border-slate-100 bg-white hover:border-slate-300'}`}>
-                    <div className="text-2xl mb-2">{m.icon}</div>
-                    <div className="font-bold text-sm mb-1">{m.l}</div>
-                    <div className={`text-[10px] font-medium leading-tight ${pay === m.v ? 'text-slate-300' : 'text-slate-500'}`}>{m.s}</div>
-                 </button>
+                <button key={m.v} onClick={() => setPay(m.v as any)}
+                  className={`p-4 rounded-3xl border-2 text-left transition-all active:scale-95 ${pay === m.v ? 'border-slate-900 bg-slate-900 text-white shadow-lg shadow-slate-900/20' : 'border-slate-100 bg-white hover:border-slate-300'}`}>
+                  <div className="text-2xl mb-2">{m.icon}</div>
+                  <div className="font-bold text-sm mb-1">{m.l}</div>
+                  <div className={`text-[10px] font-medium leading-tight ${pay === m.v ? 'text-slate-300' : 'text-slate-500'}`}>{m.s}</div>
+                </button>
               ))}
             </div>
           </div>
@@ -549,10 +543,10 @@ function MenuContent() {
       {/* Floating CTA */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-xl border-t border-slate-100 z-50">
         <div className="max-w-xl mx-auto">
-           <button onClick={placeOrder} disabled={placing || !name.trim()}
-             className={`w-full py-4 rounded-2xl font-black text-sm transition-all focus:outline-none ${name.trim() && !placing ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30 hover:bg-emerald-600 active:scale-[0.98] -translate-y-1' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>
-             {placing ? 'Processing Order...' : pay === 'UPI' ? `Pay ${fmt(finalTotal)}` : `Generate Token · ${fmt(finalTotal)}`}
-           </button>
+          <button onClick={placeOrder} disabled={placing || !name.trim()}
+            className={`w-full py-4 rounded-2xl font-black text-sm transition-all focus:outline-none ${name.trim() && !placing ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30 hover:bg-emerald-600 active:scale-[0.98] -translate-y-1' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>
+            {placing ? 'Processing Order...' : pay === 'UPI' ? `Pay ${fmt(finalTotal)}` : `Generate Token · ${fmt(finalTotal)}`}
+          </button>
         </div>
       </div>
     </div>
@@ -570,7 +564,7 @@ function MenuContent() {
         </div>
         <span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-xs font-bold">{count} items</span>
       </div>
-      
+
       <div className="p-4 max-w-xl mx-auto">
         {cart.length === 0 ? (
           <div className="text-center py-24 px-4 bg-white rounded-3xl border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.02)] mt-4">
@@ -605,24 +599,24 @@ function MenuContent() {
                 {i < cart.length - 1 && <div className="absolute bottom-0 left-20 right-4 h-px bg-slate-100" />}
               </div>
             ))}
-            
+
             <div className="p-4 bg-slate-50 rounded-2xl mx-2 mb-2 mt-2 space-y-1.5">
-               <div className="flex justify-between items-center">
-                 <span className="text-slate-500 font-semibold text-sm">Item Total</span>
-                 <span className="font-bold text-sm text-slate-700">{fmt(subtotal)}</span>
-               </div>
-               {tax > 0 && (
-                 <div className="flex justify-between items-center">
-                   <span className="text-slate-500 font-semibold text-sm">Taxes</span>
-                   <span className="font-bold text-sm text-slate-700">{fmt(Math.round(tax))}</span>
-                 </div>
-               )}
-               <div className="flex justify-between items-center border-t border-slate-200/60 pt-2 mt-1">
-                 <span className="text-slate-800 font-bold text-sm">Grand Total</span>
-                 <span className="font-black text-lg text-slate-900">{fmt(total)}</span>
-               </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 font-semibold text-sm">Item Total</span>
+                <span className="font-bold text-sm text-slate-700">{fmt(subtotal)}</span>
+              </div>
+              {tax > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-semibold text-sm">Taxes</span>
+                  <span className="font-bold text-sm text-slate-700">{fmt(Math.round(tax))}</span>
+                </div>
+              )}
+              <div className="flex justify-between items-center border-t border-slate-200/60 pt-2 mt-1">
+                <span className="text-slate-800 font-bold text-sm">Grand Total</span>
+                <span className="font-black text-lg text-slate-900">{fmt(total)}</span>
+              </div>
             </div>
-            
+
             <div className="mt-6 px-2">
               <RecommendationRow items={recommendations} onAdd={addToCart} />
             </div>
@@ -632,16 +626,16 @@ function MenuContent() {
 
       {cart.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-xl border-t border-slate-100 z-50 animate-slide-up">
-           <div className="max-w-xl mx-auto flex items-center gap-4">
-              <div className="flex flex-col">
-                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Amount</span>
-                 <span className="font-black text-xl text-slate-900 leading-none">{fmt(total)}</span>
-              </div>
-              <button onClick={() => setStep('info')} className="flex-1 bg-emerald-500 text-white py-3.5 px-6 rounded-2xl font-black text-sm flex justify-between items-center hover:bg-emerald-600 active:scale-[0.98] transition-all shadow-lg shadow-emerald-500/20">
-                <span>Proceed to Checkout</span>
-                <div className="bg-white/20 p-1.5 rounded-lg"><ArrowLeft size={16} className="rotate-180" /></div>
-              </button>
-           </div>
+          <div className="max-w-xl mx-auto flex items-center gap-4">
+            <div className="flex flex-col">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Amount</span>
+              <span className="font-black text-xl text-slate-900 leading-none">{fmt(total)}</span>
+            </div>
+            <button onClick={() => setStep('info')} className="flex-1 bg-emerald-500 text-white py-3.5 px-6 rounded-2xl font-black text-sm flex justify-between items-center hover:bg-emerald-600 active:scale-[0.98] transition-all shadow-lg shadow-emerald-500/20">
+              <span>Proceed to Checkout</span>
+              <div className="bg-white/20 p-1.5 rounded-lg"><ArrowLeft size={16} className="rotate-180" /></div>
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -659,19 +653,19 @@ function MenuContent() {
           </div>
           {count > 0 && (
             <button onClick={() => setStep('cart')} className="bg-slate-900 text-white rounded-xl px-4 py-2.5 text-sm font-bold flex items-center gap-2 hover:bg-slate-800 transition-colors shadow-sm active:scale-95">
-              <ShoppingCart size={16} /> 
+              <ShoppingCart size={16} />
               <span className="bg-emerald-400 text-slate-900 rounded-md px-1.5 py-0.5 text-xs font-black">{count}</span>
             </button>
           )}
         </div>
-        
+
         <div className="relative max-w-7xl mx-auto">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><Search size={18} /></span>
-          <input 
-            value={search} 
-            onChange={e => setSearch(e.target.value)} 
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
             placeholder="Search for coffee, desserts..."
-            className="w-full bg-slate-100/80 border border-transparent rounded-xl py-3 pl-10 pr-4 text-sm text-slate-800 focus:bg-white focus:border-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-500/10 transition-all placeholder:text-slate-400 font-medium" 
+            className="w-full bg-slate-100/80 border border-transparent rounded-xl py-3 pl-10 pr-4 text-sm text-slate-800 focus:bg-white focus:border-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-500/10 transition-all placeholder:text-slate-400 font-medium"
           />
         </div>
 
@@ -692,10 +686,9 @@ function MenuContent() {
         <div className="sticky top-[120px] z-15 bg-slate-50/90 backdrop-blur-md border-b border-slate-100/50 py-3 shadow-[0_4px_12px_rgba(0,0,0,0.02)]">
           <div className="flex gap-2 px-4 overflow-x-auto snap-x hide-scrollbar max-w-7xl mx-auto" style={{ scrollbarWidth: 'none' }}>
             {cats.map(c => (
-              <button key={c} onClick={() => setCat(c)} 
-                className={`shrink-0 px-4 py-2 rounded-full font-semibold text-xs tracking-wide transition-all active:scale-95 border ${
-                  cat === c ? 'bg-slate-900 text-white border-slate-900 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-                }`}>
+              <button key={c} onClick={() => setCat(c)}
+                className={`shrink-0 px-4 py-2 rounded-full font-semibold text-xs tracking-wide transition-all active:scale-95 border ${cat === c ? 'bg-slate-900 text-white border-slate-900 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                  }`}>
                 {c}
               </button>
             ))}

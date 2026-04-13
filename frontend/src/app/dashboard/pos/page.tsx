@@ -194,8 +194,8 @@ export default function POSPage() {
       loadProducts();
     } catch (e: any) {
       const details = e.response?.data?.details;
-      const errMsg = details 
-        ? details.map((d: any) => `${d.path.join('.')}: ${d.message}`).join('\n') 
+      const errMsg = details
+        ? details.map((d: any) => `${d.path.join('.')}: ${d.message}`).join('\n')
         : (e.response?.data?.error || 'Checkout failed');
       alert('Error: ' + errMsg);
     } finally { setSubmitting(false); }
@@ -438,13 +438,62 @@ export default function POSPage() {
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 18, flex: 1, overflow: 'hidden' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 480px', gap: 16, flex: 1, overflow: 'hidden' }}>
         {/* Products panel */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, overflow: 'hidden' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h2 style={{ fontSize: 20, fontWeight: 800, color: theme.text }}>New Sale</h2>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search products..."
-              style={{ ...inp, width: 240 }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: theme.card, padding: '10px 16px', borderRadius: 12, border: `1px solid ${theme.border}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 800, color: theme.text, margin: 0 }}>Sale</h2>
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Search products..."
+                style={{ ...inp, width: 200, padding: '7px 12px' }} />
+            </div>
+
+            {/* Customer Lookup moved to Top Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, justifyContent: 'flex-end', maxWidth: 600 }}>
+              {custStatus === 'idle' && (
+                <div style={{ position: 'relative', width: 220 }}>
+                  <input
+                    value={phoneInput}
+                    onChange={e => {
+                      setPhoneInput(e.target.value);
+                      if (e.target.value.replace(/\D/g, '').length >= 10) lookupPhone(e.target.value);
+                      if (e.target.value === '') { setCustomer(null); setCustStatus('idle'); }
+                    }}
+                    placeholder="📱 Customer Phone..."
+                    type="tel"
+                    style={{ ...inp, padding: '7px 12px' }}
+                  />
+                  {phoneLooking && <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 10, color: theme.textFaint }}>...</span>}
+                </div>
+              )}
+
+              {custStatus === 'found' && customer && (
+                <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 8, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#10b981' }}>{customer.name} ({customer.loyaltyPoints} pts)</div>
+                  <button onClick={clearCustomer} style={{ background: 'none', border: 'none', color: theme.textFaint, cursor: 'pointer', fontSize: 14 }}>×</button>
+                </div>
+              )}
+
+              {custStatus === 'new' && (
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, color: '#f59e0b' }}>New: {phoneInput}</span>
+                  <input value={newCustName} onChange={e => setNewCustName(e.target.value)} placeholder="Name"
+                    style={{ ...inp, width: 120, padding: '6px 10px', fontSize: 12 }} />
+                  <button onClick={registerCustomer} disabled={custSaving}
+                    style={{ background: '#f59e0b', border: 'none', color: 'white', padding: '6px 10px', borderRadius: 6, fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>
+                    {custSaving ? '...' : 'Add'}
+                  </button>
+                  <button onClick={() => setCustStatus('walkin')} style={{ background: 'none', border: 'none', color: theme.textFaint, fontSize: 11, cursor: 'pointer' }}>Skip</button>
+                </div>
+              )}
+
+              {custStatus === 'walkin' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 12, color: theme.textMuted }}>👤 Walk-in</span>
+                  <button onClick={clearCustomer} style={{ background: 'none', border: 'none', color: theme.textFaint, cursor: 'pointer', fontSize: 11 }}>Change</button>
+                </div>
+              )}
+            </div>
           </div>
           {loading ? (
             <div style={{ textAlign: 'center', padding: 40, color: theme.textFaint }}>Loading products...</div>
@@ -457,13 +506,13 @@ export default function POSPage() {
 
                 return (
                   <div key={p.id} onClick={() => !isLocked && addToCart(p)}
-                    style={{ 
-                      background: theme.card, 
-                      border: `1px solid ${theme.border}`, 
-                      borderRadius: 12, padding: 14, 
-                      cursor: isLocked ? 'not-allowed' : 'pointer', 
+                    style={{
+                      background: theme.card,
+                      border: `1px solid ${theme.border}`,
+                      borderRadius: 12, padding: 14,
+                      cursor: isLocked ? 'not-allowed' : 'pointer',
                       transition: 'border-color .15s',
-                      opacity: isLocked ? 0.6 : 1 
+                      opacity: isLocked ? 0.6 : 1
                     }}
                     onMouseEnter={e => { if (!isLocked) (e.currentTarget as HTMLElement).style.borderColor = '#7c3aed'; }}
                     onMouseLeave={e => { if (!isLocked) (e.currentTarget as HTMLElement).style.borderColor = theme.border; }}>
@@ -501,91 +550,33 @@ export default function POSPage() {
 
         {/* Cart panel */}
         <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{ padding: '14px 18px', borderBottom: `1px solid ${theme.border}`, fontWeight: 700, fontSize: 14, color: theme.text }}>
-            Bill {cart.length > 0 && <span style={{ color: '#a78bfa', fontWeight: 600, fontSize: 13 }}>({cart.length} items)</span>}
+          <div style={{ padding: '6px 14px', borderBottom: `1px solid ${theme.border}`, fontWeight: 800, fontSize: 13, color: theme.text, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>Current Bill</span>
+            {cart.length > 0 && <span style={{ color: '#a78bfa', fontWeight: 600, fontSize: 11 }}>{cart.length} items</span>}
           </div>
 
-          {/* Phone-first customer lookup */}
-          <div style={{ padding: '12px 14px', borderBottom: `1px solid ${theme.border}` }}>
-            {custStatus === 'idle' && (
-              <div style={{ position: 'relative' }}>
-                <input
-                  value={phoneInput}
-                  onChange={e => {
-                    setPhoneInput(e.target.value);
-                    if (e.target.value.replace(/\D/g, '').length >= 10) lookupPhone(e.target.value);
-                    if (e.target.value === '') { setCustomer(null); setCustStatus('idle'); }
-                  }}
-                  placeholder="📱 Type customer phone..."
-                  type="tel"
-                  style={inp}
-                />
-                {phoneLooking && <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: theme.textFaint }}>searching...</span>}
-                <button onClick={() => setCustStatus('walkin')} style={{ background: 'none', border: 'none', color: theme.textFaint, fontSize: 11, cursor: 'pointer', marginTop: 4, padding: 0 }}>
-                  Skip → Walk-in
-                </button>
-              </div>
-            )}
-
-            {custStatus === 'found' && customer && (
-              <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 10, padding: '10px 12px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: '#10b981' }}>✅ {customer.name}</div>
-                    <div style={{ fontSize: 11, color: theme.textFaint }}>📱 {customer.phone}</div>
-                    <div style={{ fontSize: 12, color: '#a78bfa', fontWeight: 600, marginTop: 2 }}>⭐ {customer.loyaltyPoints} pts</div>
-                  </div>
-                  <button onClick={clearCustomer} style={{ background: 'none', border: 'none', color: theme.textFaint, cursor: 'pointer', fontSize: 16 }}>×</button>
-                </div>
-              </div>
-            )}
-
-            {custStatus === 'new' && (
-              <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 10, padding: '10px 12px' }}>
-                <div style={{ fontSize: 12, color: '#f59e0b', marginBottom: 6 }}>New customer — {phoneInput}</div>
-                {custErr && <div style={{ fontSize: 11, color: '#ef4444', marginBottom: 6 }}>{custErr}</div>}
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <input value={newCustName} onChange={e => setNewCustName(e.target.value)} onKeyDown={e => e.key === 'Enter' && registerCustomer()}
-                    placeholder="Customer name" style={{ ...inp, flex: 1, padding: '7px 10px', fontSize: 12 }} />
-                  <button onClick={registerCustomer} disabled={custSaving}
-                    style={{ background: '#f59e0b', border: 'none', color: 'white', padding: '7px 12px', borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                    {custSaving ? '...' : 'Register'}
-                  </button>
-                </div>
-                <button onClick={() => setCustStatus('walkin')} style={{ background: 'none', border: 'none', color: theme.textFaint, fontSize: 11, cursor: 'pointer', marginTop: 4, padding: 0 }}>
-                  Skip → Walk-in
-                </button>
-              </div>
-            )}
-
-            {custStatus === 'walkin' && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: theme.hover, borderRadius: 10, padding: '8px 12px' }}>
-                <span style={{ fontSize: 12, color: theme.textMuted }}>👤 Walk-in customer</span>
-                <button onClick={clearCustomer} style={{ background: 'none', border: 'none', color: theme.textFaint, cursor: 'pointer', fontSize: 12 }}>Change</button>
-              </div>
-            )}
-          </div>
-
-          {/* Cart items */}
+          {/* Cart items - Extra Compact View */}
           <div style={{ flex: 1, overflow: 'auto' }}>
             {cart.length === 0 ? (
               <div style={{ padding: 40, textAlign: 'center', color: theme.textFaint }}>
                 <div style={{ fontSize: 36, marginBottom: 10 }}>🛒</div>
-                <div style={{ fontSize: 13 }}>Tap a product to add</div>
+                <div style={{ fontSize: 13 }}>Cart is empty</div>
               </div>
             ) : cart.map(item => (
-              <div key={item.id} style={{ padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${theme.border}` }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: theme.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
-                  <div style={{ fontSize: 11, color: theme.textFaint }}>{fmt(item.sellingPrice)} each</div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: theme.hover, borderRadius: 7, padding: '3px 8px' }}>
-                    <button onClick={() => dec(item.id)} style={{ background: 'none', border: 'none', color: theme.textMuted, cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0 }}>−</button>
-                    <span style={{ fontWeight: 700, fontSize: 13, minWidth: 16, textAlign: 'center', color: theme.text }}>{item.qty}</span>
-                    <button onClick={() => inc(item.id)} style={{ background: 'none', border: 'none', color: theme.textMuted, cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0 }}>+</button>
+              <div key={item.id} style={{ padding: '6px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${theme.border}` }}>
+                <div style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: theme.text, display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                    <span style={{ flex: 1 }}>{item.name}</span>
+                    <span style={{ fontSize: 11, color: theme.textFaint, fontWeight: 400 }}>{fmt(item.sellingPrice)}</span>
                   </div>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: theme.text, minWidth: 60, textAlign: 'right' }}>{fmt(item.sellingPrice * item.qty)}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', border: `1px solid ${theme.border}`, borderRadius: 6, overflow: 'hidden' }}>
+                    <button onClick={() => dec(item.id)} style={{ background: theme.hover, border: 'none', color: theme.text, cursor: 'pointer', fontSize: 14, width: 24, height: 24 }}>−</button>
+                    <span style={{ fontWeight: 800, fontSize: 12, minWidth: 20, textAlign: 'center', color: theme.text, background: theme.card }}>{item.qty}</span>
+                    <button onClick={() => inc(item.id)} style={{ background: theme.hover, border: 'none', color: theme.text, cursor: 'pointer', fontSize: 14, width: 24, height: 24 }}>+</button>
+                  </div>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: theme.text, minWidth: 70, textAlign: 'right' }}>{fmt(item.sellingPrice * item.qty)}</span>
                 </div>
               </div>
             ))}

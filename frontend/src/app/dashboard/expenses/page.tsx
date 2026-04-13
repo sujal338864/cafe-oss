@@ -121,6 +121,16 @@ export default function ExpensesPage() {
       <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, overflow: 'hidden' }}>
         {loading ? (
           <div style={{ padding: 40, textAlign: 'center', color: theme.textFaint }}>Loading...</div>
+        ) : queryError ? (
+          <div style={{ padding: 40, textAlign: 'center', color: '#ef4444' }}>
+            <div style={{ fontSize: 24, marginBottom: 8 }}>⚠️</div>
+            <div style={{ fontWeight: 700 }}>Failed to load expenses</div>
+            <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>{(queryError as any)?.response?.data?.error || 'Server connection failed'}</div>
+            <button onClick={() => queryClient.invalidateQueries({ queryKey: ['expenses'] })} 
+              style={{ marginTop: 16, background: theme.hover, border: `1px solid ${theme.border}`, color: theme.text, padding: '6px 14px', borderRadius: 8, fontSize: 12, cursor: 'pointer' }}>
+              Retry
+            </button>
+          </div>
         ) : expenses.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', color: theme.textFaint }}>No expenses yet. Add your first one!</div>
         ) : (
