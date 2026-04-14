@@ -426,6 +426,7 @@ router.post(
     if (!order.customer?.phone) return res.status(400).json({ error: 'Customer has no phone number' });
 
     const customer = order.customerId ? (await prisma.customer.findUnique({ where: { id: order.customerId } })) as any : null;
+    const shop = await prisma.shop.findUnique({ where: { id: req.user!.shopId }, select: { name: true } });
 
     const sent = await sendWhatsAppBill(
       order.customer.phone,
