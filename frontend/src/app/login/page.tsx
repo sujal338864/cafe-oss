@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -65,18 +65,7 @@ export default function LoginPage() {
     return () => { document.head.removeChild(script); };
   }, []);
 
-  useEffect(() => {
-    if (!googleReady || !window.google || !googleBtnRef.current || !GOOGLE_CLIENT_ID) return;
-    window.google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
-      callback: handleGoogleCallback,
-    });
-    window.google.accounts.id.renderButton(googleBtnRef.current, {
-      theme: 'filled_black', size: 'large', width: '100%', text: 'continue_with',
-    });
-  }, [googleReady, tab]);
-
-  const handleGoogleCallback = async (response: any) => {
+  const handleGoogleCallback = useCallback(async (response: any) => {
     setError('');
     setGLoading(true);
     try {
@@ -99,7 +88,18 @@ export default function LoginPage() {
     } finally {
       setGLoading(false);
     }
-  };
+  }, [login, router]);
+
+  useEffect(() => {
+    if (!googleReady || !window.google || !googleBtnRef.current || !GOOGLE_CLIENT_ID) return;
+    window.google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: handleGoogleCallback,
+    });
+    window.google.accounts.id.renderButton(googleBtnRef.current, {
+      theme: 'filled_black', size: 'large', width: '100%', text: 'continue_with',
+    });
+  }, [googleReady, tab, handleGoogleCallback]);
 
   const completeGoogleRegister = async () => {
     if (!gShopName.trim()) { setError('Shop name is required'); return; }

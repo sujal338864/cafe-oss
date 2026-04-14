@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import api from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
 import { useSocket } from '@/context/SocketContext';
@@ -42,7 +42,7 @@ export default function KitchenPage() {
     refetchInterval: 60000, // 1 min fallback polling
   });
 
-  const orders: Order[] = ordersData?.orders || [];
+  const orders: Order[] = useMemo(() => ordersData?.orders || [], [ordersData]);
 
   useEffect(() => {
     const pendingCount = orders.filter(o => o.status === 'PENDING').length;

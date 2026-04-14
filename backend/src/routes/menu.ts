@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../common/prisma';
 import { asyncHandler, validateRequest } from '../middleware/auth';
+// @ts-ignore
 import { PaymentMethod } from '@prisma/client';
 import { z } from 'zod';
 import { sendWhatsAppBill } from '../lib/whatsapp';
@@ -463,12 +464,22 @@ async function updatePostOrderMetrics(
 ) {
   // 1. Stock Deduction & Low Stock Alert
   for (const item of items) {
-    const product = await prisma.product.update({
+    const affected = await prisma.$executeRaw`
+      UPDATE "Product"
+      SET stock = stock - ${item.quantity}
+      WHERE id = ${item.productId} AND "shopId" = ${shopId} AND stock >= ${item.quantity}
+    `;
+
+    if (affected === 0) {
+      logger.warn(`[STOCK] Stock deduction failed or insufficient for Product ${item.productId} in Shop ${shopId}`);
+    }
+
+    const product = await prisma.product.findUnique({
       where: { id: item.productId },
-      data: { stock: { decrement: item.quantity } },
       select: { id: true, name: true, stock: true, lowStockAlert: true }
     });
-    if (product.stock <= product.lowStockAlert) {
+
+    if (product && product.stock <= product.lowStockAlert) {
       logger.warn(`[STOCK] Low stock alert for Shop ${shopId}: ${product.name} at ${product.stock}`);
       emitToShop(shopId, 'STOCK_LOW', { productId: product.id, name: product.name, currentStock: product.stock });
     }

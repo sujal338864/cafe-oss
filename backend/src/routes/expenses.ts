@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../common/prisma';
 import { authenticate, authorize, asyncHandler, validateRequest, AuthRequest } from '../middleware/auth';
+// @ts-ignore
 import { ExpenseCategory } from '@prisma/client';
 
 const router = Router();

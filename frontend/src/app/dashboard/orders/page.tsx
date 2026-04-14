@@ -32,7 +32,7 @@ export default function OrdersPage() {
     })),
     staleTime: 5000,
   });
-  const orders = orderData?.orders || [];
+  const orders = useMemo(() => orderData?.orders || [], [orderData]);
   const totalCount = orderData?.totalCount || 0;
   const targetUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001') + '/api/orders';
   const error = queryError ? (queryError as any).message || 'Failed to load orders' : '';

@@ -1,11 +1,12 @@
 'use client';
 import { useEffect, useState, Suspense, useRef, memo, useCallback, useMemo } from 'react';
+import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search, ShoppingCart, Plus, Minus, ArrowLeft, Check, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
 import { getOptimizedImage } from '@/lib/cloudinary';
 
-type Product = { id: string; name: string; sellingPrice: number; description?: string; imageUrl?: string; categoryId?: string; stock: number; taxRate: number; originalPrice?: number; discountedPrice?: number; activeRule?: string | null; };
+type Product = { id: string; name: string; sellingPrice: number; description?: string; imageUrl?: string; categoryId?: string; stock: number; taxRate: number; originalPrice?: number; discountedPrice?: number; activeRule?: string | null; isAvailable?: boolean; };
 type Category = { id: string; name: string; color?: string };
 type CartItem = Product & { qty: number; note: string };
 
@@ -49,12 +50,15 @@ const ProductItem = memo(function ProductItem({ p, inCart, onAdd, onInc, onDec }
   p: Product; inCart?: CartItem; onAdd: () => void; onInc: () => void; onDec: () => void;
 }) {
   const outOfStock = p.stock <= 0;
+  const isNotAvailable = p.isAvailable === false;
+  const isLocked = outOfStock || isNotAvailable;
+
   return (
-    <div className={`group flex flex-col bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-md transition-all duration-300 relative ${outOfStock ? 'opacity-50 grayscale' : ''}`}>
+    <div className={`group flex flex-col bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-md transition-all duration-300 relative ${isLocked ? 'opacity-50 grayscale' : ''}`}>
       {/* Thumbnail */}
       <div className="w-full aspect-[4/3] relative overflow-hidden bg-slate-50 flex items-center justify-center">
         {p.imageUrl
-          ? <img src={getOptimizedImage(p.imageUrl, 400) || ''} alt={p.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+          ? <Image src={getOptimizedImage(p.imageUrl, 400) || ''} alt={p.name} width={400} height={300} loading="lazy" className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500" />
           : <span className="text-4xl font-bold text-slate-200">{p.name[0]}</span>
         }
         {p.activeRule && (
@@ -80,7 +84,9 @@ const ProductItem = memo(function ProductItem({ p, inCart, onAdd, onInc, onDec }
           </div>
 
           <div className="flex items-center">
-            {outOfStock ? (
+            {isNotAvailable ? (
+              <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-1 rounded-md border border-red-100 uppercase tracking-tighter">Unavailable</span>
+            ) : outOfStock ? (
               <span className="text-xs font-semibold text-slate-400 bg-slate-100 px-2 py-1 rounded-md">Sold out</span>
             ) : inCart ? (
               <div className="flex items-center bg-emerald-50 border border-emerald-200 rounded-lg overflow-hidden shadow-sm">
@@ -113,7 +119,7 @@ const RecommendationRow = ({ items, onAdd }: { items: Product[], onAdd: (p: Prod
           <div key={p.id} className="snap-start shrink-0 w-[140px] bg-white rounded-2xl border border-slate-100 p-2 shadow-sm relative group hover:shadow-md transition-shadow">
             <div className="w-full h-20 rounded-xl bg-slate-50 mb-2 overflow-hidden flex items-center justify-center">
               {p.imageUrl ? (
-                <img src={getOptimizedImage(p.imageUrl, 280) || ''} alt={p.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                <Image src={getOptimizedImage(p.imageUrl, 280) || ''} alt={p.name} width={280} height={160} loading="lazy" className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500" />
               ) : (
                 <span className="text-2xl font-bold text-slate-200">{p.name[0]}</span>
               )}
@@ -203,11 +209,18 @@ function MenuContent() {
     return () => { if (searchTimeout.current) clearTimeout(searchTimeout.current); };
   }, [search]);
 
-  useEffect(() => {
-    const digits = phone.replace(/\D/g, '');
-    if (digits.length === 10) lookupCustomer(digits);
-    else { setLoyaltyPoints(0); setPointsToRedeem(0); }
-  }, [phone]);
+  const lookupCustomer = useCallback(async (digits: string) => {
+    try {
+      setLatestError(null);
+      const data = await get(`/api/menu/customer?phone=${digits}&shopId=${shopId}`);
+      if (data.loyaltyPoints) setLoyaltyPoints(data.loyaltyPoints);
+      if (data.name && !name.trim()) setName(data.name);
+      if (!data.name) setLatestError('No customer found for this number');
+    } catch (err: any) {
+      setLatestError(err.message || 'Connection failed');
+      console.error('[MENU] Customer lookup error:', err);
+    }
+  }, [shopId, name]);
 
   const refreshStatus = useCallback(async () => {
     if (!result?.id) return;
@@ -218,6 +231,12 @@ function MenuContent() {
     } catch { }
     setTimeout(() => setIsRefreshing(false), 800);
   }, [result?.id]);
+
+  useEffect(() => {
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length === 10) lookupCustomer(digits);
+    else { setLoyaltyPoints(0); setPointsToRedeem(0); }
+  }, [phone, lookupCustomer]);
 
   useEffect(() => {
     if (step !== 'done' || !result?.id) return;
@@ -254,19 +273,6 @@ function MenuContent() {
     const t = searchParams.get('table') || searchParams.get('tableNumber') || searchParams.get('t');
     if (t) setTable(t);
   }, [searchParams]);
-
-  const lookupCustomer = async (digits: string) => {
-    try {
-      setLatestError(null);
-      const data = await get(`/api/menu/customer?phone=${digits}&shopId=${shopId}`);
-      if (data.loyaltyPoints) setLoyaltyPoints(data.loyaltyPoints);
-      if (data.name && !name.trim()) setName(data.name);
-      if (!data.name) setLatestError('No customer found for this number');
-    } catch (err: any) {
-      setLatestError(err.message || 'Connection failed');
-      console.error('[MENU] Customer lookup error:', err);
-    }
-  };
 
   const addToCart = useCallback((p: Product) => setCart(c => {
     const ex = c.find(i => i.id === p.id);
@@ -578,7 +584,7 @@ function MenuContent() {
             {cart.map((item, i) => (
               <div key={item.id} className="flex gap-4 p-4 items-center bg-white group hover:bg-slate-50 transition-colors rounded-2xl relative" style={{ animation: `slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1) ${i * 0.05}s both` }}>
                 <div className="w-16 h-16 rounded-xl bg-slate-100 shrink-0 overflow-hidden flex items-center justify-center relative">
-                  {item.imageUrl ? <img src={getOptimizedImage(item.imageUrl, 128) || ''} className="w-full h-full object-cover" /> : <ShoppingCart className="text-slate-300" />}
+                  {item.imageUrl ? <Image src={getOptimizedImage(item.imageUrl, 128) || ''} alt={item.name} width={64} height={64} className="w-full h-full object-cover" /> : <ShoppingCart className="text-slate-300" />}
                 </div>
                 <div className="flex-1 min-w-0 pr-2">
                   <div className="font-semibold text-sm text-slate-900 leading-tight mb-1 truncate">{item.name}</div>

@@ -76,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (window.location.pathname.startsWith('/dashboard')) router.push('/login');
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [router]);
 
   const login = (user: User, shop: Shop, token: string) => {
     localStorage.setItem('shop_os_user', JSON.stringify(user));
