@@ -46,6 +46,19 @@ export default function DashboardPage() {
     }),
     staleTime: 3600000 // 1 hour for AI
   });
+  
+  // 4. EXTRA METRICS (Sequential load to prevent pool timeout)
+  const { data: forecastData } = useQuery({
+    queryKey: ['inventory_forecast'],
+    queryFn: () => api.get('/api/analytics/inventory-forecast').then(r => r.data),
+    staleTime: 600000
+  });
+
+  const { data: dailyProfitData } = useQuery({
+    queryKey: ['daily_profit_records'],
+    queryFn: () => api.get('/api/analytics/daily-profit').then(r => r.data),
+    staleTime: 600000
+  });
 
 
   useEffect(() => {
@@ -189,7 +202,12 @@ export default function DashboardPage() {
       </div>
 
       {/* Parallel Load: Premium Charts & intelligence */}
-      <DashboardCharts data={chartsData} theme={theme} />
+      <DashboardCharts 
+        data={chartsData} 
+        theme={theme} 
+        forecast={forecastData?.forecasting} 
+        dailyProfit={dailyProfitData?.profitList} 
+      />
 
       {/* Recent Orders Table */}
       <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
