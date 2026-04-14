@@ -26,7 +26,7 @@
   "dependencies": {
     "@prisma/client": "^5.7.0",
     "@socket.io/redis-adapter": "^8.3.0",
-    "aws-sdk": "^2.1500.0",
+    "aws-sdk": "^2.1693.0",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.71.0",
     "cloudinary": "^2.9.0",
@@ -43,7 +43,7 @@
     "ioredis": "^5.10.0",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
-    "nodemailer": "^6.9.7",
+    "nodemailer": "^8.0.5",
     "openai": "^4.24.1",
     "pdfkit": "^0.13.0",
     "razorpay": "^2.9.2",
