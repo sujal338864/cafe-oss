@@ -157,7 +157,7 @@ router.get('/recommendations', menuLimiter, asyncHandler(async (req, res) => {
     const recommendations = scored
       .sort((a, b) => b.score - a.score)
       .slice(0, 5)
-      .map(({ score, costPrice, ...rest }) => rest); // Hide internal score/cost from public API
+      .map(({ score: _s, costPrice: _c, ...rest }) => rest); // Hide internal score/cost from public API
 
     return res.json({ recommendations });
   } catch (error: any) {
