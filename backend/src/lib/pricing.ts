@@ -1,4 +1,5 @@
-import { Product, Shop } from '@prisma/client';
+// Unused imports removed
+
 
 export interface PricingRule {
   name: string;

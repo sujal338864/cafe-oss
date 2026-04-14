@@ -17,7 +17,7 @@ router.use(authorize('SUPER_ADMIN' as any) as any);
 router.get('/mega-dashboard', asyncHandler(async (req: any, res: any) => {
   const cacheKey = 'admin:global:mega:dashboard';
   
-  let dataBlob = await redis.get(cacheKey);
+  const dataBlob = await redis.get(cacheKey);
   
   if (!dataBlob) {
     // If cache miss, compute real-time once and prime the cache

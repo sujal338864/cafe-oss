@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authenticate, asyncHandler, AuthRequest } from '../middleware/auth';
 import { redis } from '../lib/redis';
-import { addAiInsightsJob } from '../jobs/queues/ai.queue';
+// Unused imports removed
 import { generateShopInsights } from '../services/ai.service';
 
 import { checkPlan } from '../middleware/planGate';
