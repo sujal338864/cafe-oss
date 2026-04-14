@@ -24,10 +24,10 @@ export default function ExpensesPage() {
   const queryClient = useQueryClient();
   const { data: expData, isLoading: loading, error: queryError } = useQuery({
     queryKey: ['expenses'],
-    queryFn: () => api.get('/api/expenses').then(res => res.data.expenses || res.data || []),
+    queryFn: () => api.get('/api/expenses').then(res => Array.isArray(res.data.expenses) ? res.data.expenses : (Array.isArray(res.data) ? res.data : [])),
     staleTime: 60000, 
   });
-  const expenses = expData || [];
+  const expenses = Array.isArray(expData) ? expData : [];
 
   const [showModal, setShowModal] = useState(false);
   const [form,      setForm]      = useState({

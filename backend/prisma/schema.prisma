@@ -391,9 +391,11 @@ model Expense {
   amount      Decimal         @db.Decimal(10, 2)
   description String?
   date        DateTime        @default(now())
+  deletedAt   DateTime?       // Soft delete for financial audit trail
   createdAt   DateTime        @default(now())
 
-  @@index([shopId, date, category, amount])
+  @@index([shopId, date, category, amount, deletedAt])
   @@index([shopId, createdAt])
 }
+
 

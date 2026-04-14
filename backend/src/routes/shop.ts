@@ -1,10 +1,21 @@
 import { Router, Response } from 'express';
 import { prisma } from '../common/prisma';
-import { authenticate, asyncHandler, AuthRequest } from '../middleware/auth';
-// Unused imports removed
-
+import { z } from 'zod';
+import { authenticate, asyncHandler, AuthRequest, validateRequest } from '../middleware/auth';
 
 const router = Router();
+
+const shopUpdateSchema = z.object({
+  name: z.string().min(1, 'Shop name is required').optional(),
+  phone: z.string().optional(),
+  email: z.string().email('Invalid email').optional(),
+  address: z.string().optional(),
+  currency: z.string().optional(),
+  pricingEnabled: z.boolean().optional(),
+  pricingRules: z.any().optional(),
+  loyaltyRate: z.number().min(0).max(1).optional(),
+  redeemRate: z.number().min(0).optional(),
+});
 
 /**
  * GET /api/shop/profile
@@ -31,11 +42,11 @@ router.get(
 router.put(
   '/profile',
   authenticate,
+  validateRequest(shopUpdateSchema),
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { name, phone, email, address, currency, pricingEnabled, pricingRules, loyaltyRate, redeemRate } = req.body;
     const shop = await prisma.shop.update({
       where: { id: req.user!.shopId },
-      data: { name, phone, email, address, currency, pricingEnabled, pricingRules, loyaltyRate, redeemRate } as any
+      data: req.body
     });
 
     res.json(shop);

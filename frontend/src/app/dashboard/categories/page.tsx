@@ -18,7 +18,7 @@ export default function CategoriesPage() {
     queryFn: () => api.get('/api/categories').then(res => res.data.categories || []),
     staleTime: 300000, // 5 min
   });
-  const categories = catData || [];
+  const categories = Array.isArray(catData) ? catData : [];
 
   const [showModal,  setShowModal]  = useState(false);
   const [editing,    setEditing]    = useState<any>(null);

@@ -54,6 +54,7 @@ router.get(
 
     const where: any = {
       shopId: req.user!.shopId,
+      deletedAt: null,
       ...(category && { category: category as string }),
       ...(startDate && endDate && {
         date: {

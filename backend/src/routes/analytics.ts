@@ -3,7 +3,7 @@
 
 import { Router } from 'express';
 import { authenticate, authorize, asyncHandler, AuthRequest } from '../middleware/auth';
-import { setCache } from '../common/cache';
+import { getCache, setCache } from '../common/cache';
 import { calculateDashboardStats, AnalyticsService } from '../services/analytics.service';
 import { AnalyticsServiceV2 } from '../services/analytics.service.v2';
 import { prisma } from '../common/prisma';
@@ -11,19 +11,27 @@ import { prisma } from '../common/prisma';
 const router = Router();
 
 router.get('/dashboard', authenticate, authorize('ADMIN', 'MANAGER'), asyncHandler(async (req: AuthRequest, res) => {
-  const shopId = req.user!.shopId;
+    const shopId = req.user!.shopId;
+    const cacheKey = `dashboard:stats:${shopId}`;
 
-    // 2. Cache Miss -> Fallback to Calculate Inline
-    // CACHE DISABLED: Ensuring real-time dashboard accuracy per user request
+    // 1. Try Cache First
+    const cachedStats = await getCache<any>(cacheKey);
+    if (cachedStats) {
+      res.set('X-Cache', 'HIT');
+      return res.json(cachedStats);
+    }
+
+    // 2. Cache Miss -> Calculate
     const stats = await calculateDashboardStats(shopId);
   
-    // Save to Cache (Short TTL 5s for performance during high traffic, but effectively real-time)
+    // 3. Save to Cache (Short TTL for performance during high traffic)
     try {
-      await setCache(`dashboard:stats:${shopId}`, stats, 5);
+      await setCache(cacheKey, stats, 15); // Increased to 15s for better connection pool relief
     } catch (err) {
       console.error(`[Analytics] Cache write error for shop ${shopId}:`, err);
     }
   
+    res.set('X-Cache', 'MISS');
     res.json(stats);
 }));
 

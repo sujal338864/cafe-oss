@@ -162,33 +162,40 @@ export const AnalyticsService = {
       const sixMonthsAgo = new Date();
       sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-      // SEQUENTIAL: Save connection pool to avoid "MaxClientsInSessionMode"
-      const revenueResult = await prisma.order.aggregate({
+      // CHUNK 1: Metrics & Totals (ParallelIZED - 4 queries)
+      const [revenueResult, totalCustomers, totalProducts, lowStockResult] = await Promise.all([
+        prisma.order.aggregate({
           where: { shopId, status: { not: 'CANCELLED' as any } },
           _sum: { totalAmount: true },
           _count: { id: true }
-      });
-      const totalOrders = await prisma.order.count({ where: { shopId, status: { not: 'CANCELLED' as any } } });
-      const totalCustomers = await prisma.customer.count({ where: { shopId } });
-      const totalProducts = await prisma.product.count({ where: { shopId, isActive: true } });
-      const lowStockResult = await prisma.$queryRaw<{ count: bigint }[]>`SELECT COUNT(*)::bigint as count FROM "Product" WHERE "shopId" = ${shopId} AND "isActive" = true AND "stock" <= "lowStockAlert"`;
-      const todayOrdersData = await prisma.order.findMany({
+        }),
+        prisma.customer.count({ where: { shopId } }),
+        prisma.product.count({ where: { shopId, isActive: true } }),
+        prisma.$queryRaw<{ count: bigint }[]>`SELECT COUNT(*)::bigint as count FROM "Product" WHERE "shopId" = ${shopId} AND "isActive" = true AND "stock" <= "lowStockAlert"`
+      ]);
+
+      const totalOrders = revenueResult._count.id;
+      const totalRevenueValue = Number(revenueResult?._sum?.totalAmount || 0);
+
+      // CHUNK 2: Heavy Aggregations (ParallelIZED - 5 queries)
+      const [todayOrdersData, inventoryValueResult, topProductsData, monthlySalesData, categorySalesResult] = await Promise.all([
+        prisma.order.findMany({
           where: { shopId, createdAt: { gte: safeToday }, status: { not: 'CANCELLED' as any } },
           select: { totalAmount: true, items: { select: { costPrice: true, quantity: true } } }
-      });
-      const inventoryValueResult = await prisma.$queryRaw<{ sum: number }[]>`SELECT SUM("stock" * CAST("costPrice" AS numeric)) as sum FROM "Product" WHERE "shopId" = ${shopId} AND "isActive" = true`;
-      const topProductsData = await prisma.orderItem.groupBy({
+        }),
+        prisma.$queryRaw<{ sum: number }[]>`SELECT SUM("stock" * CAST("costPrice" AS numeric)) as sum FROM "Product" WHERE "shopId" = ${shopId} AND "isActive" = true`,
+        prisma.orderItem.groupBy({
           by: ['productId', 'name'],
           _sum: { quantity: true, total: true },
           where: { order: { shopId, status: { not: 'CANCELLED' as any } } },
           orderBy: { _sum: { total: 'desc' } },
           take: 5
-      });
-      const monthlySalesData = await prisma.order.findMany({
+        }),
+        prisma.order.findMany({
           where: { shopId, createdAt: { gte: sixMonthsAgo }, status: { not: 'CANCELLED' as any } },
           select: { totalAmount: true, createdAt: true, items: { select: { costPrice: true, quantity: true } } }
-      });
-      const categorySalesResult = await prisma.$queryRaw<any[]>`
+        }),
+        prisma.$queryRaw<any[]>`
           SELECT c.name as "categoryName", SUM(oi.total) as "totalAmount"
           FROM "Category" c
           JOIN "Product" p ON p."categoryId" = c.id
@@ -196,7 +203,9 @@ export const AnalyticsService = {
           JOIN "Order" o ON oi."orderId" = o.id
           WHERE c."shopId" = ${shopId} AND o.status != 'CANCELLED'
           GROUP BY c.name
-      `;
+        `
+      ]);
+
       const lowStockItems = Number(lowStockResult?.[0]?.count || 0);
 
       const categorySales: Record<string, number> = {};
@@ -232,7 +241,6 @@ export const AnalyticsService = {
         month, ...data, profit: data.revenue - data.cogs
       }));
 
-      const totalRevenueValue = Number(revenueResult?._sum?.totalAmount || 0);
       const avgOrderValue = totalOrders > 0 ? Math.round((totalRevenueValue / totalOrders) * 100) / 100 : 0;
 
       // 1. Format Top Products

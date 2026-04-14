@@ -26,7 +26,7 @@ export function generateInvoicePDF(order: any, shop: any) {
   // Header 
   if (isThermal) {
     // ☕ POS Style Thermal Layout
-    const shopNameUpper = (shop.name || 'Our Shop').toUpperCase();
+    const shopNameUpper = (shop.name || 'CAFE OSS').toUpperCase();
     doc
       .fillColor('#111827')
       .fontSize(sizeTitle)
@@ -53,7 +53,7 @@ export function generateInvoicePDF(order: any, shop: any) {
       .fillColor('#111827')
       .fontSize(sizeTitle)
       .font(fBold)
-      .text(shop.name || 'Our Shop', { align: 'center' });
+      .text(shop.name || 'CAFE OSS', { align: 'center' });
     
     if (shop.address) doc.fontSize(sizeText).font(fNormal).text(shop.address, { align: 'center' });
     if (shop.phone) doc.fontSize(sizeText).text(`Phone: ${shop.phone}`, { align: 'center' });

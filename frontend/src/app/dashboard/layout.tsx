@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { useSocket } from '@/context/SocketContext';
 import api from '@/lib/api';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const ALL_NAV = [
   { href: '/dashboard',            label: 'Dashboard',  icon: '▦',   roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
@@ -346,7 +347,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         {/* Page content */}
         <div style={{ padding: '20px 24px', flex: 1 }}>
-          {children}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={pathname}
+              initial={{ opacity: 0, scale: 0.99, y: 5 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 1.01, y: -5 }}
+              transition={{ duration: 0.2, ease: "easeInOut" }}
+            >
+              {children}
+            </motion.div>
+          </AnimatePresence>
         </div>
       </main>
     </div>

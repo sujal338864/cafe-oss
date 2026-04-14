@@ -116,8 +116,6 @@ export const createOrder = async (shopId: string, userId: string, data: any) => 
 
       // 4. Update customer loyalty points (Dynamic per-shop)
       if (customerId) {
-        const shop = await tx.shop.findFirst({ where: { id: shopId } });
-        const LOYALTY_RATE = Number((shop as any)?.loyaltyRate || 0.1);
         const pointsEarned = Math.floor(totalAmount * LOYALTY_RATE);
         await tx.customer.update({
           where: { id: customerId },
@@ -165,7 +163,22 @@ export const getOrders = async (shopId: string, filters: {
     const [orders, total] = await Promise.all([
       prisma.order.findMany({
         where, skip: filters.skip, take: filters.take,
-        include: { customer: true, items: true, user: { select: { name: true } } },
+        select: {
+          id: true,
+          invoiceNumber: true,
+          totalAmount: true,
+          subtotal: true,
+          taxAmount: true,
+          discountAmount: true,
+          paymentMethod: true,
+          paymentStatus: true,
+          status: true,
+          notes: true,
+          createdAt: true,
+          customer: { select: { id: true, name: true, phone: true } },
+          user: { select: { name: true } },
+          _count: { select: { items: true } }
+        },
         orderBy: { createdAt: filters.sort || 'desc' }
       }),
       prisma.order.count({ where })
@@ -183,7 +196,12 @@ export const getOrders = async (shopId: string, filters: {
 export const getOrderById = async (id: string, shopId: string) => {
   return prisma.order.findFirst({
     where: { id, shopId },
-    include: { customer: true, items: true, user: { select: { name: true } } }
+    include: { 
+      customer: true, 
+      items: true, 
+      user: { select: { name: true } },
+      shop: { select: { name: true } }
+    }
   });
 };
 

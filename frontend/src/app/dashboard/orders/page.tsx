@@ -75,6 +75,31 @@ export default function OrdersPage() {
   const totalPaid = filtered.filter(o => o.paymentStatus === 'PAID').reduce((s, o) => s + Number(o.totalAmount || 0), 0);
   const totalPending = filtered.filter(o => o.paymentStatus !== 'PAID').reduce((s, o) => s + Number(o.totalAmount || 0), 0);
 
+  const [orderDetails, setOrderDetails] = useState<Record<string, any>>({});
+  const [fetchingDetails, setFetchingDetails] = useState<string | null>(null);
+
+  const fetchDetails = async (id: string) => {
+    if (orderDetails[id]) return;
+    setFetchingDetails(id);
+    try {
+      const res = await api.get(`/api/orders/${id}`);
+      setOrderDetails(prev => ({ ...prev, [id]: res.data }));
+    } catch (err) {
+      console.error('Failed to fetch order details', err);
+    } finally {
+      setFetchingDetails(null);
+    }
+  };
+
+  const toggleExpand = (id: string) => {
+    if (expanded === id) {
+      setExpanded(null);
+    } else {
+      setExpanded(id);
+      fetchDetails(id);
+    }
+  };
+
   const card: any = { background: theme.card, border: '1px solid ' + theme.border, borderRadius: 14 };
   const inp: any = { background: theme.input, border: '1px solid ' + theme.border, color: theme.text, borderRadius: 9, padding: '8px 12px', fontSize: 12, outline: 'none' };
 
@@ -171,17 +196,20 @@ export default function OrdersPage() {
                       const mc = MTC[o.paymentMethod] || '#94a3b8';
                       const isOpen = expanded === o.id;
                       const isUnpaid = o.paymentStatus !== 'PAID';
+                      const details = orderDetails[o.id];
+                      const isFetching = fetchingDetails === o.id;
+
                       return (
                         <>
                           <tr key={o.id} style={{ borderBottom: '1px solid ' + theme.border, background: isOpen ? theme.hover : 'transparent', cursor: 'pointer' }}
-                            onClick={() => setExpanded(isOpen ? null : o.id)}>
+                            onClick={() => toggleExpand(o.id)}>
                             <td style={{ padding: '11px 14px', fontFamily: 'monospace', fontSize: 12, color: '#a78bfa', fontWeight: 600 }}>#{o.invoiceNumber}</td>
                             <td style={{ padding: '11px 14px' }}>
                               <div style={{ fontSize: 13, fontWeight: 600, color: theme.text }}>{o.customer?.name || o.customerName || 'Walk-in'}</div>
                               {o.customer?.phone && <div style={{ fontSize: 11, color: theme.textFaint }}>{o.customer.phone}</div>}
                               {o.tableNumber && <div style={{ fontSize: 11, color: '#38bdf8' }}>Table {o.tableNumber}</div>}
                             </td>
-                            <td style={{ padding: '11px 14px', fontSize: 13, color: theme.textMuted }}>{o.items?.length ?? '—'}</td>
+                            <td style={{ padding: '11px 14px', fontSize: 13, color: theme.textMuted }}>{o._count?.items ?? '—'}</td>
                             <td style={{ padding: '11px 14px', fontWeight: 700, color: theme.text }}>{fmt(o.totalAmount)}</td>
                             <td style={{ padding: '11px 14px' }}>
                               <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 9px', borderRadius: 20, background: mc + '18', color: mc }}>{o.paymentMethod}</span>
@@ -206,29 +234,37 @@ export default function OrdersPage() {
                           {isOpen && (
                             <tr key={o.id + '-exp'} style={{ borderBottom: '1px solid ' + theme.border }}>
                               <td colSpan={8} style={{ padding: '0 14px 14px 40px' }}>
-                                <div style={{ background: theme.hover, borderRadius: 10, padding: '12px 16px' }}>
-                                  <div style={{ fontSize: 11, color: theme.textFaint, fontWeight: 700, textTransform: 'uppercase', marginBottom: 8 }}>Items</div>
-                                  {o.items?.map((item: any, i: number) => (
-                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: i < o.items.length - 1 ? '1px solid ' + theme.border : 'none' }}>
-                                      <span style={{ fontSize: 13, color: theme.text }}>{item.name}</span>
-                                      <span style={{ fontSize: 12, color: theme.textFaint }}>
-                                        {item.quantity} x {fmt(item.unitPrice)} = <b style={{ color: theme.text }}>{fmt(item.total || item.unitPrice * item.quantity)}</b>
-                                        {item.taxRate > 0 && <span style={{ color: '#f59e0b', marginLeft: 6 }}>+{item.taxRate}% GST</span>}
-                                      </span>
-                                    </div>
-                                  ))}
-                                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid ' + theme.border, display: 'flex', gap: 20, fontSize: 12, color: theme.textFaint, flexWrap: 'wrap', alignItems: 'center' }}>
-                                    {o.subtotal != null && <span>Subtotal: <b style={{ color: theme.text }}>{fmt(o.subtotal)}</b></span>}
-                                    {o.taxAmount > 0 && <span>Tax: <b style={{ color: '#f59e0b' }}>{fmt(o.taxAmount)}</b></span>}
-                                    {o.discountAmount > 0 && <span>Discount: <b style={{ color: '#10b981' }}>-{fmt(o.discountAmount)}</b></span>}
-                                    {o.notes && <span>Note: <i style={{ color: theme.text }}>{o.notes}</i></span>}
-                                    {isUnpaid && (
-                                      <button onClick={() => markPaid(o.id)} disabled={updating === o.id}
-                                        style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid #10b981', color: '#10b981', padding: '6px 16px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', marginLeft: 'auto', opacity: updating === o.id ? 0.6 : 1 }}>
-                                        {updating === o.id ? 'Updating...' : 'Mark as Paid'}
-                                      </button>
-                                    )}
-                                  </div>
+                                <div style={{ background: theme.hover, borderRadius: 10, padding: '12px 16px', minHeight: isFetching ? 100 : 'auto', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                                  {isFetching ? (
+                                    <div style={{ textAlign: 'center', color: theme.textFaint, fontSize: 12 }}>Loading items...</div>
+                                  ) : details ? (
+                                    <>
+                                      <div style={{ fontSize: 11, color: theme.textFaint, fontWeight: 700, textTransform: 'uppercase', marginBottom: 8 }}>Items</div>
+                                      {details.items?.map((item: any, i: number) => (
+                                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: i < details.items.length - 1 ? '1px solid ' + theme.border : 'none' }}>
+                                          <span style={{ fontSize: 13, color: theme.text }}>{item.name}</span>
+                                          <span style={{ fontSize: 12, color: theme.textFaint }}>
+                                            {item.quantity} x {fmt(item.unitPrice)} = <b style={{ color: theme.text }}>{fmt(item.total || item.unitPrice * item.quantity)}</b>
+                                            {item.taxRate > 0 && <span style={{ color: '#f59e0b', marginLeft: 6 }}>+{item.taxRate}% GST</span>}
+                                          </span>
+                                        </div>
+                                      ))}
+                                      <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid ' + theme.border, display: 'flex', gap: 20, fontSize: 12, color: theme.textFaint, flexWrap: 'wrap', alignItems: 'center' }}>
+                                        {details.subtotal != null && <span>Subtotal: <b style={{ color: theme.text }}>{fmt(details.subtotal)}</b></span>}
+                                        {details.taxAmount > 0 && <span>Tax: <b style={{ color: '#f59e0b' }}>{fmt(details.taxAmount)}</b></span>}
+                                        {details.discountAmount > 0 && <span>Discount: <b style={{ color: '#10b981' }}>-{fmt(details.discountAmount)}</b></span>}
+                                        {details.notes && <span>Note: <i style={{ color: theme.text }}>{details.notes}</i></span>}
+                                        {isUnpaid && (
+                                          <button onClick={() => markPaid(o.id)} disabled={updating === o.id}
+                                            style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid #10b981', color: '#10b981', padding: '6px 16px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', marginLeft: 'auto', opacity: updating === o.id ? 0.6 : 1 }}>
+                                            {updating === o.id ? 'Updating...' : 'Mark as Paid'}
+                                          </button>
+                                        )}
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <div style={{ color: '#ef4444', fontSize: 12 }}>Failed to load items.</div>
+                                  )}
                                 </div>
                               </td>
                             </tr>

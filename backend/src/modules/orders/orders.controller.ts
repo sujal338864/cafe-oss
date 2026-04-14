@@ -238,7 +238,7 @@ export const resendWhatsApp = async (req: AuthRequest, res: Response) => {
         paymentMethod: order.paymentMethod,
         paymentStatus: order.paymentStatus,
       },
-      shopName: 'Our Shop',
+      shopName: (order as any).shop?.name || 'Cafe OSS',
       currentLoyaltyPoints: order.customer?.loyaltyPoints
     });
 
@@ -255,14 +255,15 @@ export const resendWhatsApp = async (req: AuthRequest, res: Response) => {
  * Internal: Audits stock levels after an order and logs alerts
  */
 async function productStockCheck(items: any[]) {
-  for (const item of items) {
-    const product = await prisma.product.findUnique({ 
-      where: { id: item.productId },
-      select: { id: true, name: true, stock: true, lowStockAlert: true }
-    });
-    if (product && product.stock <= product.lowStockAlert) {
+  const productIds = items.map(i => i.productId);
+  const products = await prisma.product.findMany({
+    where: { id: { in: productIds } },
+    select: { id: true, name: true, stock: true, lowStockAlert: true }
+  });
+
+  for (const product of products) {
+    if (product.stock <= product.lowStockAlert) {
       logger.warn(`[STOCK] Low stock alert: ${product.name} is down to ${product.stock} units`);
-      // Future: add to Notification center table
     }
   }
 }
