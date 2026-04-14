@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../common/prisma';
 import { asyncHandler, validateRequest } from '../middleware/auth';
-// @ts-ignore
+// @ts-expect-error - IDE sync issue with Prisma Client enums
 import { PaymentMethod } from '@prisma/client';
 import { z } from 'zod';
 import { sendWhatsAppBill } from '../lib/whatsapp';
@@ -159,7 +159,7 @@ router.get('/recommendations', menuLimiter, asyncHandler(async (req, res) => {
     const recommendations = scored
       .sort((a, b) => b.score - a.score)
       .slice(0, 5)
-      .map(({ score: _s, costPrice: _c, ...rest }) => rest); // Hide internal score/cost from public API
+      .map(({ score, costPrice, ...rest }) => rest); // Hide internal score/cost from public API
 
     return res.json({ recommendations });
   } catch (error: any) {

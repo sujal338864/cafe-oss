@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../common/prisma';
 import { authenticate, authorize, asyncHandler, validateRequest, AuthRequest } from '../middleware/auth';
-// @ts-ignore
+// @ts-expect-error - IDE sync issue with Prisma Client enums
 import { ExpenseCategory } from '@prisma/client';
 
 const router = Router();
