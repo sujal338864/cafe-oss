@@ -53,7 +53,7 @@ export const prisma = basePrisma.$extends({
         // Ensure args is always an object to prevent crashes
         if (!args) args = {};
 
-        if (tenant?.shopId && modelsWithShopId.includes(model)) {
+        if (tenant?.shopId && modelsWithShopId.includes(model) && !tenant.isSuperAdmin) {
           // 1. Inject filters into read operations
           if (['findMany', 'findFirst', 'findUnique', 'count', 'aggregate', 'groupBy'].includes(operation)) {
             args.where = { ...(args.where || {}), shopId: tenant.shopId };

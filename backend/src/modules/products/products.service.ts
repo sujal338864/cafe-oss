@@ -17,7 +17,8 @@ export const getProducts = async (shopId: string, filters: {
       OR: [
         { name: { contains: filters.search, mode: 'insensitive' } },
         { sku: { contains: filters.search, mode: 'insensitive' } },
-        { barcode: { contains: filters.search, mode: 'insensitive' } }
+        { barcode: { contains: filters.search, mode: 'insensitive' } },
+        { category: { name: { contains: filters.search, mode: 'insensitive' } } }
       ]
     }),
     ...(filters.category && { categoryId: filters.category }),

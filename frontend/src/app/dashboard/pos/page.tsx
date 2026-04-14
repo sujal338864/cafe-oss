@@ -29,6 +29,8 @@ export default function POSPage() {
   const { socket } = useSocket();
   const [tab, setTab] = useState<Tab>('pos');
   const [products, setProducts] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [catFilter, setCatFilter] = useState('ALL');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [search, setSearch] = useState('');
   const [method, setMethod] = useState('CASH');
@@ -71,8 +73,12 @@ export default function POSPage() {
 
   const loadProducts = async () => {
     try {
-      const pRes = await api.get('/api/products?limit=50');
+      const [pRes, cRes] = await Promise.all([
+        api.get('/api/products?limit=250'),
+        api.get('/api/categories')
+      ]);
       setProducts(pRes.data.products || []);
+      setCategories(cRes.data.categories || []);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
@@ -137,9 +143,29 @@ export default function POSPage() {
 
   const addToCart = (p: any) => setCart(c => {
     const ex = c.find(i => i.id === p.id);
-    if (ex) return c.map(i => i.id === p.id ? { ...i, qty: Math.min(i.qty + 1, i.stock) } : i);
-    return [...c, { id: p.id, name: p.name, sellingPrice: Number(p.sellingPrice), costPrice: Number(p.costPrice || 0), taxRate: Number(p.taxRate || 0), qty: 1, stock: p.stock }];
+    if (ex) return c.map(i => i.id === p.id ? { ...i, qty: Math.min(i.qty + 1, (i.stock || 999)) } : i);
+    return [...c, { id: p.id, name: p.name, sellingPrice: Number(p.sellingPrice), costPrice: Number(p.costPrice || 0), taxRate: Number(p.taxRate || 0), qty: 1, stock: p.stock || 999 }];
   });
+
+  const filteredProducts = products.filter(p => {
+    try {
+      const s = search.toLowerCase();
+      const name = p.name ? String(p.name).toLowerCase() : '';
+      const sku = p.sku ? String(p.sku).toLowerCase() : '';
+      const catName = p.category?.name ? String(p.category.name).toLowerCase() : '';
+      
+      const matchesSearch = !s || name.includes(s) || sku.includes(s) || catName.includes(s);
+      
+      if (!matchesSearch) return false;
+      
+      if (catFilter === 'ALL') return true;
+      if (catFilter === 'NONE') return !p.categoryId;
+      return p.categoryId === catFilter;
+    } catch (e) {
+      return false;
+    }
+  });
+
   const dec = (id: string) => setCart(c => c.map(i => i.id === id ? { ...i, qty: i.qty - 1 } : i).filter(i => i.qty > 0));
   const inc = (id: string) => setCart(c => c.map(i => i.id === id ? { ...i, qty: Math.min(i.qty + 1, i.stock) } : i));
 
@@ -441,11 +467,12 @@ export default function POSPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 480px', gap: 16, flex: 1, overflow: 'hidden' }}>
         {/* Products panel */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, overflow: 'hidden' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: theme.card, padding: '10px 16px', borderRadius: 12, border: `1px solid ${theme.border}` }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: theme.card, padding: '8px 16px', borderRadius: 12, border: `1px solid ${theme.border}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
               <h2 style={{ fontSize: 18, fontWeight: 800, color: theme.text, margin: 0 }}>Sale</h2>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Search products..."
-                style={{ ...inp, width: 200, padding: '7px 12px' }} />
+                style={{ ...inp, width: 220, padding: '7px 12px' }} />
+              <span style={{ fontSize: 10, color: theme.textFaint, fontWeight: 600, opacity: 0.6 }}>{products.length} Items</span>
             </div>
 
             {/* Customer Lookup moved to Top Header */}
@@ -495,11 +522,28 @@ export default function POSPage() {
               )}
             </div>
           </div>
+          {/* Category Quick Filter Bar */}
+          <div style={{ display: 'flex', gap: 10, overflowX: 'auto', padding: '4px 2px 14px', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+            {[{ id: 'ALL', name: 'All' }, ...categories, { id: 'NONE', name: 'Other' }].map((c: any) => (
+              <button key={c.id} onClick={() => setCatFilter(c.id)}
+                style={{
+                  padding: '10px 18px', borderRadius: 12, border: `1px solid ${catFilter === c.id ? c.color||'#7c3aed' : theme.border}`,
+                  background: catFilter === c.id ? (c.color||'#7c3aed') + '15' : theme.card,
+                  color: catFilter === c.id ? c.color||'#7c3aed' : theme.textMuted,
+                  fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all .2s',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 40,
+                  boxShadow: catFilter === c.id ? `0 4px 12px ${(c.color||'#7c3aed')}22` : 'none'
+                }}>
+                {c.name}
+              </button>
+            ))}
+          </div>
+
           {loading ? (
-            <div style={{ textAlign: 'center', padding: 40, color: theme.textFaint }}>Loading products...</div>
+            <div style={{ textAlign: 'center', padding: 40, color: theme.textFaint }}>Loading items...</div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, overflow: 'auto', paddingBottom: 8 }}>
-              {filtered.map((p: any, idx: number) => {
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10, overflow: 'auto', paddingBottom: 8 }}>
+              {filteredProducts.map((p: any, idx: number) => {
                 const isOutOfStock = p.stock <= 0;
                 const isNotAvailable = p.isAvailable === false;
                 const isLocked = isOutOfStock || isNotAvailable;

@@ -4,6 +4,7 @@ import { whatsappProcessor } from './processors/whatsapp.processor';
 import { dashboardProcessor } from './processors/dashboard.processor';
 import { aiInsightsProcessor } from './processors/ai.processor';
 import { analyticsAggregationProcessor } from './processors/analytics.processor';
+import { adminAnalyticsProcessor } from './processors/adminAnalytics.processor';
 import { logRedisError } from '../lib/redis';
 
 /**
@@ -81,4 +82,21 @@ export const startWorkers = () => {
   }).catch(e => console.error('[Queue] Failed to schedule analytics cron:', e));
 
   console.log('[Queue] Analytics Aggregation Worker connected & scheduled.');
+
+  // 5. Global Admin Precomputation Worker 👑
+  const adminWorker = new Worker('admin_precompute_queue', adminAnalyticsProcessor as any, {
+    connection: redisConnection,
+    concurrency: 1
+  });
+  adminWorker.on('error', (err) => logRedisError('QueueAdminPrecompute', err));
+
+  const adminQueue = new Queue('admin_precompute_queue', { 
+    connection: redisConnection,
+    defaultJobOptions: { removeOnComplete: true }
+  });
+  adminQueue.add('periodic_admin_precompute', {}, {
+    repeat: { every: 60000 } // Every 1 minute ⏰
+  }).catch(e => console.error('[Queue] Failed to schedule admin precompute:', e));
+
+  console.log('[Queue] Global Admin Precomputation Worker connected & scheduled.');
 };

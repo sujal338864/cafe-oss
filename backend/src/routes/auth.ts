@@ -57,7 +57,7 @@ router.post(
   '/login',
   asyncHandler(async (req, res) => {
     const { email, password } = req.body;
-    
+
     // FIX: Using findFirst for multi-tenant lookup + Type Casting to resolve lint false-positives
     const user = await (prisma.user as any).findFirst({
       where: { email },
@@ -171,11 +171,11 @@ router.post(
           if (!isValid) {
             throw new Error('AUTH_INVALID_PASSWORD');
           }
-          
+
           // Reuse existing user, potentially update legacy shopId for consistency
           user = await tx.user.update({
             where: { id: user.id },
-            data: { shopId: shop.id } 
+            data: { shopId: shop.id }
           });
         } else {
           // Create brand new global identity
@@ -228,7 +228,9 @@ router.post(
     const { shopId } = req.body;
     if (!shopId) return res.status(400).json({ error: 'shopId is required' });
 
-    const membership = await (prisma.membership as any).findFirst({
+    const isSuperAdmin = String(req.user!.role) === 'SUPER_ADMIN';
+
+    let membership = await (prisma.membership as any).findFirst({
       where: {
         shopId,
         user: { email: { equals: req.user!.email, mode: 'insensitive' } },
@@ -236,6 +238,17 @@ router.post(
       },
       include: { user: true, shop: true }
     });
+
+    // Super Admin Bypass: If no membership, fetch shop & user separately
+    if (!membership && isSuperAdmin) {
+      const [targetShop, userRecord] = await Promise.all([
+        prisma.shop.findUnique({ where: { id: shopId } }),
+        prisma.user.findUnique({ where: { id: req.user!.id } })
+      ]);
+      if (targetShop && userRecord) {
+        membership = { user: userRecord, shop: targetShop, role: 'SUPER_ADMIN', shopId, userId: userRecord.id };
+      }
+    }
 
     if (!membership) {
       return res.status(403).json({ error: 'You do not have access to this shop' });
@@ -250,7 +263,7 @@ router.post(
 
     const token = makeToken(membership.user.id, shopId, membership.role, membership.user.email);
     setAuthCookie(res, token);
-    
+
     // FETCH ALL MEMBERSHIPS FOR THIS EMAIL
     const membershipsRaw = await (prisma.membership as any).findMany({
       where: { user: { email: { equals: membership.user.email, mode: 'insensitive' } }, isActive: true },

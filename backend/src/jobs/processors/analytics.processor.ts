@@ -8,8 +8,22 @@ import { redis } from '../../lib/redis';
 export const analyticsAggregationProcessor = async () => {
   console.log('[Analytics-Cron] Starting periodic batch aggregation...');
   
+  const executeWithRetry = async <T>(fn: () => Promise<T>, retries = 2): Promise<T> => {
+    try {
+      return await fn();
+    } catch (err: any) {
+      const isTransient = err.code === 'P1001' || err.message?.includes('Can\'t reach database');
+      if (isTransient && retries > 0) {
+        console.warn(`[Analytics-Cron] Transient DB error. Retrying... (${retries} left)`);
+        await new Promise(r => setTimeout(r, 2000));
+        return executeWithRetry(fn, retries - 1);
+      }
+      throw err;
+    }
+  };
+
   try {
-    const shops = await prisma.shop.findMany({ select: { id: true } });
+    const shops = await executeWithRetry(() => prisma.shop.findMany({ select: { id: true } }));
 
     for (const shop of shops) {
       const shopId = shop.id;

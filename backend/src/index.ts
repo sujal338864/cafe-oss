@@ -106,6 +106,7 @@ import expenseRoutes from './routes/expenses';
 import analyticsRoutes from './routes/analytics';
 import aiRoutes from './routes/ai';
 import reportRoutes from './routes/reports';
+import adminRoutes from './routes/admin';
 import notificationRoutes from './routes/notifications';
 import subscriptionRoutes from './routes/subscriptions';
 import userRoutes from './routes/users';
@@ -145,6 +146,9 @@ dashboardRouter.use('/reports', reportRoutes);
 dashboardRouter.use('/notifications', notificationRoutes);
 dashboardRouter.use('/subscriptions', subscriptionRoutes);
 dashboardRouter.use('/users', userRoutes);
+
+// Admin routes (Global Admin layer)
+app.use('/api/admin', authenticate as any, withTenantContext as any, adminRoutes);
 
 app.use('/api', dashboardRouter);
 

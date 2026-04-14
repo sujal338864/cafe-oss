@@ -9,21 +9,22 @@ import { useSocket } from '@/context/SocketContext';
 import api from '@/lib/api';
 
 const ALL_NAV = [
-  { href: '/dashboard',            label: 'Dashboard',  icon: '▦',   roles: ['ADMIN', 'MANAGER'] },
-  { href: '/dashboard/pos',        label: 'New Sale',   icon: '⊕',   roles: ['ADMIN', 'MANAGER', 'EMPLOYEE'] },
-  { href: '/dashboard/kitchen',    label: 'Kitchen',    icon: '🍳',  roles: ['ADMIN', 'MANAGER', 'EMPLOYEE'] },
-  { href: '/dashboard/products',   label: 'Products',   icon: '📦',  roles: ['ADMIN', 'MANAGER', 'EMPLOYEE'] },
-  { href: '/dashboard/categories', label: 'Categories', icon: '🏷️',  roles: ['ADMIN', 'MANAGER', 'EMPLOYEE'] },
-  { href: '/dashboard/orders',     label: 'Orders',     icon: '🧾',  roles: ['ADMIN', 'MANAGER', 'EMPLOYEE'] },
-  { href: '/dashboard/customers',  label: 'Customers',  icon: '👤',  roles: ['ADMIN', 'MANAGER', 'EMPLOYEE'] },
-  { href: '/dashboard/suppliers',  label: 'Suppliers',  icon: '🚚',  roles: ['ADMIN', 'MANAGER'] },
-  { href: '/dashboard/purchases',  label: 'Purchases',  icon: '🛒',  roles: ['ADMIN', 'MANAGER'] },
-  { href: '/dashboard/expenses',   label: 'Expenses',   icon: '💸',  roles: ['ADMIN', 'MANAGER'] },
-  { href: '/dashboard/analytics',  label: 'Analytics',  icon: '📊',  roles: ['ADMIN', 'MANAGER'] },
-  { href: '/dashboard/reports',    label: 'Reports',    icon: '📈',  roles: ['ADMIN', 'MANAGER'] },
-  { href: '/dashboard/qr',         label: 'QR Codes',   icon: '📱',  roles: ['ADMIN', 'MANAGER'] },
-  { href: '/dashboard/staff',      label: 'Staff Management', icon: '👥', roles: ['ADMIN', 'MANAGER'] },
-  { href: '/dashboard/settings',   label: 'Settings',   icon: '⚙️',  roles: ['ADMIN', 'MANAGER'] },
+  { href: '/dashboard',            label: 'Dashboard',  icon: '▦',   roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
+  { href: '/dashboard/pos',        label: 'New Sale',   icon: '⊕',   roles: ['ADMIN', 'MANAGER', 'EMPLOYEE', 'SUPER_ADMIN'] },
+  { href: '/dashboard/kitchen',    label: 'Kitchen',    icon: '🍳',  roles: ['ADMIN', 'MANAGER', 'EMPLOYEE', 'SUPER_ADMIN'] },
+  { href: '/dashboard/products',   label: 'Products',   icon: '📦',  roles: ['ADMIN', 'MANAGER', 'EMPLOYEE', 'SUPER_ADMIN'] },
+  { href: '/dashboard/categories', label: 'Categories', icon: '🏷️',  roles: ['ADMIN', 'MANAGER', 'EMPLOYEE', 'SUPER_ADMIN'] },
+  { href: '/dashboard/orders',     label: 'Orders',     icon: '🧾',  roles: ['ADMIN', 'MANAGER', 'EMPLOYEE', 'SUPER_ADMIN'] },
+  { href: '/dashboard/customers',  label: 'Customers',  icon: '👤',  roles: ['ADMIN', 'MANAGER', 'EMPLOYEE', 'SUPER_ADMIN'] },
+  { href: '/dashboard/suppliers',  label: 'Suppliers',  icon: '🚚',  roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
+  { href: '/dashboard/purchases',  label: 'Purchases',  icon: '🛒',  roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
+  { href: '/dashboard/expenses',   label: 'Expenses',   icon: '💸',  roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
+  { href: '/dashboard/analytics',  label: 'Analytics',  icon: '📊',  roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
+  { href: '/dashboard/reports',    label: 'Reports',    icon: '📈',  roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
+  { href: '/dashboard/qr',         label: 'QR Codes',   icon: '📱',  roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
+  { href: '/dashboard/staff',      label: 'Staff Management', icon: '👥', roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
+  { href: '/dashboard/settings',   label: 'Settings',   icon: '⚙️',  roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
+  { href: '/super-admin',          label: 'Admin Portal', icon: '👑', roles: ['SUPER_ADMIN'] },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

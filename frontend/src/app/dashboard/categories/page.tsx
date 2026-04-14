@@ -22,7 +22,7 @@ export default function CategoriesPage() {
 
   const [showModal,  setShowModal]  = useState(false);
   const [editing,    setEditing]    = useState<any>(null);
-  const [form,       setForm]       = useState({ name: '', color: '#7c3aed' });
+  const [form,       setForm]       = useState({ name: '', color: '#7c3aed', order: 0 });
   const [localError, setLocalError] = useState('');
 
   const saveMutation = useMutation({
@@ -43,14 +43,14 @@ export default function CategoriesPage() {
 
   const openAdd = () => {
     setEditing(null);
-    setForm({ name: '', color: '#7c3aed' });
+    setForm({ name: '', color: '#7c3aed', order: categories.length });
     setLocalError('');
     setShowModal(true);
   };
 
   const openEdit = (cat: any) => {
     setEditing(cat);
-    setForm({ name: cat.name, color: cat.color || '#7c3aed' });
+    setForm({ name: cat.name, color: cat.color || '#7c3aed', order: cat.order || 0 });
     setLocalError('');
     setShowModal(true);
   };
@@ -237,6 +237,13 @@ export default function CategoriesPage() {
                 <input value={form.name} onChange={e => setForm(v => ({ ...v, name: e.target.value }))}
                   placeholder="e.g. Beverages, Dairy, Snacks..." style={inp}
                   onKeyDown={e => e.key === 'Enter' && save()} />
+              </div>
+
+              <div>
+                <label style={lbl}>Display Order</label>
+                <input type="number" value={form.order} onChange={e => setForm(v => ({ ...v, order: parseInt(e.target.value)||0 }))}
+                  placeholder="0" style={inp} />
+                <p style={{ fontSize: 10, color: theme.textFaint, marginTop: 4 }}>Lower numbers show first in POS</p>
               </div>
 
               <div>

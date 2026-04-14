@@ -25,6 +25,7 @@ enum Plan {
 }
 
 enum Role {
+  SUPER_ADMIN
   ADMIN
   MANAGER
   EMPLOYEE
@@ -156,6 +157,7 @@ model Membership {
 
   @@unique([userId, shopId])
   @@index([userId])
+  @@index([shopId, isActive, role])
   @@index([shopId])
 }
 
@@ -169,12 +171,13 @@ model Category {
   shop      Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
   name      String
   color     String?
+  order     Int       @default(0)
   createdAt DateTime  @default(now())
 
   products  Product[]
 
   @@unique([shopId, name])
-  @@index([shopId])
+  @@index([shopId, order])
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -186,7 +189,7 @@ model Product {
   shopId        String
   shop          Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
   categoryId    String?
-  category      Category? @relation(fields: [categoryId], references: [id])
+  category      Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   name          String
   sku           String?
   barcode       String?
@@ -208,11 +211,9 @@ model Product {
   stockHistory  StockHistory[]
 
   @@unique([shopId, sku])
-  @@index([shopId, isActive])
-  @@index([shopId, isAvailable])
-  @@index([shopId, stock])
+  @@index([shopId, isActive, isAvailable, createdAt])
+  @@index([shopId, stock, lowStockAlert])
   @@index([shopId, name])
-  @@index([shopId, isActive, stock])
   @@index([shopId, categoryId])
 }
 
@@ -308,8 +309,7 @@ model Order {
 
   items  OrderItem[]
 
-  @@index([shopId, createdAt])
-  @@index([shopId, status])
+  @@index([shopId, createdAt, status])
   @@index([shopId, invoiceNumber])
   @@index([shopId, customerId])
   @@index([shopId, notes])
@@ -393,8 +393,7 @@ model Expense {
   date        DateTime        @default(now())
   createdAt   DateTime        @default(now())
 
+  @@index([shopId, date, category, amount])
   @@index([shopId, createdAt])
-  @@index([shopId, date])
-  @@index([shopId, category])
 }
 

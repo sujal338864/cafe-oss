@@ -4,7 +4,10 @@ export const getCategories = async (shopId: string) => {
   return prisma.category.findMany({
     where: { shopId },
     include: { _count: { select: { products: true } } },
-    orderBy: { name: 'asc' }
+    orderBy: [
+      { order: 'asc' },
+      { name: 'asc' }
+    ] as any
   });
 };
 
