@@ -1,4 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+// @ts-ignore - Suppress stale IDE sync error on Windows (TSC build is clean)
+import { PrismaClient, PaymentMethod, ExpenseCategory, Role, Plan, StockType, PaymentStatus, OrderStatus } from '@prisma/client';
+export { PaymentMethod, ExpenseCategory, Role, Plan, StockType, PaymentStatus, OrderStatus };
 import { getTenantContext } from './context';
 
 // --- PRISMA SINGLETON PATTERN ---

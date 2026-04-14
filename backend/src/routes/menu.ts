@@ -1,8 +1,6 @@
 import { Router } from 'express';
-import { prisma } from '../common/prisma';
+import { prisma, PaymentMethod } from '../common/prisma';
 import { asyncHandler, validateRequest } from '../middleware/auth';
-// @ts-expect-error - IDE sync issue with Prisma Client enums
-import { PaymentMethod } from '@prisma/client';
 import { z } from 'zod';
 import { sendWhatsAppBill } from '../lib/whatsapp';
 import { getCache, setCache, deleteCache } from '../common/cache';
