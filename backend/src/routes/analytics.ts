@@ -3,7 +3,7 @@
 
 import { Router } from 'express';
 import { authenticate, authorize, asyncHandler, AuthRequest } from '../middleware/auth';
-import { getCache, setCache } from '../common/cache';
+import { setCache } from '../common/cache';
 import { calculateDashboardStats, AnalyticsService } from '../services/analytics.service';
 import { AnalyticsServiceV2 } from '../services/analytics.service.v2';
 import { prisma } from '../common/prisma';

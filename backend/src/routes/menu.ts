@@ -158,7 +158,7 @@ router.get('/recommendations', menuLimiter, asyncHandler(async (req, res) => {
     const recommendations = scored
       .sort((a, b) => b.score - a.score)
       .slice(0, 5)
-      .map(({ score, costPrice, ...rest }) => rest); // Hide internal score/cost from public API
+      .map(({ score: _s, costPrice: _c, ...rest }) => rest); // Hide internal score/cost from public API
 
     return res.json({ recommendations });
   } catch (error: any) {
@@ -199,7 +199,6 @@ router.post('/order', orderLimiter, validateRequest(publicOrderSchema), asyncHan
     });
     if (!shop) return res.status(404).json({ error: 'Shop not found' });
     
-    const redeemRate = (shop as any).redeemRate || 10;
     const loyaltyRate = (shop as any).loyaltyRate || 0.1;
     
     const userId = shop.users[0]?.id;
@@ -477,7 +476,6 @@ async function updatePostOrderMetrics(
 
   // 2. Loyalty & WhatsApp
   if (customerId) {
-    const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { loyaltyRate: true, name: true } as any }) as any;
     const pointsEarned = paymentStatus === 'PAID' ? Math.floor(finalTotal * loyaltyRate) : 0;
     await prisma.customer.update({
       where: { id: customerId },

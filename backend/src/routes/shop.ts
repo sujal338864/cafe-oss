@@ -1,7 +1,8 @@
 import { Router, Response } from 'express';
 import { prisma } from '../common/prisma';
 import { authenticate, asyncHandler, AuthRequest } from '../middleware/auth';
-import { makeToken, setAuthCookie, userResponse } from './auth';
+// Unused imports removed
+
 
 const router = Router();
 

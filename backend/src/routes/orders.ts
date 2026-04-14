@@ -425,8 +425,6 @@ router.post(
     if (!order) return res.status(404).json({ error: 'Order not found' });
     if (!order.customer?.phone) return res.status(400).json({ error: 'Customer has no phone number' });
 
-    const shop = await prisma.shop.findUnique({ where: { id: req.user!.shopId }, select: { name: true, loyaltyRate: true } as any }) as any;
-    const loyaltyRate = shop?.loyaltyRate || 0.1;
     const customer = order.customerId ? (await prisma.customer.findUnique({ where: { id: order.customerId } })) as any : null;
 
     const sent = await sendWhatsAppBill(
