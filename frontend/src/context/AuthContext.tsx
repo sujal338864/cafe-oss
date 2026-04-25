@@ -111,6 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = (user: User, shop: Shop, token: string) => {
     localStorage.setItem('shop_os_user', JSON.stringify(user));
     localStorage.setItem('shop_os_shop', JSON.stringify(shop));
+    localStorage.setItem('shop_os_token', token);
     setUser(user);
     setShop(shop);
     setToken(token);
@@ -125,6 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Update local state with new shop info AND new token
         localStorage.setItem('shop_os_user', JSON.stringify(newUser));
         localStorage.setItem('shop_os_shop', JSON.stringify(newShop));
+        localStorage.setItem('shop_os_token', newToken);
         
         setUser(newUser);
         setShop(newShop);
@@ -148,6 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     localStorage.removeItem('shop_os_user');
     localStorage.removeItem('shop_os_shop');
+    localStorage.removeItem('shop_os_token');
     delete api.defaults.headers.common['Authorization'];
     setToken(null);
     setUser(null);

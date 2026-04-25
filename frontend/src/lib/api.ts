@@ -9,8 +9,14 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  // Authorization is now securely handled natively by the browser via HttpOnly cookies (withCredentials: true)
-  // Completely eliminated localStorage token vulnerabilities against XSS.
+  // 1. Authorization is handled natively by the browser via HttpOnly cookies (withCredentials: true)
+  // 2. FALLBACK: If cookies are blocked (cross-domain), use Bearer token from localStorage
+  if (typeof window !== 'undefined') {
+    const token = localStorage.getItem('shop_os_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+  }
   return config;
 });
 
