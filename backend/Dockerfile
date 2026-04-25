@@ -16,6 +16,8 @@ RUN npx prisma generate
 
 # Build TypeScript
 RUN npm run build
+# Ensure generated assets are available in dist for production runtime
+RUN cp -r src/generated dist/generated
 
 # Expose port
 EXPOSE 4000
