@@ -52,7 +52,7 @@ export const MarketingService = {
    * Generate an Instagram/Facebook caption based on product or offer.
    */
   generateCaption: async (prompt: string, language: string = 'English', brand: any = null) => {
-    if (!openai) return MarketingService.getFallbackResponse('caption', prompt, language);
+    if (!openai) return MarketingService.getFallbackResponse('caption', prompt);
     const context = MarketingService._buildBrandContext(brand);
 
     try {
@@ -65,10 +65,10 @@ export const MarketingService = {
         max_tokens: 150,
         temperature: 0.7,
       });
-      return response.choices[0].message.content || MarketingService.getFallbackResponse('caption', prompt, language);
+      return response.choices[0].message.content || MarketingService.getFallbackResponse('caption', prompt);
     } catch (err: any) {
       logger.error(`[MARKETING] OpenAI Error: ${err.message}`);
-      return MarketingService.getFallbackResponse('caption', prompt, language);
+      return MarketingService.getFallbackResponse('caption', prompt);
     }
   },
 
