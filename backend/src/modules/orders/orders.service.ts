@@ -121,7 +121,7 @@ export const createOrder = async (shopId: string, userId: string, data: any) => 
           shopId, userId, customerId: customerId || null,
           invoiceNumber, subtotal, taxAmount, discountAmount: totalDiscount,
           totalAmount, paidAmount: paymentStatus === 'PAID' ? totalAmount : 0,
-          paymentMethod, paymentStatus, status: 'COMPLETED', notes: notes || null,
+          paymentMethod, paymentStatus, status: 'COMPLETED', kitchenStatus: 'PENDING', notes: notes || null,
           couponId, couponDiscount: calculatedCouponDiscount,
           items: {
             create: items.map((item: any) => ({

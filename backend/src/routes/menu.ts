@@ -424,6 +424,7 @@ router.post('/order', orderLimiter, validateRequest(publicOrderSchema), asyncHan
           paymentMethod: pm,
           paymentStatus: paymentStatus as any,
           status: 'PENDING' as any,
+          kitchenStatus: 'PENDING' as any,
           notes: (tableNumber ? 'Table: ' + tableNumber + '. ' : '') + (notes || ''),
           items: { create: orderItems },
         },
