@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { prisma } from '../common/prisma';
 import { z } from 'zod';
 import { authenticate, asyncHandler, AuthRequest, validateRequest } from '../middleware/auth';
+import { OrgService } from '../services/org.service';
 
 const router = Router();
 
@@ -93,7 +94,6 @@ router.post(
     
     // Safety check if trying to create under an organization
     if (organizationId) {
-      const { OrgService } = require('../services/org.service');
       const hasAccess = await (prisma as any).orgMembership.findFirst({
         where: { organizationId, userId: currentUser.id, orgRole: 'HQ_ADMIN' }
       });
@@ -101,7 +101,7 @@ router.post(
     }
 
     // Check if user already owns a shop with this exact name
-    let existingMembership = await (prisma.membership as any).findFirst({
+    const existingMembership = await (prisma.membership as any).findFirst({
       where: { 
         user: { id: currentUser.id }, 
         shop: { name: name.trim() } 

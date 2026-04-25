@@ -20,6 +20,7 @@ export const MenuSyncService = {
 
     try {
       // 2. Queue in BullMQ for async processing
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { menuSyncQueue } = require('../jobs/queues');
       if (menuSyncQueue) {
         await menuSyncQueue.add('process-sync', {

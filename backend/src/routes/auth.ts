@@ -294,7 +294,7 @@ router.post(
     const { name, email, password } = req.body;
     if (!name || !email || !password) return res.status(400).json({ error: 'Name, email, and password required' });
 
-    let existingUser = await (prisma.user as any).findUnique({ where: { email } });
+    const existingUser = await (prisma.user as any).findUnique({ where: { email } });
     if (existingUser) return res.status(400).json({ error: 'Account already exists. Please log in.' });
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -494,7 +494,6 @@ router.post(
         });
 
         // 2. Handle Franchise Mode setup
-        let orgId = null;
         if (mode === 'FRANCHISE') {
           // Create Organization
           const org = await tx.organization.create({
@@ -505,7 +504,6 @@ router.post(
               plan: 'PRO'
             }
           });
-          orgId = org.id;
 
           // Link Shop to Org
           await tx.shop.update({

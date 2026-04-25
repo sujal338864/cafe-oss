@@ -6,11 +6,9 @@ import { aiInsightsProcessor } from './processors/ai.processor';
 import { analyticsAggregationProcessor } from './processors/analytics.processor';
 import { adminAnalyticsProcessor } from './processors/adminAnalytics.processor';
 import { logRedisError } from '../lib/redis';
-import { emailWorker } from './workers/email.worker';
 import { scheduleDailyMarketingBrain } from './queues/marketing.queue';
 import { marketingBrainWorker } from './workers/marketing.worker';
 
-import { menuSyncQueue } from './queues';
 import { menuSyncProcessor } from './processors/menuSync.processor';
 
 /**
@@ -88,7 +86,9 @@ export const startWorkers = () => {
   console.log('[Queue] Marketing Brain Worker connected & cron scheduled.');
 
   // 9. Weekly Growth Reports 📈
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { weeklyGrowthReportProcessor } = require('./processors/weeklyGrowthReport.processor');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { scheduleWeeklyGrowthReport } = require('./queues/growth.queue');
   
   const growthReportWorker = new Worker('weekly_growth_report_queue', weeklyGrowthReportProcessor, {

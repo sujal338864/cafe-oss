@@ -1,5 +1,5 @@
 import { prisma } from '../common/prisma';
-import { getCache, setCache } from '../common/cache';
+import { getCache, setCache, deleteCache } from '../common/cache';
 import { logger } from '../lib/logger';
 import { MenuSyncService } from './menuSync.service';
 
@@ -54,7 +54,6 @@ export const OrgService = {
     });
 
     // CRITICAL FIX: Invalidate HQ dashboard cache so the new branch shows up instantly
-    const { deleteCache } = require('../common/cache');
     await deleteCache(`org:dashboard:${orgId}:${userId}`);
 
     // CRITICAL FIX: Also ensure a regular shop Membership exists so /auth/switch doesn't 403
@@ -296,7 +295,6 @@ export const OrgService = {
       select: { id: true, name: true }
     });
 
-    const blueprint: any[] = template.items;
     const syncMode = template.syncMode || 'ADDITIVE'; // ADDITIVE | REPLACE
 
     const results: any = [];

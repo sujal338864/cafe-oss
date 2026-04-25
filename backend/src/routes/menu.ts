@@ -205,7 +205,7 @@ router.get('/recommendations', menuLimiter, asyncHandler(async (req, res) => {
     const recommendations = scored
       .sort((a, b) => b.score - a.score)
       .slice(0, 5)
-      .map(({ score: _s, costPrice: _c, ...rest }) => rest); // Hide internal score/cost from public API
+      .map(({ score: _, costPrice: __, ...rest }) => rest); // Hide internal score/cost from public API
 
     return res.json({ recommendations });
   } catch (error: any) {
@@ -433,7 +433,7 @@ router.post('/order', orderLimiter, validateRequest(publicOrderSchema), asyncHan
       // Increment coupon usedCount atomically inside transaction
       if (resolvedCouponCode) {
         try {
-          const updatedCoupon = await (tx as any).coupon.updateMany({
+          await (tx as any).coupon.updateMany({
             where: { shopId: shop.id, code: resolvedCouponCode, isActive: true },
             data: { usedCount: { increment: 1 } }
           });
