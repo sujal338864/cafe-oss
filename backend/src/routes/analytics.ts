@@ -177,9 +177,10 @@ router.get('/reports/monthly', authenticate, authorize('ADMIN', 'MANAGER'), asyn
  */
 /**
  * GET /api/analytics/debug/db-stats
- * (Admin-only health check — counts per resource)
+ * (Health check — global counts per resource)
+ * RESTRICTED TO SUPER_ADMIN ONLY to prevent cross-tenant intelligence leaks.
  */
-router.get('/debug/db-stats', authenticate, authorize('ADMIN'), asyncHandler(async (req, res) => {
+router.get('/debug/db-stats', authenticate, authorize('SUPER_ADMIN'), asyncHandler(async (req, res) => {
   const [orders, products, shops, users] = await Promise.all([
     prisma.order.count(),
     prisma.product.count(),

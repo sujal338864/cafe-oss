@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search, ShoppingCart, Plus, Minus, ArrowLeft, Check, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
 import { getOptimizedImage } from '@/lib/cloudinary';
 
-type Product = { id: string; name: string; sellingPrice: number; description?: string; imageUrl?: string; categoryId?: string; stock: number; taxRate: number; originalPrice?: number; discountedPrice?: number; activeRule?: string | null; isAvailable?: boolean; };
+type Product = { id: string; name: string; sellingPrice: number; description?: string; imageUrl?: string; categoryId?: string; stock: number; taxRate: number; originalPrice?: number; discountedPrice?: number; activeRule?: string | null; isAvailable?: boolean; isCombo?: boolean; comboId?: string; fixedPrice?: number; };
 type Category = { id: string; name: string; color?: string };
 type CartItem = Product & { qty: number; note: string };
 
@@ -196,12 +196,20 @@ function MenuContent() {
   const [result, setResult] = useState<{ id?: string; invoiceNumber: string; tokenNumber?: string; paymentStatus: string; status: string; whatsappSent: boolean } | null>(null);
   const [noteFor, setNoteFor] = useState<string | null>(null);
   const [loyaltyPoints, setLoyaltyPoints] = useState(0);
+  const [totalPurchases, setTotalPurchases] = useState(0);
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
   const [loyaltyRate, setLoyaltyRate] = useState(0.1);
   const [redeemRate, setRedeemRate] = useState(10);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [latestError, setLatestError] = useState<string | null>(null);
+  const [combos, setCombos] = useState<any[]>([]);
   const isDebug = searchParams.get('debug') === '1';
+
+  // Coupon state
+  const [couponInput,   setCouponInput]   = useState('');
+  const [couponData,    setCouponData]    = useState<{ code: string; discount: number; type: string } | null>(null);
+  const [couponErr,     setCouponErr]     = useState('');
+  const [couponLoading, setCouponLoading] = useState(false);
 
   useEffect(() => {
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
@@ -214,6 +222,7 @@ function MenuContent() {
       setLatestError(null);
       const data = await get(`/api/menu/customer?phone=${digits}&shopId=${shopId}`);
       if (data.loyaltyPoints) setLoyaltyPoints(data.loyaltyPoints);
+      if (data.totalPurchases !== undefined) setTotalPurchases(data.totalPurchases);
       if (data.name && !name.trim()) setName(data.name);
       if (!data.name) setLatestError('No customer found for this number');
     } catch (err: any) {
@@ -235,7 +244,7 @@ function MenuContent() {
   useEffect(() => {
     const digits = phone.replace(/\D/g, '');
     if (digits.length === 10) lookupCustomer(digits);
-    else { setLoyaltyPoints(0); setPointsToRedeem(0); }
+    else { setLoyaltyPoints(0); setPointsToRedeem(0); setTotalPurchases(0); setLatestError(null); }
   }, [phone, lookupCustomer]);
 
   useEffect(() => {
@@ -259,6 +268,7 @@ function MenuContent() {
   useEffect(() => {
     if (menuData) {
       setProducts(menuData.products || []);
+      setCombos(menuData.combos || []);
       setAllCategories(menuData.categories || []);
       setShopName(menuData.shop?.name || 'Our Menu');
       setPricingEnabled(!!menuData.shop?.pricingEnabled);
@@ -283,15 +293,56 @@ function MenuContent() {
   const inc = useCallback((id: string) => setCart(c => c.map(i => i.id === id ? { ...i, qty: i.qty + 1 } : i)), []);
   const setNote = useCallback((id: string, note: string) => setCart(c => c.map(i => i.id === id ? { ...i, note } : i)), []);
 
+  const tiers = menuData?.tiers || [];
+  const activeTier = (phone.replace(/\D/g, '').length === 10 && tiers.length > 0)
+    ? tiers.filter((t: any) => totalPurchases >= t.minPoints).sort((a: any, b: any) => b.minPoints - a.minPoints)[0]
+    : null;
+
   const subtotal = cart.reduce((s, i) => s + i.sellingPrice * i.qty, 0);
   const tax = cart.reduce((s, i) => s + (i.sellingPrice * i.qty) * ((i.taxRate || 0) / 100), 0);
   const REDEEM_RATE = redeemRate || 10;
   const total = subtotal + tax;
-  const pointsDiscount = (pointsToRedeem / REDEEM_RATE) || 0;
-  const finalTotal = Math.max(0, total - pointsDiscount);
+  const tierDiscount = activeTier ? subtotal * (activeTier.discountRate / 100) : 0;
+  const couponDiscount  = couponData ? couponData.discount : 0;
+  const pointsDiscount  = (pointsToRedeem / REDEEM_RATE) || 0;
+  const finalTotal = Math.max(0, total - pointsDiscount - couponDiscount - tierDiscount);
   const pointsEarned = Math.floor(finalTotal * loyaltyRate);
 
-  const cats = useMemo(() => ['All', ...allCategories.map(c => c.name)], [allCategories]);
+  const applyCoupon = async () => {
+    const code = couponInput.trim().toUpperCase();
+    if (!code) return;
+    setCouponLoading(true); setCouponErr('');
+    try {
+      const d = await post('/api/menu/coupon/validate', {
+        shopId, code, orderTotal: total
+      });
+      if (d.valid) {
+        setCouponData({ code: d.coupon.code, discount: d.discount, type: d.coupon.type });
+        setPointsToRedeem(0); // mutual exclusivity
+        setCouponErr('');
+      } else {
+        setCouponData(null);
+        setCouponErr(d.error || 'Invalid coupon');
+      }
+    } catch (e: any) {
+      setCouponData(null);
+      setCouponErr(e?.response?.data?.error || 'Could not validate coupon');
+    } finally { setCouponLoading(false); }
+  };
+
+  const removeCoupon = () => { setCouponData(null); setCouponInput(''); setCouponErr(''); };
+
+  // Redeem loyalty points — removes coupon
+  const handleRedeemPoints = () => {
+    if (pointsToRedeem > 0) {
+      setPointsToRedeem(0);
+    } else {
+      setPointsToRedeem(Math.floor(loyaltyPoints / 100) * 100);
+      removeCoupon(); // mutual exclusivity: remove coupon if points applied
+    }
+  };
+
+  const cats = useMemo(() => ['All', ...(combos.length > 0 ? ['Combos'] : []), ...allCategories.map(c => c.name)], [allCategories, combos.length]);
   const catMap = useMemo(() => Object.fromEntries(allCategories.map(c => [c.id, c.name])), [allCategories]);
   const count = cart.reduce((s, i) => s + i.qty, 0);
   const filtered = useMemo(() => products.filter(p => (cat === 'All' || catMap[p.categoryId || ''] === cat) && p.name.toLowerCase().includes(debouncedSearch.toLowerCase())), [products, cat, catMap, debouncedSearch]);
@@ -308,7 +359,17 @@ function MenuContent() {
         shopId, customerName: name.trim(), customerPhone: phone.trim() || undefined,
         tableNumber: table.trim() || undefined, notes: notes.trim() || undefined,
         paymentMethod: pay, redeemPoints: pointsToRedeem,
-        items: cart.map(i => ({ productId: i.id, name: i.name, quantity: i.qty, unitPrice: i.sellingPrice, costPrice: 0, taxRate: i.taxRate, discount: 0 }))
+        couponCode: couponData?.code ?? undefined,
+        items: cart.map(i => ({ 
+          productId: i.isCombo ? undefined : i.id, 
+          comboId: i.isCombo ? i.id : undefined,
+          name: i.name, 
+          quantity: i.qty, 
+          unitPrice: i.sellingPrice, 
+          costPrice: 0, 
+          taxRate: i.taxRate, 
+          discount: 0 
+        }))
       });
       setResult({
         id: d.order?.id || '', invoiceNumber: d.order?.invoiceNumber || d.invoiceNumber || '',
@@ -408,14 +469,37 @@ function MenuContent() {
                 <span className="font-bold text-slate-900">{fmt(item.sellingPrice * item.qty)}</span>
               </div>
             ))}
+            {/* Discount lines */}
+            {(couponDiscount > 0 || pointsDiscount > 0 || tierDiscount > 0) && (
+              <div className="mt-3 pt-3 border-t border-slate-100 space-y-1.5">
+                {tierDiscount > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-emerald-600 font-semibold">⭐ {activeTier?.name} ({activeTier?.discountRate}%)</span>
+                    <span className="text-emerald-600 font-bold">−{fmt(tierDiscount)}</span>
+                  </div>
+                )}
+                {couponDiscount > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-emerald-600 font-semibold">🎟️ Coupon ({couponData?.code})</span>
+                    <span className="text-emerald-600 font-bold">−{fmt(couponDiscount)}</span>
+                  </div>
+                )}
+                {pointsDiscount > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-amber-600 font-semibold">⭐ Loyalty Points</span>
+                    <span className="text-amber-600 font-bold">−{fmt(pointsDiscount)}</span>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="flex justify-between mt-3 pt-3 border-t-2 border-slate-200 font-black text-lg text-slate-900">
               <span>Total</span>
-              <span className="text-emerald-600">{fmt(total)}</span>
+              <span className="text-emerald-600">{fmt(finalTotal)}</span>
             </div>
           </div>
 
           {result?.id && isPaid && (
-            <button onClick={() => window.open(API + '/api/menu/order/' + result.id + '/invoice')}
+            <button onClick={() => window.open(`${API}/api/menu/order/${result.id}/invoice?shopId=${shopId}`)}
               className="w-full bg-slate-50 border-2 border-slate-200 text-slate-600 p-3.5 rounded-xl font-bold flex items-center justify-center gap-2 mb-4 hover:bg-slate-100 hover:text-slate-900 transition-colors active:scale-95">
               📄 Download Invoice
             </button>
@@ -423,7 +507,7 @@ function MenuContent() {
 
           {table && <p className="text-slate-500 font-medium mb-6">🪑 Table <b className="text-slate-900">{table}</b></p>}
 
-          <button onClick={() => { setCart([]); setStep('menu'); setName(''); setPhone(''); setTable(''); setNotes(''); setResult(null); setPointsToRedeem(0); }}
+          <button onClick={() => { setCart([]); setStep('menu'); setName(''); setPhone(''); setTable(''); setNotes(''); setResult(null); setPointsToRedeem(0); removeCoupon(); }}
             className="w-full bg-slate-900 border-none text-white p-4 rounded-xl font-bold text-base hover:bg-slate-800 transition-all active:scale-95 shadow-[0_4px_14px_rgba(0,0,0,0.15)]">
             Order More
           </button>
@@ -487,19 +571,54 @@ function MenuContent() {
           <div className="mt-5 pt-4 border-t border-slate-100">
             <div className="flex justify-between text-sm text-slate-500 mb-1.5 px-1 font-medium"><span>Item Total</span><span>{fmt(subtotal)}</span></div>
             {tax > 0 && <div className="flex justify-between text-sm text-slate-500 mb-1.5 px-1 font-medium"><span>Taxes</span><span>{fmt(Math.round(tax))}</span></div>}
+            {couponDiscount > 0 && <div className="flex justify-between text-sm text-emerald-600 mb-1.5 px-1 font-bold"><span>🎟️ {couponData?.code}</span><span>−{fmt(couponDiscount)}</span></div>}
             {pointsDiscount > 0 && <div className="flex justify-between text-sm text-amber-500 mb-1.5 px-1 font-bold"><span>Points Applied</span><span>−{fmt(pointsDiscount)}</span></div>}
             <div className="flex justify-between items-center text-lg font-black text-slate-900 mt-3 bg-slate-50 p-3 rounded-xl"><span>Total Pay</span><span className="text-emerald-600">{fmt(finalTotal)}</span></div>
           </div>
+
+          {/* Coupon Code */}
+          <div className="mt-4 space-y-2">
+            {!couponData ? (
+              <div className="flex gap-2">
+                <input
+                  value={couponInput}
+                  onChange={e => { setCouponInput(e.target.value.toUpperCase()); setCouponErr(''); }}
+                  onKeyDown={e => e.key === 'Enter' && applyCoupon()}
+                  placeholder="🎟️ Have a coupon code?"
+                  className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider placeholder:font-normal placeholder:normal-case placeholder:tracking-normal focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:outline-none transition-all"
+                />
+                <button
+                  onClick={applyCoupon}
+                  disabled={couponLoading || !couponInput.trim()}
+                  className="px-4 py-3 bg-slate-900 text-white rounded-xl font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 transition-all whitespace-nowrap">
+                  {couponLoading ? '...' : 'Apply'}
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
+                <div>
+                  <div className="font-black text-emerald-700 text-sm tracking-wider">🎟️ {couponData.code}</div>
+                  <div className="text-xs text-emerald-600 font-medium">−{fmt(couponDiscount)} off applied!</div>
+                </div>
+                <button onClick={removeCoupon} className="text-red-400 hover:text-red-600 font-black text-lg leading-none active:scale-95">×</button>
+              </div>
+            )}
+            {couponErr && <div className="text-xs text-red-500 font-semibold px-1">⚠ {couponErr}</div>}
+          </div>
         </div>
 
-        {/* Loyalty Points */}
+        {/* Loyalty Points — hidden when coupon is active */}
         {loyaltyPoints >= 100 && (
-          <div className="bg-gradient-to-r from-amber-50 to-amber-100/50 border border-amber-200 rounded-3xl p-5 flex justify-between items-center shadow-sm">
+          <div className={`bg-gradient-to-r from-amber-50 to-amber-100/50 border rounded-3xl p-5 flex justify-between items-center shadow-sm transition-all ${
+            couponData ? 'border-amber-100 opacity-40 pointer-events-none' : 'border-amber-200'
+          }`}>
             <div>
               <div className="text-sm font-black text-amber-800 flex items-center gap-1.5"><Sparkles size={16} className="text-amber-500" /> {loyaltyPoints} Points Available</div>
-              <div className="text-[11px] text-amber-700/80 font-medium mt-0.5">Use for instant discount on this order</div>
+              <div className="text-[11px] text-amber-700/80 font-medium mt-0.5">
+                {couponData ? 'Remove coupon to use points' : 'Use for instant discount on this order'}
+              </div>
             </div>
-            <button onClick={() => setPointsToRedeem(pointsToRedeem > 0 ? 0 : Math.floor(loyaltyPoints / 100) * 100)}
+            <button onClick={handleRedeemPoints} disabled={!!couponData}
               className={`px-4 py-2 rounded-xl text-xs font-bold transition-all active:scale-95 ${pointsToRedeem > 0 ? 'bg-amber-500 text-white shadow-md shadow-amber-500/20' : 'bg-white border text-amber-600 border-amber-200 hover:bg-amber-50'}`}>
               {pointsToRedeem > 0 ? '✓ Applied' : 'Redeem Now'}
             </button>
@@ -511,7 +630,14 @@ function MenuContent() {
           <div>
             <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-1 flex justify-between items-end">
               <span>Your Details</span>
-              {loyaltyPoints > 0 && name && <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-[10px] lowercase flex items-center gap-1 tracking-normal"><Sparkles size={10} /> {loyaltyPoints} pts</span>}
+              <div className="flex items-center gap-2">
+                {activeTier && name && (
+                  <span style={{ background: activeTier.badgeColor, color: 'white', padding: '2px 6px', borderRadius: 6, fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    {activeTier.name} (-{activeTier.discountRate}%)
+                  </span>
+                )}
+                {loyaltyPoints > 0 && name && <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-[10px] lowercase flex items-center gap-1 tracking-normal"><Sparkles size={10} /> {loyaltyPoints} pts</span>}
+              </div>
             </div>
 
             <div className="bg-white border border-slate-100 rounded-3xl p-5 space-y-3 shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
@@ -675,6 +801,57 @@ function MenuContent() {
           />
         </div>
 
+        {/* Category Header (Show when not on 'All') */}
+        {cat !== 'All' && (
+          <div className="mt-6 max-w-7xl mx-auto px-4 flex items-center justify-between">
+            <button 
+              onClick={() => setCat('All')}
+              className="flex items-center gap-2 text-slate-500 font-bold hover:text-slate-900 transition-colors group"
+            >
+              <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center group-hover:border-slate-400 transition-all">
+                <ArrowLeft size={16} />
+              </div>
+              <span className="text-sm">Back to All</span>
+            </button>
+            <div className="bg-slate-900 text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg shadow-slate-900/10">
+              {cat}
+            </div>
+          </div>
+        )}
+
+        {/* Combo Grid View (When 'Combos' category is selected) */}
+        {cat === 'Combos' && (
+          <div className="mt-4 max-w-7xl mx-auto px-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 pb-24">
+            {combos.map(combo => (
+              <div key={combo.id} className="bg-white rounded-3xl border border-slate-100 overflow-hidden shadow-sm flex flex-col relative group">
+                <div className="aspect-square bg-blue-50 relative overflow-hidden">
+                  {combo.imageUrl ? (
+                    <Image src={getOptimizedImage(combo.imageUrl, 400) || ''} alt={combo.name} fill className="object-cover group-hover:scale-105 transition-transform duration-500" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-blue-200"><ShoppingCart size={40} /></div>
+                  )}
+                  <div className="absolute top-2 right-2 bg-blue-600 text-white text-[10px] font-black px-2 py-1 rounded-lg shadow-sm uppercase tracking-widest">Bundle</div>
+                </div>
+                <div className="p-4 flex-1 flex flex-col">
+                  <h3 className="font-bold text-sm text-slate-900 leading-tight mb-1">{combo.name}</h3>
+                  <div className="text-[10px] text-slate-500 mb-4 line-clamp-2">
+                    {combo.items.map((i: any) => i.product.name).join(' + ')}
+                  </div>
+                  <div className="mt-auto flex items-center justify-between pt-2">
+                    <span className="font-black text-blue-600 text-base">{fmt(combo.fixedPrice)}</span>
+                    <button 
+                      onClick={() => addToCart({ ...combo, isCombo: true, sellingPrice: combo.fixedPrice, stock: 999 } as any)}
+                      className="w-10 h-10 flex items-center justify-center bg-blue-600 text-white rounded-xl active:scale-95 transition-all shadow-md shadow-blue-500/20"
+                    >
+                      <Plus size={20} strokeWidth={3} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Dynamic Pricing Banner */}
         {pricingEnabled && activePromo && (
           <div className="mt-4 max-w-7xl mx-auto bg-gradient-to-r from-emerald-600 to-green-500 rounded-xl p-3 text-white flex items-center gap-3 shadow-sm animate-pulse-slow">
@@ -703,7 +880,7 @@ function MenuContent() {
       )}
 
       {/* Product List */}
-      <div className="px-4 py-4 max-w-7xl mx-auto">
+      <div className={`px-4 py-4 max-w-7xl mx-auto ${cat === 'Combos' ? 'hidden' : ''}`}>
         {loading ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 lg:gap-6">
             {Array.from({ length: 8 }).map((_, i) => <SkeletonItem key={i} />)}
@@ -715,22 +892,16 @@ function MenuContent() {
             <button onClick={() => queryClient.invalidateQueries({ queryKey: ['menu_data'] })} className="bg-slate-900 text-white px-6 py-2.5 rounded-xl font-bold mt-4 hover:bg-slate-800 active:scale-95 transition-all">Retry loading menu</button>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-20 px-4">
-            <div className="text-5xl mb-4 opacity-50 filter grayscale">🍽️</div>
-            <div className="font-bold text-lg text-slate-800">No items found</div>
-            <div className="text-sm text-slate-500 mt-2">Try searching for something else or changing categories</div>
-            <div className="mt-8 p-4 bg-slate-100 rounded-xl text-left text-xs text-slate-500 font-mono inline-block max-w-[300px] w-full break-all">
-              <div className="font-bold text-slate-700 mb-1 font-sans">DEBUG INFO:</div>
-              <div><b>Shop ID:</b> {shopId}</div>
-              <div><b>Loaded:</b> {products.length} products</div>
-              {isDebug && (
-                <div className="mt-2 pt-2 border-t border-slate-200">
-                  <div><b>API:</b> {API}</div>
-                  <div><b>Status:</b> {latestError || 'Ready'}</div>
-                </div>
-              )}
-              <button onClick={() => window.location.reload()} className="mt-3 px-3 py-1.5 bg-white border border-slate-200 rounded font-bold text-slate-800 block w-full">Force Refresh</button>
-            </div>
+          <div className="text-center py-24 px-4">
+            <div className="text-5xl mb-4 opacity-30 filter grayscale">🍽️</div>
+            <div className="font-bold text-xl text-slate-900">No items found</div>
+            <div className="text-sm text-slate-500 mt-2 max-w-[240px] mx-auto">Try searching for something else or changing categories</div>
+            <button 
+              onClick={() => { setCat('All'); setSearch(''); }}
+              className="mt-8 px-6 py-2.5 bg-slate-900 text-white rounded-xl font-bold text-sm active:scale-95 transition-all shadow-lg shadow-slate-900/10"
+            >
+              Show All Items
+            </button>
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4 lg:gap-6">

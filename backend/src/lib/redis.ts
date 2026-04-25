@@ -50,7 +50,7 @@ const originalStderrWrite = process.stderr.write;
 
 process.stderr.write = function (chunk: string | Uint8Array, ...args: any[]) {
   const content = typeof chunk === 'string' ? chunk : chunk.toString();
-  const isRedisError = content.includes('ECONNREFUSED 127.0.0.1:6379');
+  const isRedisError = content.includes('ECONNREFUSED 127.0.0.1:6379') || content.includes('Connection is closed');
   if (isRedisError) return true; // Silence Redis connection noise while app remains stable
   return originalStderrWrite.apply(process.stderr, [chunk, ...args] as any);
 } as any;

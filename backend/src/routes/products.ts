@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../common/prisma';
 import { authenticate, authorize, asyncHandler, validateRequest, AuthRequest } from '../middleware/auth';
+import { gateResource } from '../middleware/planGate';
 import { deleteCache } from '../common/cache';
 
 const router = Router();
@@ -118,6 +119,7 @@ router.post(
   '/',
   authenticate,
   authorize('ADMIN', 'MANAGER'),
+  gateResource('products') as any,
   validateRequest(productSchema),
   asyncHandler(async (req: AuthRequest, res) => {
     const data = req.body;

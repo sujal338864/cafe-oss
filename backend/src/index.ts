@@ -1,3 +1,4 @@
+import './instrument';
 import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -13,6 +14,7 @@ import { logger } from './lib/logger';
 import { requestLogger } from './middleware/requestLogger';
 import { distributedRateLimiter } from './middleware/rateLimiter';
 import { metricsCollector, metricsEndpoint } from './middleware/metrics';
+import * as Sentry from '@sentry/node';
 
 // Re-exported for any legacy code still importing from index (being phased out)
 export const prisma = extendedPrisma;
@@ -24,36 +26,20 @@ const PORT = process.env.PORT || process.env.SHOP_OS_PORT || 4001;
 
 // Centralized logger imported from src/lib/logger above
 
-// CORS: exact URL whitelist only — no wildcard *.netlify.app (OWASP A05)
-const ALLOWED_ORIGINS = new Set([
-  process.env.FRONTEND_URL,
-  process.env.STAGING_URL,
-  'http://localhost:3000',
-  'http://localhost:3001',
-  'http://127.0.0.1:3000',
-].filter(Boolean) as string[]);
+import { isAuthorizedOrigin } from './common/origins';
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile app, curl, Postman)
-    if (!origin) return callback(null, true);
-    
-    // 1. Exact match from whitelist
-    if (ALLOWED_ORIGINS.has(origin)) return callback(null, true);
-    
-    // 2. SaaS Domain Wildcard Match (Safely allow Netlify/Vercel previews)
-    const isSaaSPreview = origin.endsWith('.netlify.app') || 
-                          origin.endsWith('.vercel.app') ||
-                          origin.includes('sujal338864s-projects.vercel.app');
-                          
-    if (isSaaSPreview) return callback(null, true);
-
-    logger.warn(`CORS blocked origin: ${origin}`);
-    callback(new Error('Not allowed by CORS'));
+    if (isAuthorizedOrigin(origin)) {
+      callback(null, true);
+    } else {
+      logger.warn(`CORS blocked origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id'], // Added x-tenant-id for robustness
 }));
 
 app.use(helmet({
@@ -110,6 +96,10 @@ import adminRoutes from './routes/admin';
 import notificationRoutes from './routes/notifications';
 import subscriptionRoutes from './routes/subscriptions';
 import userRoutes from './routes/users';
+import growthRoutes from './routes/growth';
+import marketingRoutes from './routes/marketing';
+import comboRoutes from './routes/combos';
+import orgRoutes from './routes/org';
 
 // Health check — minimal info exposed publicly (no uptime to prevent fingerprinting)
 app.get('/health', (_req: Request, res: Response) => {
@@ -124,6 +114,9 @@ app.set('trust proxy', 1);
 
 app.use('/api/upload', uploadRoutes);
 app.use('/api/menu', menuRoutes);
+app.use('/api/marketing', marketingRoutes);
+app.use('/api/combos', comboRoutes);
+app.use('/api/org', orgRoutes);
 // Auth endpoints: rate-limited to prevent brute force & registration spam
 app.use('/api/auth', distributedRateLimiter(AUTH_RATE_LIMIT_MAX, AUTH_RATE_LIMIT_WINDOW), authRoutes);
 
@@ -146,9 +139,14 @@ dashboardRouter.use('/reports', reportRoutes);
 dashboardRouter.use('/notifications', notificationRoutes);
 dashboardRouter.use('/subscriptions', subscriptionRoutes);
 dashboardRouter.use('/users', userRoutes);
+dashboardRouter.use('/growth', growthRoutes);
+dashboardRouter.use('/marketing', marketingRoutes);
 
 // Admin routes (Global Admin layer)
 app.use('/api/admin', authenticate as any, withTenantContext as any, adminRoutes);
+
+// Org / Franchise routes (dual-mode layer)
+app.use('/api/org', orgRoutes);
 
 app.use('/api', dashboardRouter);
 
@@ -188,11 +186,15 @@ app.get('/ready', async (_req: Request, res: Response) => {
 // Metrics Exporter for Prometheus 📊
 app.get('/metrics', metricsEndpoint);
 
+// Sentry setup middleware — interceptors must be first!
+Sentry.setupExpressErrorHandler(app);
+
 // ERROR HANDLING 
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   logger.error('Unhandled error:', err);
   res.status(err.status || 500).json({ error: err.message || 'Internal Server Error' });
 });
+
 
 app.use((_req: Request, res: Response) => {
   res.status(404).json({ error: 'Route not found' });

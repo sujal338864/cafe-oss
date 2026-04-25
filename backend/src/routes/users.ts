@@ -2,6 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../common/prisma';
 import { authenticate, authorize, asyncHandler, AuthRequest } from '../middleware/auth';
+import { gateResource } from '../middleware/planGate';
 
 const router = Router();
 
@@ -51,6 +52,7 @@ router.post(
   '/',
   authenticate,
   authorize('ADMIN', 'MANAGER'),
+  gateResource('staff') as any,
   asyncHandler(async (req: AuthRequest, res) => {
     const { name, email: rawEmail, role, password } = req.body;
     const email = rawEmail.toLowerCase().trim();

@@ -83,20 +83,28 @@ router.post(
   '/create',
   authenticate,
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    const { name } = req.body;
-    if (!name) return res.status(400).json({ error: 'Shop name is required' });
+    const { name, organizationId } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'Name is required' });
 
     const currentUser = await prisma.user.findUnique({
       where: { id: req.user!.id }
     });
-
     if (!currentUser) return res.status(404).json({ error: 'User not found' });
+    
+    // Safety check if trying to create under an organization
+    if (organizationId) {
+      const { OrgService } = require('../services/org.service');
+      const hasAccess = await (prisma as any).orgMembership.findFirst({
+        where: { organizationId, userId: currentUser.id, orgRole: 'HQ_ADMIN' }
+      });
+      if (!hasAccess) return res.status(403).json({ error: 'You are not HQ_ADMIN for this organization' });
+    }
 
-    // --- EMPIRE MASTER GUARD: BLOCK DUPLICATE NAMES ---
-    const existingMembership = await prisma.membership.findFirst({
+    // Check if user already owns a shop with this exact name
+    let existingMembership = await (prisma.membership as any).findFirst({
       where: { 
-        user: { email: currentUser.email },
-        shop: { name: name }
+        user: { id: currentUser.id }, 
+        shop: { name: name.trim() } 
       },
       include: { shop: true }
     });
@@ -118,6 +126,7 @@ router.post(
           plan: 'STARTER',
           currency: 'INR',
           email: currentUser.email,
+          ...(organizationId ? { mode: 'FRANCHISE', organizationId } : { mode: 'INDEPENDENT' })
         }
       });
 
@@ -132,6 +141,19 @@ router.post(
           isActive: true
         }
       });
+
+      if (organizationId) {
+        // Also create the orgMembership and branch link
+        await tx.orgMembership.create({
+          data: {
+            organizationId,
+            userId: currentUser.id,
+            shopId: newShop.id,
+            orgRole: 'BRANCH_MANAGER',
+            isActive: true
+          }
+        });
+      }
 
       return { shop: newShop };
     });

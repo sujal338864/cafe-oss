@@ -112,7 +112,11 @@ export default function LoginPage() {
         phone: gPhone.trim(),
       });
       login(data.user, data.shop, data.token);
-      router.push('/dashboard');
+      if (data.user.onboardingCompleted === false) {
+        router.push('/onboarding');
+      } else {
+        router.push('/dashboard');
+      }
     } catch (e: any) {
       setError(e.response?.data?.error || 'Registration failed');
     } finally {
@@ -126,7 +130,11 @@ export default function LoginPage() {
     try {
       const { data } = await api.post('/api/auth/login', { email, password });
       login(data.user, data.shop, data.token);
-      router.push('/dashboard');
+      if (data.user.onboardingCompleted === false) {
+        router.push('/onboarding');
+      } else {
+        router.push('/dashboard');
+      }
     } catch (e: any) {
       setError(e.response?.data?.error || e.message || 'Invalid email or password');
     } finally {
@@ -135,16 +143,16 @@ export default function LoginPage() {
   };
 
   const handleRegister = async () => {
-    if (!shopName || !ownerName || !email || !regPass || !phone) {
+    if (!ownerName || !email || !regPass) {
       setError('All fields are required'); return;
     }
     setRegLoading(true); setError('');
     try {
-      const { data } = await api.post('/api/auth/register', {
-        shopName, ownerName, email, password: regPass, phone,
+      const { data } = await api.post('/api/auth/signup', {
+        name: ownerName, email, password: regPass
       });
       login(data.user, data.shop, data.token);
-      router.push('/dashboard');
+      router.push('/onboarding');
     } catch (e: any) {
       setError(e.response?.data?.error || 'Registration failed');
     } finally {
@@ -263,6 +271,19 @@ export default function LoginPage() {
                 {loading ? 'Signing in...' : 'Sign In →'}
               </button>
 
+              <div style={{ textAlign: 'right' }}>
+                <button
+                  type="button"
+                  onClick={() => router.push('/forgot-password')}
+                  style={{
+                    background: 'none', border: 'none', color: theme.accent,
+                    fontSize: 12, cursor: 'pointer', textDecoration: 'underline', padding: 0
+                  }}
+                >
+                  Forgot Password?
+                </button>
+              </div>
+
               {GOOGLE_CLIENT_ID && (
                 <>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '4px 0' }}>
@@ -278,20 +299,12 @@ export default function LoginPage() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
-                <label style={lbl}>Shop Name *</label>
-                <input value={shopName} onChange={e => setShopName(e.target.value)} placeholder="e.g. Kirana King" style={inp} />
-              </div>
-              <div>
                 <label style={lbl}>Your Name *</label>
                 <input value={ownerName} onChange={e => setOwnerName(e.target.value)} placeholder="Your full name" style={inp} />
               </div>
               <div>
                 <label style={lbl}>Email *</label>
-                <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="you@yourshop.com" style={inp} />
-              </div>
-              <div>
-                <label style={lbl}>Phone *</label>
-                <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+91 98765 43210" style={inp} />
+                <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="you@company.com" style={inp} />
               </div>
               <div>
                 <label style={lbl}>Password *</label>

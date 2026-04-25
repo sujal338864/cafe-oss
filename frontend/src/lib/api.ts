@@ -9,10 +9,8 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('shop_os_token');
-    if (token) config.headers.Authorization = `Bearer ${token}`;
-  }
+  // Authorization is now securely handled natively by the browser via HttpOnly cookies (withCredentials: true)
+  // Completely eliminated localStorage token vulnerabilities against XSS.
   return config;
 });
 
@@ -26,7 +24,6 @@ api.interceptors.response.use(
       const isOptional = url.includes('/ai/') || url.includes('/analytics/') || url.includes('/menu/');
       
       if (!isOptional && !isAuth) {
-        localStorage.removeItem('shop_os_token');
         window.location.href = '/login';
       }
     }

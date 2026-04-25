@@ -6,26 +6,33 @@ import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { useSocket } from '@/context/SocketContext';
+import { toast } from 'react-hot-toast';
 import api from '@/lib/api';
-import { motion, AnimatePresence } from 'framer-motion';
 
 const ALL_NAV = [
-  { href: '/dashboard',            label: 'Dashboard',  icon: '▦',   roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
-  { href: '/dashboard/pos',        label: 'New Sale',   icon: '⊕',   roles: ['ADMIN', 'MANAGER', 'EMPLOYEE', 'SUPER_ADMIN'] },
-  { href: '/dashboard/kitchen',    label: 'Kitchen',    icon: '🍳',  roles: ['ADMIN', 'MANAGER', 'EMPLOYEE', 'SUPER_ADMIN'] },
-  { href: '/dashboard/products',   label: 'Products',   icon: '📦',  roles: ['ADMIN', 'MANAGER', 'EMPLOYEE', 'SUPER_ADMIN'] },
-  { href: '/dashboard/categories', label: 'Categories', icon: '🏷️',  roles: ['ADMIN', 'MANAGER', 'EMPLOYEE', 'SUPER_ADMIN'] },
-  { href: '/dashboard/orders',     label: 'Orders',     icon: '🧾',  roles: ['ADMIN', 'MANAGER', 'EMPLOYEE', 'SUPER_ADMIN'] },
-  { href: '/dashboard/customers',  label: 'Customers',  icon: '👤',  roles: ['ADMIN', 'MANAGER', 'EMPLOYEE', 'SUPER_ADMIN'] },
-  { href: '/dashboard/suppliers',  label: 'Suppliers',  icon: '🚚',  roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
-  { href: '/dashboard/purchases',  label: 'Purchases',  icon: '🛒',  roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
-  { href: '/dashboard/expenses',   label: 'Expenses',   icon: '💸',  roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
-  { href: '/dashboard/analytics',  label: 'Analytics',  icon: '📊',  roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
-  { href: '/dashboard/reports',    label: 'Reports',    icon: '📈',  roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
-  { href: '/dashboard/qr',         label: 'QR Codes',   icon: '📱',  roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
-  { href: '/dashboard/staff',      label: 'Staff Management', icon: '👥', roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
-  { href: '/dashboard/settings',   label: 'Settings',   icon: '⚙️',  roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
-  { href: '/super-admin',          label: 'Admin Portal', icon: '👑', roles: ['SUPER_ADMIN'] },
+  { href: '/dashboard',            label: 'Dashboard',        icon: '▦',   roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
+  { href: '/dashboard/pos',        label: 'New Sale',         icon: '⊕',   roles: ['ADMIN', 'MANAGER', 'EMPLOYEE', 'SUPER_ADMIN'] },
+  { href: '/dashboard/kitchen',    label: 'Kitchen',          icon: '🍳',  roles: ['ADMIN', 'MANAGER', 'EMPLOYEE', 'SUPER_ADMIN'] },
+  { href: '/dashboard/products',   label: 'Products',         icon: '📦',  roles: ['ADMIN', 'MANAGER', 'EMPLOYEE', 'SUPER_ADMIN'] },
+  { href: '/dashboard/categories', label: 'Categories',       icon: '🏷️',  roles: ['ADMIN', 'MANAGER', 'EMPLOYEE', 'SUPER_ADMIN'] },
+  { href: '/dashboard/products/combos', label: 'Combos',      icon: '🍱',  roles: ['ADMIN', 'MANAGER', 'EMPLOYEE', 'SUPER_ADMIN'] },
+  { href: '/dashboard/orders',     label: 'Orders',           icon: '🧾',  roles: ['ADMIN', 'MANAGER', 'EMPLOYEE', 'SUPER_ADMIN'] },
+  { href: '/dashboard/customers',  label: 'Customers',        icon: '👤',  roles: ['ADMIN', 'MANAGER', 'EMPLOYEE', 'SUPER_ADMIN'] },
+  { href: '/dashboard/suppliers',  label: 'Suppliers',        icon: '🚚',  roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
+  { href: '/dashboard/purchases',  label: 'Purchases',        icon: '🛒',  roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
+  { href: '/dashboard/expenses',   label: 'Expenses',         icon: '💸',  roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
+  { href: '/dashboard/analytics',  label: 'Analytics',        icon: '📊',  roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
+  { href: '/dashboard/reports',    label: 'Reports',          icon: '📈',  roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
+  { href: '/dashboard/hq',         label: 'HQ Dashboard',     icon: '🏢',  roles: ['ADMIN', 'SUPER_ADMIN'] },
+  { href: '/dashboard/growth',     label: 'Growth Engine',    icon: '🚀',  roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
+  { href: '/dashboard/loyalty',    label: 'Loyalty Tiers',    icon: '👑',  roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
+  { href: '/dashboard/coupons',    label: 'Coupons',          icon: '🎟️',  roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
+  { href: '/dashboard/marketing',  label: 'Marketing Studio', icon: '✨',  roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
+  { href: '/dashboard/qr',         label: 'QR Codes',         icon: '📱',  roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
+  { href: '/dashboard/staff',      label: 'Staff Management', icon: '👥',  roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
+  { href: '/dashboard/settings',   label: 'Settings',         icon: '⚙️',  roles: ['ADMIN', 'MANAGER', 'SUPER_ADMIN'] },
+  { href: '/dashboard/hq/setup',   label: 'Upgrade to Franchise', icon: '✨', roles: ['ADMIN', 'SUPER_ADMIN'] },
+  { href: '/super-admin',          label: 'Admin Portal',     icon: '👑',  roles: ['SUPER_ADMIN'] },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -39,12 +46,48 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     if (!authLoading && !user) {
       router.push('/login');
+    } else if (user && user.onboardingCompleted === false) {
+      router.push('/onboarding');
     }
   }, [user, authLoading, router]);
 
-  // Filter nav based on role
+  // Filter nav based on role and mode
   const userRole = user?.role || 'EMPLOYEE';
-  const NAV = ALL_NAV.filter(item => item.roles.includes(userRole));
+  
+  // Find current org role if any
+  const currentOrgId = shop?.organizationId;
+  const myOrgRole = user?.organizations?.find((o: any) => o.orgId === currentOrgId)?.orgRole;
+  const isHQAdmin = myOrgRole === 'HQ_ADMIN' || myOrgRole === 'REGIONAL_MANAGER' || user?.role === 'SUPER_ADMIN';
+
+  const NAV = ALL_NAV.filter(item => {
+    if (!item.roles.includes(userRole)) return false;
+
+    // ── HQ FEATURE VISIBILITY ──
+    if (item.href === '/dashboard/hq') {
+      // 1. If in Independent Mode -> User says 'do nor show in an individula also because we charge... locked option'
+      // We'll show a locked version or just hide it. Let's hide it for now as per 'do not show'.
+      if (user?.selectedMode !== 'FRANCHISE') return false;
+
+      // 2. If in Franchise Mode -> 'onl available for firs shop'
+      // We define 'First Shop' as the user's primary/creation shop (user.shopId)
+      if (shop?.id !== user?.shopId) return false;
+      
+      // 3. User must be have HQ access
+      if (!isHQAdmin) return false;
+    }
+
+    if (item.label === 'Create New Branch') {
+      if (user?.selectedMode !== 'FRANCHISE') return false;
+      if (shop?.id !== user?.shopId) return false; // Only HQ can spawn branches
+      if (!isHQAdmin) return false;
+    }
+
+    if (item.label === 'Upgrade to Franchise') {
+      if (user?.selectedMode === 'FRANCHISE') return false; // Already upgraded
+    }
+
+    return true;
+  });
 
   const [mounted, setMounted] = useState(false);
   const [showNotifs, setShowNotifs] = useState(false);
@@ -164,7 +207,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     return (
                       <div 
                         key={m.shopId}
-                        onClick={() => { if (!isActive) switchShop(m.shopId); }}
+                        onClick={async () => { 
+                          if (!isActive) {
+                            try {
+                              await switchShop(m.shopId);
+                            } catch (err: any) {
+                              toast.error(err.response?.data?.error || 'Failed to switch shop. Access denied.');
+                            }
+                          }
+                        }}
                         style={{ 
                           display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, cursor: isActive ? 'default' : 'pointer',
                           background: isActive ? 'rgba(124,58,237,0.1)' : 'transparent',
@@ -193,35 +244,43 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Expansion Prompt */}
         {user?.role === 'ADMIN' && (
           <div style={{ padding: '0 10px 10px' }}>
-            <button 
-              onClick={() => router.push('/dashboard/create-shop')}
-              style={{ 
-                width: '100%', 
-                background: 'rgba(124,58,237,0.1)', 
-                border: '1px solid rgba(124,58,237,0.2)', 
-                padding: '10px 12px', 
-                borderRadius: 10, 
-                textAlign: 'left', 
-                color: '#a78bfa', 
-                fontSize: 12, 
-                cursor: 'pointer', 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: 10, 
-                fontWeight: 700,
-                transition: 'all 0.2s'
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = 'rgba(124,58,237,0.18)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'rgba(124,58,237,0.1)'}
-            >
-              <div style={{ width: 22, height: 22, borderRadius: 6, background: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
-                <span style={{ fontSize: 16 }}>+</span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <span style={{ fontSize: 11, fontWeight: 800 }}>Create New Shop</span>
-                <span style={{ fontSize: 9, opacity: 0.7 }}>Expand your empire</span>
-              </div>
-            </button>
+            {(!user.isInFranchiseMode && user.selectedMode !== 'FRANCHISE') ? (
+              <button 
+                onClick={() => router.push('/dashboard/hq/setup')}
+                style={{ 
+                  width: '100%', background: 'linear-gradient(135deg, rgba(124,58,237,0.1), rgba(16,185,129,0.1))', 
+                  border: '1px solid rgba(124,58,237,0.3)', padding: '10px 12px', borderRadius: 10, textAlign: 'left', 
+                  color: '#a78bfa', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, transition: 'all 0.2s'
+                }}
+                onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-1px)'}
+                onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+              >
+                <div style={{ fontSize: 20 }}>🚀</div>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: theme.text }}>Upgrade to Franchise</span>
+                  <span style={{ fontSize: 10, opacity: 0.7, color: theme.textFaint }}>Unlock HQ Dashboard</span>
+                </div>
+              </button>
+            ) : (
+              <button 
+                onClick={() => router.push('/dashboard/create-shop')}
+                style={{ 
+                  width: '100%', background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.2)', 
+                  padding: '10px 12px', borderRadius: 10, textAlign: 'left', color: '#a78bfa', fontSize: 12, 
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontWeight: 700, transition: 'all 0.2s'
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(124,58,237,0.18)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'rgba(124,58,237,0.1)'}
+              >
+                <div style={{ width: 22, height: 22, borderRadius: 6, background: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
+                  <span style={{ fontSize: 16 }}>+</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontSize: 11, fontWeight: 800 }}>Create New Branch</span>
+                  <span style={{ fontSize: 9, opacity: 0.7 }}>Expand your empire</span>
+                </div>
+              </button>
+            )}
           </div>
         )}
 
@@ -231,10 +290,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {NAV.map(({ href, label, icon }) => {
             const active = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
             const isProducts = href === '/dashboard/products';
+            
+            // Phase 3: Immediate API Prefetching on Hover
+            const handleHover = (e: React.MouseEvent<HTMLAnchorElement>) => {
+              if (!active) e.currentTarget.style.background = theme.hover;
+              if (href === '/dashboard/pos') {
+                queryClient.prefetchQuery({ queryKey: ['categories'], queryFn: () => api.get('/api/categories').then(r => r.data) });
+                queryClient.prefetchQuery({ queryKey: ['products'], queryFn: () => api.get('/api/products?limit=1000').then(r => r.data) });
+              } else if (href === '/dashboard/kitchen') {
+                queryClient.prefetchQuery({ queryKey: ['kitchen_orders'], queryFn: () => api.get('/api/orders/kitchen').then(r => r.data) });
+              } else if (href === '/dashboard/orders') {
+                queryClient.prefetchQuery({ queryKey: ['orders_page', 1], queryFn: () => api.get('/api/orders?page=1&limit=50').then(r => r.data) });
+              }
+            };
+
             return (
               <Link key={href} href={href}
                 style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 9, marginBottom: 2, textDecoration: 'none', background: active ? 'linear-gradient(135deg,rgba(124,58,237,.25),rgba(59,130,246,.15))' : 'transparent', color: active ? '#a78bfa' : theme.textMuted, fontWeight: active ? 700 : 500, fontSize: 13, transition: 'all .15s', position: 'relative' }}
-                onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = theme.hover; }}
+                onMouseEnter={handleHover}
                 onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}>
                 <span style={{ fontSize: 15, width: 18, textAlign: 'center', flexShrink: 0 }}>{icon}</span>
                 <span style={{ flex: 1 }}>{label}</span>
@@ -347,17 +420,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         {/* Page content */}
         <div style={{ padding: '20px 24px', flex: 1 }}>
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={pathname}
-              initial={{ opacity: 0, scale: 0.99, y: 5 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 1.01, y: -5 }}
-              transition={{ duration: 0.2, ease: "easeInOut" }}
-            >
-              {children}
-            </motion.div>
-          </AnimatePresence>
+          {children}
         </div>
       </main>
     </div>

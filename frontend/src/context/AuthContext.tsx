@@ -1,6 +1,7 @@
 'use client';
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 
 interface User { 
@@ -14,9 +15,18 @@ interface User {
     shopName: string;
     role: string;
   }>;
+  // Franchise Mode fields
+  organizations: Array<{
+    orgId: string;
+    orgName: string;
+    orgRole: string;
+  }>;
+  isInFranchiseMode: boolean;
+  onboardingCompleted: boolean;
+  selectedMode: string;
 }
 
-interface Shop { id: string; name: string; plan: string; }
+interface Shop { id: string; name: string; plan: string; organizationId?: string; }
 
 interface AuthContextType {
   user:    User | null;
@@ -26,6 +36,7 @@ interface AuthContextType {
   login:   (user: User, shop: Shop, token: string) => void;
   logout:  () => void;
   switchShop: (shopId: string) => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -36,52 +47,70 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [shop,    setShop]    = useState<Shop | null>(null);
   const [token,   setToken]   = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
 
   // Restore session on mount — optimistic load from localStorage, verified by HttpOnly cookie
-  useEffect(() => {
+  const { data: session, isLoading: loadingSession } = useQuery({
+    queryKey: ['auth-me'],
+    queryFn: () => api.get('/api/auth/me').then(r => r.data),
+    staleTime: 5 * 60 * 1000,   // 5 minutes — no re-fetch within this window
+    refetchOnWindowFocus: false,  // Don't re-validate on every tab switch (saves egress)
+    refetchOnReconnect: false,    // Don't re-validate on every network reconnect
+    retry: 1,
+  });
+
+  const refreshUser = async () => {
     try {
-      const u = localStorage.getItem('shop_os_user');
-      const s = localStorage.getItem('shop_os_shop');
-      if (u && s) {
-        setUser(JSON.parse(u));
-        setShop(JSON.parse(s));
+      const res = await api.get('/api/auth/me');
+      if (res.data.success) {
+        setUser(res.data.user);
+        setShop(res.data.shop);
+        localStorage.setItem('shop_os_user', JSON.stringify(res.data.user));
+        localStorage.setItem('shop_os_shop', JSON.stringify(res.data.shop));
+        queryClient.setQueryData(['auth-me'], res.data);
       }
     } catch (err) {
-      if (process.env.NODE_ENV !== 'production') console.warn('[Auth] Cleared corrupt localStorage:', err);
-      localStorage.removeItem('shop_os_user');
-      localStorage.removeItem('shop_os_shop');
-      setUser(null);
-      setShop(null);
+      console.error('[Auth] Refresh failed:', err);
     }
+  };
 
-    // Ping backend to verify HttpOnly cookie is valid
-    api.get('/api/auth/me')
-      .then(res => {
-        const { user: newUser, shop: newShop, token: newToken } = res.data;
-        setUser(newUser);
-        setShop(newShop);
-        if (newToken) {
-          setToken(newToken);
-          localStorage.setItem('shop_os_token', newToken);
+  useEffect(() => {
+    if (session) {
+      setUser(session.user);
+      setShop(session.shop);
+      if (session.token) setToken(session.token);
+      localStorage.setItem('shop_os_user', JSON.stringify(session.user));
+      localStorage.setItem('shop_os_shop', JSON.stringify(session.shop));
+      setLoading(false);
+    } else if (!loadingSession && !session) {
+       // Only redirect to login if we ARE in a dashboard path and we KNOW there is no session
+       if (window.location.pathname.startsWith('/dashboard')) {
+          router.push('/login');
+       }
+       setLoading(false);
+    }
+  }, [session, loadingSession, router]);
+
+  // Handle local state restore from session (Optimistic)
+  useEffect(() => {
+    if (loadingSession) {
+      try {
+        const u = localStorage.getItem('shop_os_user');
+        const s = localStorage.getItem('shop_os_shop');
+        if (u && s) {
+          setUser(JSON.parse(u));
+          setShop(JSON.parse(s));
         }
-        localStorage.setItem('shop_os_user', JSON.stringify(newUser));
-        localStorage.setItem('shop_os_shop', JSON.stringify(newShop));
-      })
-      .catch((err) => {
-        // If 401/404, cookie is missing or invalid -> clear local state
-        setUser(null);
-        setShop(null);
+      } catch (err) {
         localStorage.removeItem('shop_os_user');
         localStorage.removeItem('shop_os_shop');
-        if (window.location.pathname.startsWith('/dashboard')) router.push('/login');
-      })
-      .finally(() => setLoading(false));
-  }, [router]);
+      }
+    }
+  }, [loadingSession]);
 
   const login = (user: User, shop: Shop, token: string) => {
     localStorage.setItem('shop_os_user', JSON.stringify(user));
     localStorage.setItem('shop_os_shop', JSON.stringify(shop));
-    localStorage.setItem('shop_os_token', token);
     setUser(user);
     setShop(shop);
     setToken(token);
@@ -96,7 +125,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Update local state with new shop info AND new token
         localStorage.setItem('shop_os_user', JSON.stringify(newUser));
         localStorage.setItem('shop_os_shop', JSON.stringify(newShop));
-        localStorage.setItem('shop_os_token', newToken);
         
         setUser(newUser);
         setShop(newShop);
@@ -105,8 +133,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Full refresh to clear all tenant-scoped state across all components
         window.location.href = '/dashboard'; 
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('[Auth] Shop switch failed:', err);
+      // If we get a 403, it means our frontend list was out of sync. FORCE REFRESH.
+      if (err.response?.status === 403) {
+        await refreshUser();
+      }
       throw err;
     } finally {
       setLoading(false);
@@ -114,7 +146,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    localStorage.removeItem('shop_os_token'); 
     localStorage.removeItem('shop_os_user');
     localStorage.removeItem('shop_os_shop');
     delete api.defaults.headers.common['Authorization'];
@@ -130,7 +161,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, shop, token, loading, login, logout, switchShop }}>
+    <AuthContext.Provider value={{ user, shop, token, loading, login, logout, switchShop, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

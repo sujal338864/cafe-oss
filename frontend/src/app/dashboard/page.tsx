@@ -8,6 +8,8 @@ import api from '@/lib/api';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 
+import { MarketingIntel } from '@/components/dashboard/MarketingIntel';
+
 const DashboardCharts = dynamic(() => import('./DashboardCharts'), { 
   loading: () => <div style={{ height: 350, background: 'rgba(0,0,0,0.02)', borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: '#999' }}>Loading Staffing Intelligence...</div>,
   ssr: false 
@@ -87,7 +89,6 @@ export default function DashboardPage() {
   });
   const orders = recentOrdersQuery.data?.orders || [];
   const financialSummary = stats?.financialSummary;
-  const aiInsight = aiData?.insight || '';
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
@@ -192,14 +193,8 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* AI Insights Panel */}
-      <div style={{ ...card, background: 'linear-gradient(135deg, rgba(124, 58, 237, 0.05), rgba(59, 130, 246, 0.05))', borderColor: '#7c3aed44' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <span>🤖</span>
-          <div style={{ fontWeight: 800, fontSize: 14, color: theme.text }}>AI Business Consultant</div>
-        </div>
-        {aiLoading ? <div style={{ color: theme.textMuted, fontSize: 13 }}>Analyzing...</div> : <div style={{ fontSize: 13, color: theme.text, whiteSpace: 'pre-wrap' }}>{aiInsight}</div>}
-      </div>
+      {/* AI Marketing Command Center */}
+      <MarketingIntel />
 
       {/* Parallel Load: Premium Charts & intelligence */}
       <DashboardCharts 

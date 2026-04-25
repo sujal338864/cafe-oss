@@ -25,6 +25,8 @@
   "license": "MIT",
   "dependencies": {
     "@prisma/client": "^5.7.0",
+    "@sentry/node": "^10.49.0",
+    "@sentry/profiling-node": "^10.49.0",
     "@socket.io/redis-adapter": "^8.3.0",
     "aws-sdk": "^1.18.0",
     "bcryptjs": "^2.4.3",

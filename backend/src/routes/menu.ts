@@ -26,13 +26,54 @@ const menuLimiter = rateLimit({
 
 const orderLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 5,
+  max: 30, // Raised from 5: supports ~20 tables ordering simultaneously
   message: { error: 'Too many order attempts. Please wait a minute.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
 const router = Router();
+
+/**
+ * POST /api/menu/coupon/validate
+ * PUBLIC — no auth needed. Used by scanner menu to validate coupon codes.
+ * Requires shopId in body to isolate per-shop. Rate-limited to 10/min.
+ */
+const couponLimiter = rateLimit({ windowMs: 60_000, max: 10, message: { error: 'Too many coupon requests. Slow down.' } });
+
+router.post('/coupon/validate', couponLimiter, asyncHandler(async (req, res) => {
+  const { shopId, code, orderTotal } = req.body;
+  if (!shopId || typeof shopId !== 'string') return res.status(400).json({ valid: false, error: 'shopId is required' });
+  if (!code    || typeof code    !== 'string') return res.status(400).json({ valid: false, error: 'code is required' });
+  if (!orderTotal || isNaN(Number(orderTotal)))  return res.status(400).json({ valid: false, error: 'orderTotal is required' });
+
+  try {
+    const coupon = await (prisma as any).coupon.findFirst({
+      where: { shopId, code: code.toUpperCase().trim(), isActive: true }
+    });
+
+    if (!coupon)                                                    return res.json({ valid: false, error: 'Invalid coupon code' });
+    if (coupon.expiresAt && new Date(coupon.expiresAt) < new Date()) return res.json({ valid: false, error: 'Coupon has expired' });
+    if (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses) return res.json({ valid: false, error: 'Coupon usage limit reached' });
+    
+    const cMinOrder = typeof coupon.minOrder?.toNumber === 'function' ? coupon.minOrder.toNumber() : Number(coupon.minOrder || 0);
+    const cValue = typeof coupon.value?.toNumber === 'function' ? coupon.value.toNumber() : Number(coupon.value || 0);
+
+    if (Number(orderTotal) < cMinOrder) return res.json({ valid: false, error: `Minimum order is ₹${cMinOrder}` });
+
+    const discount = coupon.type === 'PERCENTAGE'
+      ? Math.round(Number(orderTotal) * cValue / 100 * 100) / 100
+      : Math.min(cValue, Number(orderTotal));
+
+    return res.json({ valid: true, coupon, discount, finalTotal: Math.max(0, Number(orderTotal) - discount) });
+  } catch (err: any) {
+    // Coupon table not yet migrated
+    if (err.code === 'P2021' || err.message?.includes('does not exist')) {
+      return res.json({ valid: false, error: 'Coupon system not yet enabled' });
+    }
+    throw err;
+  }
+}));
 
 /**
  * GET /api/menu?shopId=...
@@ -62,8 +103,8 @@ router.get('/', menuLimiter, asyncHandler(async (req, res) => {
       }
     }
 
-    // 2. DB fallback: parallel queries for performance
-    const [shop, categories, products] = await Promise.all([
+    // 2. Database Fetch
+    const [shop, categories, products, combos] = await Promise.all([
       prisma.shop.findUnique({
         where: { id: shopId },
         select: { name: true, logoUrl: true, pricingEnabled: true, pricingRules: true, loyaltyRate: true, redeemRate: true } as any
@@ -82,6 +123,11 @@ router.get('/', menuLimiter, asyncHandler(async (req, res) => {
         },
         orderBy: [{ category: { name: 'asc' } }, { name: 'asc' }],
       }),
+      prisma.combo.findMany({
+        where: { shopId, isActive: true, showInScanner: true },
+        include: { items: { include: { product: true } } },
+        orderBy: { name: 'asc' }
+      })
     ]);
 
     if (!shop) return res.status(404).json({ error: 'Shop not found' });
@@ -94,8 +140,10 @@ router.get('/', menuLimiter, asyncHandler(async (req, res) => {
       shop, 
       categories, 
       products: dynamicProducts,
+      combos,
       loyaltyRate: (shop as any).loyaltyRate,
-      redeemRate: (shop as any).redeemRate
+      redeemRate: (shop as any).redeemRate,
+      tiers: await (prisma as any).loyaltyTier.findMany({ where: { shopId }, orderBy: { minPoints: 'asc' } }).catch(() => [])
     };
 
     // 3. Cache the result
@@ -175,10 +223,15 @@ const publicOrderSchema = z.object({
   notes: z.string().max(255).optional().nullable(),
   paymentMethod: z.enum(['CASH', 'UPI', 'CARD']).optional(),
   redeemPoints: z.number().int().nonnegative().optional().default(0),
+  couponCode: z.string().max(50).optional().nullable(),
   items: z.array(z.object({
-    productId: z.string(),
-    quantity: z.number().int().positive() // Automatically rejects negative quantities
+    productId: z.string().optional().nullable(),
+    comboId: z.string().optional().nullable(),
+    quantity: z.number().int().positive()
   })).min(1)
+    .refine(items => items.every(item => item.productId || item.comboId), {
+      message: "Each item must have either a productId or a comboId"
+    })
 });
 
 /**
@@ -187,7 +240,7 @@ const publicOrderSchema = z.object({
  * Handles customer creation, loyalty points, and real-time kitchen notification.
  */
 router.post('/order', orderLimiter, validateRequest(publicOrderSchema), asyncHandler(async (req, res) => {
-  const { customerName, customerPhone, tableNumber, notes, paymentMethod, items, redeemPoints = 0, shopId } = req.body;
+  const { customerName, customerPhone, tableNumber, notes, paymentMethod, items, redeemPoints = 0, shopId, couponCode } = req.body;
   if (!items?.length) return res.status(400).json({ error: 'No items in order' });
   if (!shopId || typeof shopId !== 'string') return res.status(400).json({ error: 'shopId is required' });
 
@@ -234,63 +287,128 @@ router.post('/order', orderLimiter, validateRequest(publicOrderSchema), asyncHan
     }
 
     // Pricing & Validation — always fetch from DB with shopId guard (NEVER trust client prices)
-    const productIds = items.map((i: any) => i.productId);
-    const dbProducts = await prisma.product.findMany({ 
-      where: { 
-        id: { in: productIds },
-        shopId: shop.id,          // ← CRITICAL: verify all products belong to THIS shop
-        isActive: true,           // only orderable active products
-        isAvailable: true         // only orderable available products
-      },
-      select: { id: true, name: true, sellingPrice: true, costPrice: true, taxRate: true, categoryId: true, stock: true }
-    });
+    const productIds = items.filter((i: any) => i.productId).map((i: any) => i.productId);
+    const comboIds = items.filter((i: any) => i.comboId).map((i: any) => i.comboId);
 
-    // Ensure every requested product was found in this shop
-    const foundIds = new Set(dbProducts.map((p: any) => p.id));
+    const [dbProducts, dbCombos] = await Promise.all([
+      prisma.product.findMany({ 
+        where: { id: { in: productIds }, shopId: shop.id, isActive: true, isAvailable: true },
+        select: { id: true, name: true, sellingPrice: true, costPrice: true, taxRate: true, categoryId: true, stock: true }
+      }),
+      prisma.combo.findMany({ 
+        where: { id: { in: comboIds }, shopId: shop.id, isActive: true },
+        include: { items: { include: { product: true } } }
+      })
+    ]);
+
+    // Apply Pricing Rules for backend Price protection on standalone products
+    const productsWithPricing = applyPricingRules(dbProducts, shop);
+
+    let subtotal = 0;
+    let taxAmount = 0;
+    const orderItems: any[] = [];
+
     for (const item of items) {
-      if (!foundIds.has(item.productId)) {
-        return res.status(400).json({ error: `Product not found or not available in this menu.` });
+      if (item.comboId) {
+        const combo = dbCombos.find(c => c.id === item.comboId);
+        if (!combo) return res.status(400).json({ error: `Combo not found or not available.` });
+        
+        // Verify stock for all components
+        for (const ci of combo.items) {
+          if (ci.product.stock < ci.quantity * item.quantity) {
+            return res.status(400).json({ error: `Insufficient stock for ${ci.product.name} in combo ${combo.name}` });
+          }
+        }
+
+        const unitPrice = Number(combo.fixedPrice);
+        const costPrice = combo.items.reduce((s, ci) => s + Number(ci.product.costPrice || 0) * ci.quantity, 0);
+        const amount = unitPrice * item.quantity;
+        
+        subtotal += amount;
+        taxAmount += 0; // Flat 0 tax for combos or calculate per item? For now 0.
+
+        orderItems.push({
+          comboId: combo.id,
+          name: combo.name,
+          quantity: item.quantity,
+          unitPrice,
+          costPrice,
+          total: amount,
+          taxRate: 0,
+          discount: 0
+        });
+      } else {
+        const p = productsWithPricing.find((x: any) => x.id === item.productId);
+        if (!p) return res.status(400).json({ error: `Product not found or not available.` });
+        if (p.stock < item.quantity) return res.status(400).json({ error: `Insufficient stock for ${p.name}` });
+
+        const priceToUse = p.discountedPrice || Number(p.sellingPrice);
+        const amount = priceToUse * item.quantity;
+        
+        subtotal += amount;
+        const itemTax = amount * (Number(p.taxRate) / 100);
+        taxAmount += itemTax;
+
+        orderItems.push({
+          productId: p.id,
+          name: p.name,
+          quantity: item.quantity,
+          unitPrice: priceToUse,
+          costPrice: p.costPrice || 0,
+          taxRate: p.taxRate || 0,
+          discount: 0,
+          total: amount
+        });
       }
     }
 
-    let subtotal = 0;
-    // Apply Pricing Rules for backend Price protection
-    const productsWithPricing = applyPricingRules(dbProducts, shop);
-
-    const orderItems = items.map((i: any) => {
-      const p = productsWithPricing.find((x: any) => x.id === i.productId);
-      if (!p) throw new Error('Product not found: ' + i.productId);
-      
-      // Price is ALWAYS taken from DB — client-sent price is ignored entirely
-      const priceToUse = p.discountedPrice || Number(p.sellingPrice);
-      const amount = priceToUse * i.quantity;
-      subtotal += amount;
-      return {
-        productId: p.id,
-        name: p.name,
-        quantity: i.quantity,
-        unitPrice: priceToUse,    // DB price, never client price
-        costPrice: p.costPrice || 0,
-        taxRate: p.taxRate || 0,
-        discount: 0,
-        total: amount
-      };
-    });
-
-    const taxAmount = orderItems.reduce((s: number, i: any) => s + i.total * (Number(i.taxRate) / 100), 0);
     const totalAmount = subtotal + taxAmount;
     const pointsDiscount = Number(redeemPoints) / ((shop as any).redeemRate || 10);
-    const finalTotal = Math.max(0, totalAmount - pointsDiscount);
+
+    // Validate & apply coupon discount
+    let couponDiscount = 0;
+    let resolvedCouponCode: string | null = null;
+    if (couponCode) {
+      try {
+        const coupon = await (prisma as any).coupon.findFirst({
+          where: { shopId: shop.id, code: couponCode.toUpperCase().trim(), isActive: true }
+        });
+        if (coupon) {
+          const cMinOrder = typeof coupon.minOrder?.toNumber === 'function' ? coupon.minOrder.toNumber() : Number(coupon.minOrder || 0);
+          const cValue = typeof coupon.value?.toNumber === 'function' ? coupon.value.toNumber() : Number(coupon.value || 0);
+          const isExpired = coupon.expiresAt && new Date(coupon.expiresAt) < new Date();
+          const maxReached = coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses;
+          
+          if (!isExpired && !maxReached && totalAmount >= cMinOrder) {
+            couponDiscount = coupon.type === 'PERCENTAGE'
+              ? Math.round(totalAmount * cValue / 100)
+              : Math.min(cValue, totalAmount);
+            resolvedCouponCode = coupon.code;
+          }
+        }
+      } catch (err: any) {
+        logger.error(`[MENU] Silent coupon application crash: ${err.message}`);
+      }
+    }
+
+    const finalTotal = Math.max(0, totalAmount - pointsDiscount - couponDiscount);
 
     // Payment Strategy
     const pm = (paymentMethod as PaymentMethod) || PaymentMethod.CASH;
     const paymentStatus = pm === 'CASH' ? 'UNPAID' : 'PAID';
 
-    // Create Order atomically — count inside transaction prevents duplicate invoice numbers
+    // Create Order atomically — invoiceCount increment is atomic at DB level
+    // preventing duplicate invoice numbers under concurrent load
     const { order, invoiceNumber, tokenNumber } = await prisma.$transaction(async (tx) => {
-      const count = await tx.order.count({ where: { shopId: shop.id } });
-      const newInvoiceNumber = `ONL-${String(count + 1).padStart(6, '0')}`;
-      const newTokenNumber = ((count % 9999) + 1).toString().padStart(4, '0');
+      // Atomic invoice sequence: UPDATE ... SET invoiceCount = invoiceCount + 1
+      const updatedShop = await (tx as any).shop.update({
+        where: { id: shop.id },
+        data: { invoiceCount: { increment: 1 } },
+        select: { invoiceCount: true }
+      });
+      const seq = updatedShop.invoiceCount;
+      const newInvoiceNumber = `ONL-${String(seq).padStart(6, '0')}`;
+      const newTokenNumber = ((seq % 9999) + 1).toString().padStart(4, '0');
 
       const order = await tx.order.create({
         data: {
@@ -300,7 +418,7 @@ router.post('/order', orderLimiter, validateRequest(publicOrderSchema), asyncHan
           invoiceNumber: newInvoiceNumber,
           subtotal,
           taxAmount,
-          discountAmount: pointsDiscount,
+        discountAmount: pointsDiscount + couponDiscount,
           totalAmount: finalTotal,
           paidAmount: paymentStatus === 'PAID' ? finalTotal : 0,
           paymentMethod: pm,
@@ -311,6 +429,35 @@ router.post('/order', orderLimiter, validateRequest(publicOrderSchema), asyncHan
         },
         include: { items: true },
       });
+
+      // Increment coupon usedCount atomically inside transaction
+      if (resolvedCouponCode) {
+        try {
+          const updatedCoupon = await (tx as any).coupon.updateMany({
+            where: { shopId: shop.id, code: resolvedCouponCode, isActive: true },
+            data: { usedCount: { increment: 1 } }
+          });
+
+          // Write CouponUsage audit record for attribution reports
+          const couponRecord = await (tx as any).coupon.findFirst({
+            where: { shopId: shop.id, code: resolvedCouponCode },
+            select: { id: true }
+          });
+          if (couponRecord) {
+            await (tx as any).couponUsage.create({
+              data: {
+                couponId: couponRecord.id,
+                orderId: order.id,
+                customerId: customerId || null,
+                discountApplied: couponDiscount
+              }
+            });
+          }
+        } catch (e: any) {
+          logger.warn(`[MENU] Coupon update failed (non-fatal): ${e.message}`);
+        }
+      }
+
       return { order, invoiceNumber: newInvoiceNumber, tokenNumber: newTokenNumber };
     });
 
@@ -319,7 +466,7 @@ router.post('/order', orderLimiter, validateRequest(publicOrderSchema), asyncHan
     emitToShop(shop.id, 'ORDER_CREATED', { ...order, status: 'PENDING' });
 
     // Stock & Loyalty updates (Deferred for performance)
-    updatePostOrderMetrics(shop.id, items, orderItems, invoiceNumber, customerId, Number(redeemPoints), finalTotal, paymentStatus, pm, customerPhone, loyaltyRate).catch(err => {
+    updatePostOrderMetrics(shop.id, items, orderItems, invoiceNumber, customerId, Number(redeemPoints), finalTotal, paymentStatus, pm, customerPhone, loyaltyRate, pointsDiscount + couponDiscount).catch(err => {
       logger.warn(`[MENU] Deferred updates failed for ${invoiceNumber}: ${err.message}`);
     });
 
@@ -357,7 +504,7 @@ router.get('/customer', asyncHandler(async (req, res) => {
           { phone: phone }
         ]
       },
-      select: { name: true, loyaltyPoints: true }
+      select: { name: true, loyaltyPoints: true, totalPurchases: true }
     });
 
     if (!cust) return res.json({});
@@ -458,28 +605,51 @@ async function updatePostOrderMetrics(
   paymentStatus: string,
   paymentMethod: any,     // actual payment method (not hardcoded)
   customerPhone: string | null,
-  loyaltyRate: number
+  loyaltyRate: number,
+  totalDiscount: number
 ) {
   // 1. Stock Deduction & Low Stock Alert
   for (const item of items) {
-    const affected = await prisma.$executeRaw`
-      UPDATE "Product"
-      SET stock = stock - ${item.quantity}
-      WHERE id = ${item.productId} AND "shopId" = ${shopId} AND stock >= ${item.quantity}
-    `;
+    if (item.comboId) {
+      const combo = await prisma.combo.findUnique({
+        where: { id: item.comboId },
+        include: { items: { include: { product: true } } }
+      });
+      if (combo) {
+        for (const ci of combo.items) {
+          const totalToDeduct = ci.quantity * item.quantity;
+          await prisma.$executeRaw`
+            UPDATE "Product"
+            SET stock = stock - ${totalToDeduct}
+            WHERE id = ${ci.productId} AND "shopId" = ${shopId} AND stock >= ${totalToDeduct}
+          `;
+          // Trigger low stock check for component
+          const p = ci.product;
+          if (p && (p.stock - totalToDeduct) <= p.lowStockAlert) {
+            emitToShop(shopId, 'STOCK_LOW', { productId: p.id, name: p.name, currentStock: p.stock - totalToDeduct });
+          }
+        }
+      }
+    } else if (item.productId) {
+      const affected = await prisma.$executeRaw`
+        UPDATE "Product"
+        SET stock = stock - ${item.quantity}
+        WHERE id = ${item.productId} AND "shopId" = ${shopId} AND stock >= ${item.quantity}
+      `;
 
-    if (affected === 0) {
-      logger.warn(`[STOCK] Stock deduction failed or insufficient for Product ${item.productId} in Shop ${shopId}`);
-    }
+      if (affected === 0) {
+        logger.warn(`[STOCK] Stock deduction failed or insufficient for Product ${item.productId} in Shop ${shopId}`);
+      }
 
-    const product = await prisma.product.findUnique({
-      where: { id: item.productId },
-      select: { id: true, name: true, stock: true, lowStockAlert: true }
-    });
+      const product = await prisma.product.findUnique({
+        where: { id: item.productId },
+        select: { id: true, name: true, stock: true, lowStockAlert: true }
+      });
 
-    if (product && product.stock <= product.lowStockAlert) {
-      logger.warn(`[STOCK] Low stock alert for Shop ${shopId}: ${product.name} at ${product.stock}`);
-      emitToShop(shopId, 'STOCK_LOW', { productId: product.id, name: product.name, currentStock: product.stock });
+      if (product && product.stock <= product.lowStockAlert) {
+        logger.warn(`[STOCK] Low stock alert for Shop ${shopId}: ${product.name} at ${product.stock}`);
+        emitToShop(shopId, 'STOCK_LOW', { productId: product.id, name: product.name, currentStock: product.stock });
+      }
     }
   }
 
@@ -503,7 +673,7 @@ async function updatePostOrderMetrics(
           items: orderItems.map((i: any) => ({ name: i.name, quantity: i.quantity, unitPrice: Number(i.unitPrice), total: Number(i.total) })),
           subtotal: orderItems.reduce((s: number, i: any) => s + Number(i.total), 0),
           taxAmount: orderItems.reduce((s: number, i: any) => s + Number(i.total) * (Number(i.taxRate) / 100), 0),
-          discountAmount: redeemPoints > 0 ? redeemPoints / 10 : 0,
+          discountAmount: totalDiscount,
           totalAmount: Number(finalTotal),
           paymentMethod,
           paymentStatus: 'PAID'

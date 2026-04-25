@@ -35,8 +35,10 @@ export const distributedRateLimiter = (maxRequests: number, windowSeconds: numbe
       }
 
       next();
-    } catch (err) {
-      logger.error(`[RateLimit] Error processing key ${key}:`, err);
+    } catch (err: any) {
+      if (!err.message?.includes("Stream isn't writeable")) {
+        logger.error(`[RateLimit] Error processing key ${key}:`, err);
+      }
       next(); // Fail open so the request can still proceed if Redis is down!
     }
   };

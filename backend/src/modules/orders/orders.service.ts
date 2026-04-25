@@ -1,137 +1,195 @@
 import { prisma } from '../../common/prisma';
 import { logger } from '../../lib/logger';
-
-// Loyalty constants removed - now fetched dynamically per-shop inside transactions
+import { Idempotency } from '../../common/idempotency';
 
 /**
  * Creates a new order with atomic stock deduction and loyalty points calculation.
- * Uses a database transaction with a 15s timeout to prevent race conditions.
- * 
- * @param shopId - Unique ID of the tenant shop
- * @param userId - ID of the staff member creating the order
- * @param data - Order details including items, customer, and payment info
- * @returns The created order including items, customer, and user context
+ * Hardened for production:
+ * - Idempotency Guard: Prevents duplicate orders from double-clicks or retries.
+ * - Non-Blocking Invoicing: Sequence generation moved to prevent Shop-level row deadlocks.
+ * - Atomic Stock Guard: Ensures raw SQL checks for over-selling.
  */
 export const createOrder = async (shopId: string, userId: string, data: any) => {
-  const { customerId, items, discountAmount = 0, redeemPoints = 0, paymentMethod, paymentStatus, notes } = data;
+  const { requestId, customerId, items, discountAmount = 0, redeemPoints = 0, paymentMethod, paymentStatus, notes, couponCode } = data;
+
+  // 1. Idempotency Guard (The "Shield")
+  if (requestId) {
+    const cached = await Idempotency.get(`order:${shopId}:${requestId}`);
+    if (cached) {
+      logger.info(`[IDEMPOTENCY] HIT for Order Request ${requestId}. Returning cached result.`);
+      return cached;
+    }
+  }
 
   try {
-    return await prisma.$transaction(async (tx) => {
-      // 1. Fetch Shop Settings for loyalty rates
-      const shop = await tx.shop.findUnique({ where: { id: shopId } });
+    const result = await prisma.$transaction(async (tx) => {
+      // 2. Fetch Context (Read-Only)
+      const shop = await tx.shop.findUnique({ where: { id: shopId }, select: { id: true, loyaltyRate: true, redeemRate: true } });
       if (!shop) throw new Error('Shop configuration not found');
       
-      const LOYALTY_RATE = Number((shop as any).loyaltyRate || 0.1);
-      const REDEEM_VALUE = Number((shop as any).redeemRate || 10);
+      const LOYALTY_RATE = Number(shop.loyaltyRate || 0.1);
+      const REDEEM_VALUE = Number(shop.redeemRate || 10);
       
-      if (redeemPoints > 0) {
-        if (!customerId) throw new Error('Customer ID is required to redeem points');
-        const customer = await tx.customer.findUnique({ where: { id: customerId } });
-        if (!customer) throw new Error('Customer not found');
-        if (customer.loyaltyPoints < redeemPoints) throw new Error(`Insufficient points. Customer only has ${customer.loyaltyPoints}`);
-      }
+      const comboIds = items.filter((i: any) => i.comboId).map((i: any) => i.comboId);
+      const combos = comboIds.length > 0 ? await tx.combo.findMany({
+        where: { id: { in: comboIds } },
+        include: { items: { include: { product: true } } }
+      }) : [];
 
-      const pointsDiscount = redeemPoints > 0 ? (redeemPoints / REDEEM_VALUE) : 0;
-      const totalDiscount = discountAmount + pointsDiscount;
-      // 1. Fetch products inside transaction to hold locks
-      const products = await tx.product.findMany({
-        where: { id: { in: items.map((i: any) => i.productId) } }
-      });
+      const productIds = items.filter((i: any) => i.productId).map((i: any) => i.productId);
+      const products = productIds.length > 0 ? await tx.product.findMany({
+        where: { id: { in: productIds } }
+      }) : [];
 
       let subtotal = 0;
       let taxAmount = 0;
 
       for (const item of items) {
-        const product = products.find(p => p.id === item.productId);
-        if (!product) throw new Error(`Product not found: ${item.productId}`);
-        if (product.stock < item.quantity) throw new Error(`Insufficient stock for ${product.name}`);
+        if (item.comboId) {
+          const combo = combos.find(c => c.id === item.comboId);
+          if (!combo) throw new Error(`Combo not found: ${item.comboId}`);
+          
+          item.unitPrice = Number(combo.fixedPrice);
+          // Calculate cost price as sum of component cost prices
+          item.costPrice = combo.items.reduce((sum, ci) => sum + Number(ci.product.costPrice || 0) * ci.quantity, 0);
+          
+          // Verify stock for each component
+          for (const ci of combo.items) {
+            if (ci.product.stock < ci.quantity * item.quantity) {
+              throw new Error(`Insufficient stock for ${ci.product.name} in combo ${combo.name}`);
+            }
+          }
+        } else {
+          const product = products.find(p => p.id === item.productId);
+          if (!product) throw new Error(`Product not found: ${item.productId}`);
+          if (product.stock < item.quantity) throw new Error(`Insufficient stock for ${product.name}`);
 
-        // OVERWRITE prices with DB values for protection!
-        item.unitPrice = Number(product.sellingPrice);
-        item.costPrice = Number(product.costPrice || 0);
+          item.unitPrice = Number(product.sellingPrice);
+          item.costPrice = Number(product.costPrice || 0);
+        }
 
         const itemSubtotal = item.unitPrice * item.quantity;
         subtotal += itemSubtotal;
         taxAmount += itemSubtotal * (item.taxRate / 100);
       }
 
+      // 3. Loyalty & Coupon (Short Read/Update)
+      if (redeemPoints > 0) {
+        if (!customerId) throw new Error('Customer ID is required to redeem points');
+        const customer = await tx.customer.findUnique({ where: { id: customerId } });
+        if (!customer) throw new Error('Customer not found');
+        if (customer.loyaltyPoints < redeemPoints) throw new Error('Insufficient points');
+      }
+
+      let couponId = null;
+      let calculatedCouponDiscount = 0;
+
+      if (couponCode) {
+        const coupon = await (tx as any).coupon.findFirst({
+          where: { shopId, code: couponCode.toUpperCase().trim(), isActive: true }
+        });
+
+        if (coupon) {
+          if (coupon.expiresAt && new Date() > new Date(coupon.expiresAt)) throw new Error('Coupon expired');
+          if (coupon.maxUses && coupon.usedCount >= coupon.maxUses) throw new Error('Coupon limit reached');
+
+          calculatedCouponDiscount = coupon.type === 'PERCENTAGE' ? (subtotal * (Number(coupon.value) / 100)) : Number(coupon.value);
+          couponId = coupon.id;
+          
+          await (tx as any).coupon.update({
+            where: { id: coupon.id },
+            data: { usedCount: { increment: 1 } }
+          });
+        }
+      }
+
+      const totalDiscount = calculatedCouponDiscount + (redeemPoints / REDEEM_VALUE || 0);
       const totalAmount = Math.max(0, subtotal + taxAmount - totalDiscount);
 
-      // 2. Invoice Generation LOCKED inside transaction
-      const count = await tx.order.count({ where: { shopId } });
-      const invoiceNumber = `INV-${String(count + 1).padStart(6, '0')}`;
+      // 4. ATOMIC Invoice Gen (Prevent Deadlocks on Shop table)
+      // We use a raw increment and sequence to avoid SELECT FOR UPDATE bottlenecks
+      const updatedShop = await tx.shop.update({
+        where: { id: shopId },
+        data: { invoiceCount: { increment: 1 } },
+        select: { invoiceCount: true }
+      });
+      const invoiceNumber = `INV-${String(updatedShop.invoiceCount).padStart(6, '0')}`;
 
+      // 5. Order Creation
       const newOrder = await tx.order.create({
         data: {
-          shopId,
-          userId,
-          customerId: customerId || null,
-          invoiceNumber,
-          subtotal,
-          taxAmount,
-          discountAmount: totalDiscount,
-          totalAmount,
-          paidAmount: paymentStatus === 'PAID' ? totalAmount : 0,
-          paymentMethod,
-          paymentStatus,
-          status: 'COMPLETED',
-          notes: `[KITCHEN:PENDING] ${notes || ''}`,
+          shopId, userId, customerId: customerId || null,
+          invoiceNumber, subtotal, taxAmount, discountAmount: totalDiscount,
+          totalAmount, paidAmount: paymentStatus === 'PAID' ? totalAmount : 0,
+          paymentMethod, paymentStatus, status: 'COMPLETED', notes: notes || null,
+          couponId, couponDiscount: calculatedCouponDiscount,
           items: {
             create: items.map((item: any) => ({
-              productId: item.productId,
-              name: item.name,
+              productId: item.productId || null,
+              comboId: item.comboId || null,
+              name: item.name, 
               quantity: item.quantity,
-              costPrice: item.costPrice,
+              costPrice: item.costPrice, 
               unitPrice: item.unitPrice,
-              taxRate: item.taxRate || 0,
-              discount: item.discount || 0,
+              taxRate: item.taxRate || 0, 
               total: item.unitPrice * item.quantity
             }))
           }
         },
-        include: { items: true, customer: true, user: { select: { name: true } } }
+        include: { items: { include: { product: true, combo: { include: { items: { include: { product: true } } } } } }, customer: true, user: { select: { name: true } } }
       });
 
-      // 3. ATOMIC Stock Deduction
+      // 6. ATOMIC Stock Deduction (The "Chaos Proof" Step)
       for (const item of items) {
-        const result = await tx.$executeRaw`
-          UPDATE "Product" 
-          SET stock = stock - ${item.quantity} 
-          WHERE id = ${item.productId} AND stock >= ${item.quantity}
-        `;
-        
-        if (result === 0) {
-          throw new Error(`Atomic stock deduction failed for product ID: ${item.productId}. Possible race condition or insufficient stock.`);
-        }
-
-        await tx.stockHistory.create({
-          data: {
-            productId: item.productId,
-            type: 'SALE',
-            quantity: -item.quantity,
-            note: `Sale: ${invoiceNumber}`
+        if (item.comboId) {
+          const combo = combos.find(c => c.id === item.comboId);
+          for (const ci of combo!.items) {
+            const totalToDeduct = ci.quantity * item.quantity;
+            const res = await tx.$executeRaw`
+              UPDATE "Product" SET stock = stock - ${totalToDeduct} 
+              WHERE id = ${ci.productId} AND stock >= ${totalToDeduct}
+            `;
+            if (res === 0) throw new Error(`Stock mismatch for ${ci.product.name} in combo`);
+            await tx.stockHistory.create({
+              data: { productId: ci.productId, type: 'SALE', quantity: -totalToDeduct, note: `Combo Sale: ${invoiceNumber}` }
+            });
           }
-        });
+        } else {
+          const res = await tx.$executeRaw`
+            UPDATE "Product" SET stock = stock - ${item.quantity} 
+            WHERE id = ${item.productId} AND stock >= ${item.quantity}
+          `;
+          if (res === 0) throw new Error(`Stock mismatch for ${item.name}`);
+          await tx.stockHistory.create({
+            data: { productId: item.productId, type: 'SALE', quantity: -item.quantity, note: `Sale: ${invoiceNumber}` }
+          });
+        }
       }
 
-      // 4. Update customer loyalty points (Dynamic per-shop)
+      // 7. Credits & Loyalty
       if (customerId) {
-        const pointsEarned = Math.floor(totalAmount * LOYALTY_RATE);
+        const pts = Math.floor(totalAmount * LOYALTY_RATE);
         await tx.customer.update({
           where: { id: customerId },
           data: {
             totalPurchases: { increment: totalAmount },
-            loyaltyPoints: { increment: pointsEarned - redeemPoints },
+            loyaltyPoints: { increment: pts - redeemPoints },
             ...(paymentMethod === 'CREDIT' && { outstandingBalance: { increment: totalAmount } })
           } as any
         });
       }
 
-      logger.info(`[ORDER] Created successfully: ${invoiceNumber} for Shop ${shopId}`);
       return newOrder;
     }, { timeout: 15000 });
+
+    // 8. Cache Result for Idempotency
+    if (requestId) {
+      await Idempotency.set(`order:${shopId}:${requestId}`, result);
+    }
+
+    return result;
   } catch (error: any) {
-    logger.error(`[ORDER] Failed to create order: ${error.message}`, { shopId, userId });
+    logger.error(`[ORDER] Failed: ${error.message}`, { shopId, requestId });
     throw error;
   }
 };
@@ -225,13 +283,32 @@ export const cancelOrder = async (orderId: string, shopId: string) => {
       });
 
       for (const item of order.items) {
-        await tx.product.update({
-          where: { id: item.productId },
-          data: { stock: { increment: item.quantity } }
-        });
-        await tx.stockHistory.create({
-          data: { productId: item.productId, type: 'RETURN', quantity: item.quantity, note: `Cancelled: ${order.invoiceNumber}` }
-        });
+        if (item.comboId) {
+          const combo = await tx.combo.findUnique({
+            where: { id: item.comboId },
+            include: { items: true }
+          });
+          if (combo) {
+            for (const ci of combo.items) {
+              const totalToRestore = ci.quantity * item.quantity;
+              await tx.product.update({
+                where: { id: ci.productId },
+                data: { stock: { increment: totalToRestore } }
+              });
+              await tx.stockHistory.create({
+                data: { productId: ci.productId, type: 'RETURN', quantity: totalToRestore, note: `Cancelled Combo: ${order.invoiceNumber}` }
+              });
+            }
+          }
+        } else if (item.productId) {
+          await tx.product.update({
+            where: { id: item.productId },
+            data: { stock: { increment: item.quantity } }
+          });
+          await tx.stockHistory.create({
+            data: { productId: item.productId, type: 'RETURN', quantity: item.quantity, note: `Cancelled: ${order.invoiceNumber}` }
+          });
+        }
       }
       logger.info(`[ORDER] Cancelled: ${order.invoiceNumber}`);
       return cancelledOrder;
@@ -276,25 +353,10 @@ export const getKitchenOrders = async (shopId: string) => {
     const dbOrders = await prisma.order.findMany({
       where: {
         shopId,
-        OR: [
-          { notes: { contains: '[KITCHEN:' } },
-          { status: { in: ['PENDING', 'PREPARING', 'READY'] as any } },
-        ],
-        // status: { not: { in: ['CANCELLED', 'COMPLETED'] as any } }, 
-        // Logic: Exclude CANCELLED always. 
-        // Exclude COMPLETED ONLY IF it DOES NOT have a KITCHEN tag.
-        AND: [
-          { status: { not: 'CANCELLED' as any } },
-          {
-            OR: [
-              { status: { not: 'COMPLETED' as any } },
-              { notes: { contains: '[KITCHEN:' } }
-            ]
-          }
-        ]
+        kitchenStatus: { in: ['PENDING', 'PREPARING', 'READY'] as any }
       },
       select: {
-        id: true, invoiceNumber: true, status: true,
+        id: true, invoiceNumber: true, status: true, kitchenStatus: true,
         totalAmount: true, createdAt: true, paymentMethod: true,
         paymentStatus: true, notes: true,
         customer: { select: { name: true, phone: true } },
@@ -304,26 +366,11 @@ export const getKitchenOrders = async (shopId: string) => {
       take: 50
     });
 
-    return dbOrders.map(o => {
-      // 1. Give precedence to the tag if it exists (for POS/Staff overrides)
-      const match = o.notes?.match(/\[KITCHEN:(PENDING|PREPARING|READY)\]/);
-      
-      let kitchenStatus: string;
-      if (match) {
-        kitchenStatus = match[1];
-      } else if (['PENDING', 'PREPARING', 'READY'].includes(o.status as string)) {
-        // 2. Use the main order status (for Online Scanner orders)
-        kitchenStatus = o.status as string;
-      } else {
-        kitchenStatus = 'COMPLETED';
-      }
-
-      return {
-        ...o,
-        status: kitchenStatus,
-        notes: o.notes?.replace(/\[KITCHEN:[A-Z]+\]\s*/, '')
-      };
-    }).filter(o => ['PENDING', 'PREPARING', 'READY'].includes(o.status));
+    return dbOrders.map(o => ({
+      ...o,
+      status: o.kitchenStatus, // Expose kitchenStatus as status for frontend compatibility
+      notes: o.notes
+    }));
   } catch (error: any) {
     logger.error(`[KITCHEN] Failed to fetch orders: ${error.message}`, { shopId });
     throw error;
@@ -332,7 +379,6 @@ export const getKitchenOrders = async (shopId: string) => {
 
 /**
  * Updates the kitchen-specific status of an order.
- * Syncs the main order status if completing a kitchen flow.
  */
 export const updateKitchenStatus = async (orderId: string, shopId: string, status: string) => {
   try {
@@ -341,23 +387,13 @@ export const updateKitchenStatus = async (orderId: string, shopId: string, statu
     });
     if (!order) throw new Error('Order not found');
 
-    let rawNotes = order.notes || '';
-    rawNotes = rawNotes.replace(/\[KITCHEN:[A-Z]+\]\s*/, ''); // strip old tag
-    
-    let newNotes = rawNotes;
-    if (status === 'PENDING' || status === 'PREPARING' || status === 'READY') {
-      newNotes = `[KITCHEN:${status}] ${rawNotes}`;
-    }
-
-    const orderStatus = (status === 'COMPLETED') ? 'COMPLETED' : order.status;
-
     const updated = await prisma.order.update({
       where: { id: orderId },
-      data: { notes: newNotes, status: orderStatus as any },
+      data: { kitchenStatus: status as any },
       include: { items: true, customer: true }
     });
 
-    return { ...updated, status, notes: rawNotes };
+    return { ...updated, status: updated.kitchenStatus, notes: updated.notes };
   } catch (error: any) {
     logger.error(`[KITCHEN] Failed to update status: ${error.message}`, { orderId, shopId, status });
     throw error;

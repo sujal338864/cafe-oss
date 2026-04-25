@@ -1,38 +1,41 @@
-import { PrismaClient, PaymentMethod, ExpenseCategory, Role, Plan, StockType, PaymentStatus, OrderStatus } from '@prisma/client';
+import { PrismaClient, PaymentMethod, ExpenseCategory, Role, Plan, StockType, PaymentStatus, OrderStatus } from '../generated/client';
 export { PaymentMethod, ExpenseCategory, Role, Plan, StockType, PaymentStatus, OrderStatus };
 import { getTenantContext } from './context';
 
 // --- PRISMA SINGLETON PATTERN ---
-// Prevents nodemon from creating a new connection pool every time a file is saved.
-const globalForPrisma = global as unknown as { prisma: PrismaClient };
+const globalForPrisma = global as unknown as { prisma: PrismaClient, directPrisma: PrismaClient };
+
+/**
+ * Ensures we only have ONE connection pool even during hot-reloads.
+ * Appends safe connection pooling parameters if missing.
+ */
+const getSafeUrl = (url: string | undefined): string => {
+  if (!url) return '';
+  if (url.includes('connection_limit')) return url;
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}connection_limit=5&pool_timeout=20`;
+};
 
 const basePrisma =
   globalForPrisma.prisma ||
   new PrismaClient({
-    log: ['error', 'warn'],
-    datasources: { db: { url: process.env.DATABASE_URL } },
+    log: ['error'],
+    datasources: { db: { url: getSafeUrl(process.env.DATABASE_URL) } },
   });
 
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = basePrisma;
-}
-
-// Dedicated client for Analytics/Heavy queries to bypass Pooler (PgBouncer)
-// Uses the same singleton guard as basePrisma to prevent connection leaks on hot-reload
-const globalForDirectPrisma = global as unknown as { directPrisma: PrismaClient };
-
 export const directPrisma =
-  globalForDirectPrisma.directPrisma ||
+  globalForPrisma.directPrisma ||
   new PrismaClient({
     datasources: {
       db: {
-        url: process.env.DIRECT_URL || process.env.DATABASE_URL
+        url: getSafeUrl(process.env.DIRECT_URL || process.env.DATABASE_URL)
       }
     }
   });
 
 if (process.env.NODE_ENV !== 'production') {
-  globalForDirectPrisma.directPrisma = directPrisma;
+  globalForPrisma.prisma = basePrisma;
+  globalForPrisma.directPrisma = directPrisma;
 }
 
 /**
@@ -41,7 +44,8 @@ if (process.env.NODE_ENV !== 'production') {
  */
 const modelsWithShopId = [
   'User', 'Product', 'Category', 'Customer', 'Order', 
-  'Supplier', 'Purchase', 'Expense', 'Notification', 'Subscription'
+  'Supplier', 'Purchase', 'Expense', 'Notification', 'Subscription',
+  'Combo', 'BranchComboOverride'
   // Note: 'Membership' is excluded here to allow cross-tenant shop switching via current user ID
 ];
 

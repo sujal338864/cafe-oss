@@ -33,3 +33,14 @@ if (process.env.REDIS_URL) {
 }
 
 export const redisConnection = connectionOptions;
+
+/**
+ * Standardized Dead-Letter-Queue (DLQ) Fallback Policy.
+ * Hard limit of 200 failed jobs to prevent Redis Out-Of-Memory (OOM) crashes.
+ */
+export const DEFAULT_JOB_OPTIONS = {
+  attempts: 3,
+  backoff: { type: 'exponential', delay: 2000 },
+  removeOnComplete: { age: 3600, count: 500 }, // Expire successful jobs quickly
+  removeOnFail: { age: 7 * 24 * 3600, count: 200 } // Hard cap on DLQ
+};

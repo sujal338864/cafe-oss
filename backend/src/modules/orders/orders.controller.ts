@@ -30,29 +30,35 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
     // NON-CRITICAL SIDE EFFECTS (Post-Commit)
     // ==========================================
     
-    // 1. WhatsApp Notification
+    // 1. WhatsApp Notification — only if customer has not opted out
     if (order.customer?.phone && req.body.paymentStatus === 'PAID') {
-      addWhatsAppJob({
-        phone: order.customer.phone,
-        billData: {
-          invoiceNumber: order.invoiceNumber,
-          items: order.items.map((i: any) => ({ 
-            name: i.name, 
-            quantity: i.quantity, 
-            unitPrice: Number(i.unitPrice), 
-            total: Number(i.total) 
-          })),
-          subtotal: Number(order.subtotal),
-          taxAmount: Number(order.taxAmount),
-          discountAmount: Number(order.discountAmount),
-          totalAmount: Number(order.totalAmount),
-          paymentMethod: order.paymentMethod,
-          paymentStatus: order.paymentStatus,
-        },
-        shopName: shop?.name || 'Our Shop',
-        pointsEarned: Math.floor(Number(order.totalAmount) * LOYALTY_RATE),
-        currentLoyaltyPoints: order.customer?.loyaltyPoints
-      }).catch(err => logger.warn(`[ORDER] WhatsApp job failed: ${err.message}`));
+      // Respect opt-out preference (DPDP Act compliance)
+      const optedOut = (order.customer as any).campaignOptOut === true;
+      if (!optedOut) {
+        addWhatsAppJob({
+          phone: order.customer.phone,
+          billData: {
+            invoiceNumber: order.invoiceNumber,
+            items: order.items.map((i: any) => ({
+              name: i.name,
+              quantity: i.quantity,
+              unitPrice: Number(i.unitPrice),
+              total: Number(i.total)
+            })),
+            subtotal: Number(order.subtotal),
+            taxAmount: Number(order.taxAmount),
+            discountAmount: Number(order.discountAmount),
+            totalAmount: Number(order.totalAmount),
+            paymentMethod: order.paymentMethod,
+            paymentStatus: order.paymentStatus,
+          },
+          shopName: shop?.name || 'Our Shop',
+          pointsEarned: Math.floor(Number(order.totalAmount) * LOYALTY_RATE),
+          currentLoyaltyPoints: order.customer?.loyaltyPoints
+        }).catch(err => logger.warn(`[ORDER] WhatsApp job failed: ${err.message}`));
+      } else {
+        logger.info(`[ORDER] WhatsApp skipped — customer ${order.customer.phone} has opted out.`);
+      }
     }
 
     // 2. Dashboard & Socket Notification

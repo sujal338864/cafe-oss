@@ -7,18 +7,29 @@ import { useTheme } from '@/context/ThemeContext';
 
 export default function CreateShopPage() {
   const [name, setName] = useState('');
+  const [city, setCity] = useState('');
   const [loading, setLoading] = useState(false);
-  const { switchShop } = useAuth();
+  const { user, switchShop, refreshUser } = useAuth();
   const { theme } = useTheme();
   const router = useRouter();
+  
+  // If in Franchise Mode, pick the active organization
+  const defaultOrgId = user?.organizations?.[0]?.orgId || '';
+  const [orgId, setOrgId] = useState(defaultOrgId);
 
   const handleCreate = async () => {
     if (!name.trim() || loading) return;
     setLoading(true);
     try {
-      const res = await api.post('/api/shop/create', { name });
+      const payload: any = { name, city: city.trim() };
+      if (user?.selectedMode === 'FRANCHISE' && orgId) {
+        payload.organizationId = orgId;
+      }
+      
+      const res = await api.post('/api/shop/create', payload);
       if (res.data.success) {
         await switchShop(res.data.shop.id);
+        if (payload.organizationId && refreshUser) await refreshUser();
         router.push('/dashboard');
       }
     } catch (e) {
@@ -45,11 +56,11 @@ export default function CreateShopPage() {
           Launch Your Next Empire
         </h1>
         <p style={{ fontSize: 16, color: theme.textFaint, marginBottom: 40 }}>
-          Welcome back! Tell us the name of your new cafe and we'll have it ready in seconds.
+          Welcome back! Tell us the details of your new cafe and we'll have it ready in seconds.
         </p>
 
-        <div style={{ textAlign: 'left', marginBottom: 30 }}>
-          <label style={{ display: 'block', fontSize: 12, fontWeight: 800, color: theme.textFaint, textTransform: 'uppercase', marginBottom: 12, letterSpacing: '0.05em' }}>
+        <div style={{ textAlign: 'left', marginBottom: 24 }}>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 800, color: theme.textFaint, textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.05em' }}>
             New Cafe Name
           </label>
           <input 
@@ -58,21 +69,46 @@ export default function CreateShopPage() {
             onChange={e => setName(e.target.value)}
             placeholder="e.g. Skyline Brews"
             style={{ 
-              width: '100%', 
-              padding: '18px 20px', 
-              borderRadius: 16, 
-              background: theme.bg, 
-              border: `2px solid ${theme.border}`, 
-              color: theme.text, 
-              fontSize: 18, 
-              outline: 'none',
-              transition: 'all 0.2s'
+              width: '100%', padding: '14px 18px', borderRadius: 12, background: theme.bg, border: `2px solid ${theme.border}`, 
+              color: theme.text, fontSize: 16, outline: 'none', transition: 'all 0.2s'
             }}
-            onFocus={e => e.target.style.borderColor = '#7c3aed'}
-            onBlur={e => e.target.style.borderColor = theme.border}
-            onKeyDown={e => e.key === 'Enter' && handleCreate()}
           />
         </div>
+
+        <div style={{ textAlign: 'left', marginBottom: 30 }}>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 800, color: theme.textFaint, textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.05em' }}>
+            Branch City
+          </label>
+          <input 
+            value={city}
+            onChange={e => setCity(e.target.value)}
+            placeholder="e.g. Ahmedabad"
+            style={{ 
+              width: '100%', padding: '14px 18px', borderRadius: 12, background: theme.bg, border: `2px solid ${theme.border}`, 
+              color: theme.text, fontSize: 16, outline: 'none', transition: 'all 0.2s'
+            }}
+          />
+        </div>
+
+        {user?.selectedMode === 'FRANCHISE' && user.organizations && user.organizations.length > 0 && (
+          <div style={{ textAlign: 'left', marginBottom: 30 }}>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 800, color: theme.textFaint, textTransform: 'uppercase', marginBottom: 12, letterSpacing: '0.05em' }}>
+              Add to Organization
+            </label>
+            <select
+              value={orgId}
+              onChange={e => setOrgId(e.target.value)}
+              style={{ 
+                width: '100%', padding: '18px 20px', borderRadius: 16, background: theme.bg, border: `2px solid ${theme.border}`, 
+                color: theme.text, fontSize: 16, outline: 'none', cursor: 'pointer'
+              }}
+            >
+              {user.organizations.map((org: any) => (
+                <option key={org.orgId} value={org.orgId}>{org.orgName}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 16 }}>
           <button 

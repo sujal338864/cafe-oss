@@ -1,6 +1,30 @@
 import { Response, NextFunction } from 'express';
 import { AuthRequest } from './auth';
 import { prisma } from '../common/prisma';
+import { SubscriptionService } from '../services/subscription.service';
+
+/**
+ * Middleware: Blocks creation if resource limit (Product, Staff, Branch) is reached.
+ */
+export const gateResource = (type: 'products' | 'branches' | 'staff') => {
+  return async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const shopId = req.user!.shopId;
+      const { allowed, reason } = await SubscriptionService.canAddResource(shopId, type);
+      
+      if (!allowed) {
+        return res.status(403).json({
+          status: 'UPGRADE_REQUIRED',
+          type: 'RESOURCE_LIMIT',
+          message: reason
+        });
+      }
+      next();
+    } catch (e) {
+      next(e);
+    }
+  };
+};
 
 export const checkPlan = (requiredPlan: 'PRO' | 'ENTERPRISE') => {
   return async (req: AuthRequest, res: Response, next: NextFunction) => {

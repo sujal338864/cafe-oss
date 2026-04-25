@@ -1,13 +1,9 @@
 import { Queue } from 'bullmq';
-import { redisConnection } from '../config';
+import { redisConnection, DEFAULT_JOB_OPTIONS } from '../config';
 
 export const dashboardQueue = new Queue('dashboard_stats_queue', {
   connection: redisConnection,
-  defaultJobOptions: {
-    attempts: 3,
-    backoff: { type: 'exponential', delay: 1000 },
-    removeOnComplete: true,
-  }
+  defaultJobOptions: DEFAULT_JOB_OPTIONS
 });
 
 export const addDashboardUpdateJob = async (shopId: string) => {

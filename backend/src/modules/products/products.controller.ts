@@ -4,7 +4,7 @@ import * as productService from './products.service';
 import { deleteCache } from '../../common/cache';
 
 export const getProducts = async (req: AuthRequest, res: Response) => {
-  const { page = '1', limit = '20', search = '', category, lowStock, available } = req.query;
+  const { page = '1', limit = '20', search = '', category, lowStock, available, mode } = req.query;
   const pageNum = Math.max(1, parseInt(page as string) || 1);
   const limitNum = Math.min(100, parseInt(limit as string) || 20);
   const skip = (pageNum - 1) * limitNum;
@@ -24,7 +24,8 @@ export const getProducts = async (req: AuthRequest, res: Response) => {
     search: search as string,
     category: category as string,
     lowStock: lowStock === 'true',
-    available: available !== undefined ? available === 'true' : undefined
+    available: available !== undefined ? available === 'true' : undefined,
+    mode: mode as any
   });
 
   const response = {

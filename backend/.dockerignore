@@ -1,0 +1,91 @@
+# ── Development artifacts ──────────────────────────────────────────────────
+node_modules
+dist
+.git
+.gitignore
+
+# ── Environment files (secrets must come from platform env manager) ────────
+.env
+.env.*
+!.env.example
+
+# ── Logs (never bundle into prod image) ────────────────────────────────────
+*.log
+combined.log
+error.log
+*.txt
+*.sql
+
+# ── All root-level debug / repair / test scripts ───────────────────────────
+# These are one-off dev-time scripts and MUST NOT be in the prod image.
+# If a script is needed in prod, move it to scripts/ with proper CI gating.
+alter_enum.js
+bypass_rls_check.js
+check_*.js
+cleanup.js
+cleanup_shops.js
+clear_cache.ts
+create_simple_user.js
+db_push.js
+db_summary.js
+debug_*.js
+diag_*.ts
+direct_repair.js
+drop_*.js
+dump_*.js
+emergency_repair.js
+export_users.js
+final_merge.js
+find_*.js
+fix_*.js
+flush_redis.js
+get_shop_url.js
+harmonize.js
+kill_*.js
+list_*.js
+nuke*.js
+nuke*.sql
+ping.js
+prisma_repair.js
+promote_*.js
+push_sync.js
+repair*.js
+repair*.sql
+reset_user.js
+restore_*.js
+run_prisma.js
+run_rls.js
+safe_test.js
+seed.js
+sync_*.js
+test_*.js
+test_*.ts
+trigger_reset.js
+unlock.js
+upgrade_pro.js
+verify_*.js
+check_orders.ts
+clear_cache.ts
+diag_inventory.ts
+diag_inventory_v2.ts
+test_ai_direct.ts
+test_redis_cache.ts
+test_types.ts
+
+# ── Windows batch / shell scripts ─────────────────────────────────────────
+*.bat
+
+# ── Scratch / temp files ──────────────────────────────────────────────────
+scratch/
+*.txt
+*.md
+!README.md
+
+# ── TypeScript source (compiled to dist/) ────────────────────────────────
+# src/ is NOT excluded — Dockerfile.prod copies src for ts-node or
+# copies compiled dist/ depending on which stage you use.
+# If building to dist, uncomment below:
+# src/
+
+# ── Prisma — keep schema, exclude generated client if rebuilding ──────────
+# prisma/generated/ (uncomment if you generate client inside Docker)

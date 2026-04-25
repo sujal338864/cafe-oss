@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate, asyncHandler, AuthRequest } from '../middleware/auth';
+import { authenticate, authorize, asyncHandler, AuthRequest } from '../middleware/auth';
 import { redis } from '../lib/redis';
 // Unused imports removed
 import { generateShopInsights } from '../services/ai.service';
@@ -15,6 +15,7 @@ const router = Router();
 router.get(
   '/insights',
   authenticate,
+  authorize('ADMIN', 'MANAGER'),
   checkPlan('PRO'),
   asyncHandler(async (req: AuthRequest, res) => {
     const shopId = req.user!.shopId;

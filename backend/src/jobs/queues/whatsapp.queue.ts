@@ -1,20 +1,12 @@
 import { Queue } from 'bullmq';
-import { redisConnection } from '../config';
+import { redisConnection, DEFAULT_JOB_OPTIONS } from '../config';
 
 /**
  * Define the WhatsApp background queue
  */
 export const whatsappQueue = new Queue('whatsapp_bill_queue', {
   connection: redisConnection,
-  defaultJobOptions: {
-    attempts: 3, // Retry 3 times on failure
-    backoff: {
-      type: 'exponential',
-      delay: 5000 // Wait 5s before making second attempt
-    },
-    removeOnComplete: true, // Auto-cleanup completed jobs to save Redis memory
-    removeOnFail: false    // Keep failed jobs for manual review dashboard triggers
-  }
+  defaultJobOptions: DEFAULT_JOB_OPTIONS
 });
 
 /**

@@ -4,6 +4,7 @@ import api from '@/lib/api';
 import { useTheme } from '@/context/ThemeContext';
 import { useSocket } from '@/context/SocketContext';
 import { getOptimizedImage } from '@/lib/cloudinary';
+import { toast } from 'react-hot-toast';
 
 const fmt = (n: any) => 'Rs.' + Number(n || 0).toLocaleString('en-IN');
 const COLORS = ['#7c3aed', '#2563eb', '#059669', '#d97706', '#dc2626', '#0891b2', '#7c3aed'];
@@ -16,7 +17,7 @@ const METHODS = [
   { value: 'CREDIT', label: 'Credit' },
 ];
 
-type CartItem = { id: string; name: string; sellingPrice: number; costPrice: number; taxRate: number; qty: number; stock: number; };
+type CartItem = { id: string; name: string; sellingPrice: number; costPrice: number; taxRate: number; qty: number; stock: number; productId?: string; comboId?: string; isCombo?: boolean; };
 type Receipt = { id: string; invoiceNumber: string; items: CartItem[]; subtotal: number; taxAmount: number; discountAmount: number; total: number; method: string; customer: { id: string; name: string; phone?: string; loyaltyPoints?: number } | null; date: string; pointsEarned?: number; };
 
 type CustomerInfo = { id: string; name: string; phone: string; loyaltyPoints: number; totalPurchases: number; };
@@ -41,6 +42,7 @@ export default function POSPage() {
   const [waSending, setWaSending] = useState(false);
   const [waSent, setWaSent] = useState(false);
   const [shop, setShop] = useState<any>(null);
+  const [combos, setCombos] = useState<any[]>([]);
 
   // Phone-first customer lookup
   const [phoneInput, setPhoneInput] = useState('');
@@ -51,6 +53,14 @@ export default function POSPage() {
   const [custSaving, setCustSaving] = useState(false);
   const [custErr, setCustErr] = useState('');
   const [redeemPoints, setRedeemPoints] = useState(false);
+
+  // Coupon state
+  const [couponInput, setCouponInput]   = useState('');
+  const [couponData,  setCouponData]    = useState<{ code: string; discount: number; type: string } | null>(null);
+  const [couponErr,   setCouponErr]     = useState('');
+  const [couponLoading, setCouponLoading] = useState(false);
+
+  const [tiersData, setTiersData] = useState<any>(null);
 
   // Pending (Pay at Counter) orders
   const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
@@ -73,12 +83,16 @@ export default function POSPage() {
 
   const loadProducts = async () => {
     try {
-      const [pRes, cRes] = await Promise.all([
-        api.get('/api/products?limit=250'),
-        api.get('/api/categories')
+      const [pRes, cRes, tRes, comboRes] = await Promise.all([
+        api.get('/api/products?limit=250&mode=pos'),
+        api.get('/api/categories'),
+        api.get('/api/marketing/loyalty-tiers').catch(() => ({ data: { tiers: [] } })),
+        api.get('/api/combos?mode=pos').catch(() => ({ data: { combos: [] } }))
       ]);
       setProducts(pRes.data.products || []);
       setCategories(cRes.data.categories || []);
+      setTiersData(tRes.data || { tiers: [] });
+      setCombos(comboRes.data.combos || []);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
@@ -141,11 +155,51 @@ export default function POSPage() {
     setNewCustName(''); setCustErr(''); setRedeemPoints(false);
   };
 
-  const addToCart = (p: any) => setCart(c => {
-    const ex = c.find(i => i.id === p.id);
-    if (ex) return c.map(i => i.id === p.id ? { ...i, qty: Math.min(i.qty + 1, (i.stock || 999)) } : i);
-    return [...c, { id: p.id, name: p.name, sellingPrice: Number(p.sellingPrice), costPrice: Number(p.costPrice || 0), taxRate: Number(p.taxRate || 0), qty: 1, stock: p.stock || 999 }];
-  });
+  const applyCoupon = async () => {
+    const code = couponInput.trim().toUpperCase();
+    if (!code) return;
+    setCouponLoading(true); setCouponErr('');
+    try {
+      const { data } = await api.post('/api/growth/coupons/validate', {
+        code,
+        orderTotal: subtotal + taxAmount - Math.min(discount, subtotal + taxAmount),
+        customerId: customer?.id
+      });
+      if (data.valid) {
+        setCouponData({ code: data.coupon.code, discount: data.discount, type: data.coupon.type });
+        setCouponErr('');
+      } else {
+        setCouponData(null);
+        setCouponErr(data.error || 'Invalid coupon');
+      }
+    } catch (err: any) {
+      setCouponData(null);
+      setCouponErr(err.response?.data?.error || 'Failed to validate coupon');
+    } finally { setCouponLoading(false); }
+  };
+
+  const removeCoupon = () => { setCouponData(null); setCouponInput(''); setCouponErr(''); };
+
+  const addToCart = (p: any, isCombo = false) => {
+    const id = isCombo ? `combo-${p.id}` : p.id;
+    const existing = cart.find(i => i.id === id);
+    if (existing) {
+      setCart(cart.map(i => i.id === id ? { ...i, qty: i.qty + 1 } : i));
+    } else {
+      setCart([...cart, { 
+        id, 
+        name: p.name, 
+        sellingPrice: isCombo ? Number(p.fixedPrice) : Number(p.discountedPrice || p.sellingPrice), 
+        costPrice: Number(p.costPrice || 0),
+        taxRate: Number(p.taxRate || 0), 
+        qty: 1, 
+        stock: isCombo ? 999 : (p.stock || 0),
+        isCombo,
+        comboId: isCombo ? p.id : undefined,
+        productId: isCombo ? undefined : p.id
+      } as any]);
+    }
+  };
 
   const filteredProducts = products.filter(p => {
     try {
@@ -160,6 +214,7 @@ export default function POSPage() {
       
       if (catFilter === 'ALL') return true;
       if (catFilter === 'NONE') return !p.categoryId;
+      if (catFilter === 'COMBOS') return false; 
       return p.categoryId === catFilter;
     } catch (e) {
       return false;
@@ -169,29 +224,45 @@ export default function POSPage() {
   const dec = (id: string) => setCart(c => c.map(i => i.id === id ? { ...i, qty: i.qty - 1 } : i).filter(i => i.qty > 0));
   const inc = (id: string) => setCart(c => c.map(i => i.id === id ? { ...i, qty: Math.min(i.qty + 1, i.stock) } : i));
 
+  const tiers = tiersData?.tiers || [];
+  const activeTier = customer && tiers.length > 0
+    ? tiers.filter((t: any) => (customer.totalPurchases || 0) >= t.minPoints).sort((a: any, b: any) => b.minPoints - a.minPoints)[0]
+    : null;
+
+  const couponDiscount = couponData ? couponData.discount : 0;
   const subtotal = cart.reduce((s, i) => s + i.sellingPrice * i.qty, 0);
   const taxAmount = cart.reduce((s, i) => s + (i.sellingPrice * i.qty) * (i.taxRate / 100), 0);
+  const tierDiscount = activeTier ? subtotal * (activeTier.discountRate / 100) : 0;
+  
+  // discount is manual override
   const discountAmt = Math.min(discount, subtotal + taxAmount);
 
-  // Loyalty redemption: 100 pts = Rs.10
-  const REDEEM_RATE = 10;
+  // Loyalty redemption: fetched dynamically from shop profile
+  const REDEEM_RATE = shop?.redeemRate || 10;
   const maxRedeemable = customer ? Math.floor(customer.loyaltyPoints / 100) * REDEEM_RATE : 0;
   const pointsDiscount = redeemPoints && customer ? maxRedeemable : 0;
   const pointsToRedeem = redeemPoints && customer ? Math.floor(maxRedeemable / REDEEM_RATE) * 100 : 0;
-  const total = Math.max(0, subtotal + taxAmount - discountAmt - pointsDiscount);
+  
+  const total = Math.max(0, subtotal + taxAmount - discountAmt - couponDiscount - pointsDiscount - tierDiscount);
 
   const checkout = async () => {
     if (!cart.length) return;
     setSubmitting(true);
+    // Idempotency key: prevents duplicate orders from double-taps or retries
+    const requestId = crypto.randomUUID();
     try {
-      const { data } = await api.post('/api/orders', {
-        customerId: customer?.id,
+      const checkoutData = {
+        requestId,
+        customerId: customer?.id || null,
         paymentMethod: method,
         paymentStatus: 'PAID',
-        discountAmount: discountAmt,
+        notes: '',
+        discountAmount: discountAmt + couponDiscount + tierDiscount,
         redeemPoints: pointsToRedeem,
+        couponCode: couponData?.code ?? undefined,
         items: cart.map(i => ({
-          productId: i.id,
+          productId: i.productId,
+          comboId: i.comboId,
           name: i.name,
           quantity: i.qty,
           costPrice: i.costPrice,
@@ -199,7 +270,9 @@ export default function POSPage() {
           taxRate: i.taxRate,
           discount: 0,
         })),
-      });
+      };
+
+      const { data } = await api.post('/api/orders', checkoutData);
 
       const order = data.order || data;
       setReceipt({
@@ -208,7 +281,7 @@ export default function POSPage() {
         items: [...cart],
         subtotal,
         taxAmount: Math.round(taxAmount),
-        discountAmount: discountAmt + pointsDiscount,
+        discountAmount: discountAmt + couponDiscount + pointsDiscount + tierDiscount,
         total: Number(order.totalAmount ?? total),
         method,
         customer: customer ? { ...customer, loyaltyPoints: (customer.loyaltyPoints ?? 0) + (data.pointsEarned ?? 0) - pointsToRedeem } : null,
@@ -216,14 +289,14 @@ export default function POSPage() {
         pointsEarned: data.pointsEarned,
       });
       setWaSent(false);
-      setCart([]); clearCustomer(); setDiscount(0);
+      setCart([]); clearCustomer(); setDiscount(0); removeCoupon();
       loadProducts();
     } catch (e: any) {
       const details = e.response?.data?.details;
       const errMsg = details
         ? details.map((d: any) => `${d.path.join('.')}: ${d.message}`).join('\n')
         : (e.response?.data?.error || 'Checkout failed');
-      alert('Error: ' + errMsg);
+      toast.error('Error: ' + errMsg);
     } finally { setSubmitting(false); }
   };
 
@@ -234,7 +307,7 @@ export default function POSPage() {
       await api.post(`/api/orders/${receipt.id}/whatsapp`);
       setWaSent(true);
     } catch (e: any) {
-      alert(e.response?.data?.error || 'Failed to send WhatsApp');
+      toast.error(e.response?.data?.error || 'Failed to send WhatsApp');
     } finally { setWaSending(false); }
   };
 
@@ -248,7 +321,7 @@ export default function POSPage() {
       const url = API + `/api/menu/order/${orderId}/invoice`;
       window.open(url, '_blank');
     } catch (e: any) {
-      alert(e.response?.data?.error || 'Failed to mark paid');
+      toast.error(e.response?.data?.error || 'Failed to mark paid');
     } finally { setMarkingPaid(null); }
   };
 
@@ -344,7 +417,7 @@ export default function POSPage() {
             )}
             {receipt.discountAmount > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 2 }}>
-                <span>Discount</span><span>- {fmt(receipt.discountAmount)}</span>
+                <span>Discount{couponData?.code ? ` (${couponData.code})` : ''}</span><span>- {fmt(receipt.discountAmount)}</span>
               </div>
             )}
             <div style={{ borderTop: '1px dashed #999', margin: '4px 0' }} />
@@ -524,7 +597,7 @@ export default function POSPage() {
           </div>
           {/* Category Quick Filter Bar */}
           <div style={{ display: 'flex', gap: 10, overflowX: 'auto', padding: '4px 2px 14px', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-            {[{ id: 'ALL', name: 'All' }, ...categories, { id: 'NONE', name: 'Other' }].map((c: any) => (
+            {[{ id: 'ALL', name: 'All' }, { id: 'COMBOS', name: 'Combos' }, ...categories, { id: 'NONE', name: 'Other' }].map((c: any) => (
               <button key={c.id} onClick={() => setCatFilter(c.id)}
                 style={{
                   padding: '10px 18px', borderRadius: 12, border: `1px solid ${catFilter === c.id ? c.color||'#7c3aed' : theme.border}`,
@@ -542,8 +615,22 @@ export default function POSPage() {
           {loading ? (
             <div style={{ textAlign: 'center', padding: 40, color: theme.textFaint }}>Loading items...</div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10, overflow: 'auto', paddingBottom: 8 }}>
-              {filteredProducts.map((p: any, idx: number) => {
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 12, overflowY: 'auto', paddingRight: 4 }}>
+              {/* Combos Injection */}
+              {(catFilter === 'ALL' || catFilter === 'COMBOS') && combos.filter(c => c.name.toLowerCase().includes(search.toLowerCase())).map(c => (
+                <div key={c.id} onClick={() => addToCart(c, true)}
+                  style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '10px', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 6, position: 'relative' }}>
+                  <div style={{ aspectRatio: '1', background: '#3b82f620', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                    {c.imageUrl ? <img src={c.imageUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 24 }}>🍱</span>}
+                  </div>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: theme.text, lineHeight: 1.2, height: 32, overflow: 'hidden' }}>{c.name}</div>
+                  <div style={{ color: '#3b82f6', fontWeight: 800, fontSize: 14 }}>{fmt(c.fixedPrice)}</div>
+                  <div style={{ position: 'absolute', top: 5, right: 5, background: '#3b82f6', color: 'white', fontSize: 8, padding: '2px 5px', borderRadius: 4, fontWeight: 900 }}>COMBO</div>
+                </div>
+              ))}
+
+              {/* Products */}
+              {catFilter !== 'COMBOS' && filteredProducts.map((p, idx) => {
                 const isOutOfStock = p.stock <= 0;
                 const isNotAvailable = p.isAvailable === false;
                 const isLocked = isOutOfStock || isNotAvailable;
@@ -553,41 +640,34 @@ export default function POSPage() {
                     style={{
                       background: theme.card,
                       border: `1px solid ${theme.border}`,
-                      borderRadius: 12, padding: 14,
+                      borderRadius: 14, padding: '10px',
                       cursor: isLocked ? 'not-allowed' : 'pointer',
                       transition: 'border-color .15s',
-                      opacity: isLocked ? 0.6 : 1
-                    }}
-                    onMouseEnter={e => { if (!isLocked) (e.currentTarget as HTMLElement).style.borderColor = '#7c3aed'; }}
-                    onMouseLeave={e => { if (!isLocked) (e.currentTarget as HTMLElement).style.borderColor = theme.border; }}>
-                    <div style={{ width: '100%', aspectRatio: '1', background: COLORS[idx % COLORS.length] + '22', border: '1px solid ' + COLORS[idx % COLORS.length] + '44', borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10, position: 'relative' }}>
+                      opacity: isLocked ? 0.6 : 1,
+                      display: 'flex', flexDirection: 'column', gap: 6
+                    }}>
+                    <div style={{ aspectRatio: '1', background: COLORS[idx % COLORS.length] + '20', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative' }}>
                       {p.imageUrl
-                        ? <img src={getOptimizedImage(p.imageUrl, 200) || ''} alt={p.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 9 }} />
-                        : <span style={{ fontSize: 28, fontWeight: 900, color: COLORS[idx % COLORS.length] }}>{p.name[0].toUpperCase()}</span>
+                        ? <img src={getOptimizedImage(p.imageUrl, 150) || ''} alt={p.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : <span style={{ fontSize: 24, opacity: 0.3 }}>📦</span>
                       }
                       {isLocked && (
                         <div style={{ position: 'absolute', background: 'rgba(0,0,0,0.4)', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <span style={{ color: 'white', fontWeight: 800, fontSize: 11, padding: '4px 8px', background: isNotAvailable ? '#dc2626' : '#ef4444', borderRadius: 5 }}>
-                            {isNotAvailable ? 'UNAVAILABLE' : 'OUT OF STOCK'}
-                          </span>
+                          <span style={{ color: 'white', fontWeight: 800, fontSize: 10 }}>{isNotAvailable ? 'UNAVAILABLE' : 'OUT'}</span>
                         </div>
                       )}
                     </div>
-                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, lineHeight: 1.3, color: theme.text }}>{p.name}</div>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: theme.text, lineHeight: 1.2, height: 32, overflow: 'hidden' }}>{p.name}</div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: '#a78bfa', fontWeight: 800, fontSize: 14 }}>{fmt(p.sellingPrice)}</span>
-                      {isLocked ? (
-                        <span style={{ background: isNotAvailable ? 'rgba(220,38,38,.15)' : 'rgba(239,68,68,.15)', color: isNotAvailable ? '#dc2626' : '#ef4444', padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 800 }}>
-                          {isNotAvailable ? 'Unavailable' : 'Sold Out'}
-                        </span>
-                      ) : (
-                        <span style={{ background: p.stock <= (p.lowStockAlert || 5) ? 'rgba(239,68,68,.2)' : 'rgba(16,185,129,.2)', color: p.stock <= (p.lowStockAlert || 5) ? '#ef4444' : '#10b981', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>{p.stock}</span>
-                      )}
+                      <div style={{ color: theme.text, fontWeight: 800, fontSize: 14 }}>{fmt(p.discountedPrice || p.sellingPrice)}</div>
+                      <div style={{ fontSize: 10, color: p.stock <= 5 ? '#ef4444' : theme.textFaint, fontWeight: 700 }}>{p.stock} {p.unit || 'pcs'}</div>
                     </div>
                   </div>
                 );
               })}
-              {filtered.length === 0 && <div style={{ gridColumn: 'span 3', padding: 36, textAlign: 'center', color: theme.textFaint }}>No products found.</div>}
+              {filteredProducts.length === 0 && (catFilter === 'ALL' || catFilter !== 'COMBOS') && (
+                <div style={{ gridColumn: 'span 3', padding: 36, textAlign: 'center', color: theme.textFaint }}>No products found.</div>
+              )}
             </div>
           )}
         </div>
@@ -629,6 +709,37 @@ export default function POSPage() {
           {cart.length > 0 && (
             <div style={{ padding: '12px 16px', borderTop: `1px solid ${theme.border}`, display: 'flex', flexDirection: 'column', gap: 10 }}>
 
+              {/* Customer Display */}
+              {customer ? (
+                <div style={{ background: theme.bg, borderRadius: 12, padding: '14px 16px', border: `1px solid rgba(16,185,129,0.3)` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 14, fontWeight: 800, color: '#10b981' }}>{customer.name}</span>
+                        {activeTier && (
+                          <span style={{ background: activeTier.badgeColor, color: 'white', fontSize: 10, fontWeight: 900, padding: '2px 6px', borderRadius: 6, letterSpacing: '0.05em' }}>
+                            {activeTier.name} ({activeTier.discountRate}%)
+                          </span>
+                        )}
+                      </div>
+                      <span style={{ fontSize: 11, color: theme.textMuted, fontFamily: 'monospace' }}>{customer.phone}</span>
+                    </div>
+                    <button onClick={clearCustomer} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Change</button>
+                  </div>
+                  
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, borderTop: `1px solid ${theme.border}`, paddingTop: 10 }}>
+                    <span style={{ color: theme.textFaint }}>Lifetime Spend: <span style={{ color: theme.text, fontWeight: 700 }}>₹{Math.floor(customer.totalPurchases || 0).toLocaleString()}</span></span>
+                    <span style={{ color: theme.textFaint }}>Loyalty Pts: <span style={{ color: '#a78bfa', fontWeight: 800 }}>{customer.loyaltyPoints}</span></span>
+                  </div>
+                  
+                  {activeTier && (
+                    <div style={{ fontSize: 11, color: '#10b981', fontWeight: 700, marginTop: 8 }}>
+                      ✓ Automatic {activeTier.discountRate}% discount applied.
+                    </div>
+                  )}
+                </div>
+              ) : null}
+
               {/* Payment method */}
               <div style={{ display: 'flex', gap: 5 }}>
                 {METHODS.map(m => (
@@ -648,14 +759,61 @@ export default function POSPage() {
                   placeholder="0" style={inp} />
               </div>
 
+              {/* Coupon Code */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {!couponData ? (
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input
+                      value={couponInput}
+                      onChange={e => { setCouponInput(e.target.value.toUpperCase()); setCouponErr(''); }}
+                      onKeyDown={e => e.key === 'Enter' && applyCoupon()}
+                      placeholder="🎟️ Coupon code..."
+                      style={{ ...inp, fontFamily: 'monospace', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', flex: 1 }}
+                    />
+                    <button
+                      onClick={applyCoupon}
+                      disabled={couponLoading || !couponInput.trim()}
+                      style={{ background: '#7c3aed', border: 'none', color: 'white', padding: '0 14px', borderRadius: 9, fontWeight: 700, fontSize: 12, cursor: couponLoading || !couponInput.trim() ? 'not-allowed' : 'pointer', opacity: couponLoading || !couponInput.trim() ? 0.6 : 1, whiteSpace: 'nowrap' }}>
+                      {couponLoading ? '...' : 'Apply'}
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 9, padding: '7px 12px' }}>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: '#10b981', fontFamily: 'monospace' }}>🎟️ {couponData.code}</div>
+                      <div style={{ fontSize: 11, color: '#10b981' }}>- {fmt(couponData.discount)} saved</div>
+                    </div>
+                    <button onClick={removeCoupon} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: 16, cursor: 'pointer' }}>×</button>
+                  </div>
+                )}
+                {couponErr && <div style={{ fontSize: 11, color: '#ef4444', fontWeight: 600 }}>⚠ {couponErr}</div>}
+              </div>
+
+              {/* Loyalty Tiers Auto-Discount */}
+              {tierDiscount > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#10b981' }}>
+                  <span>{activeTier?.name} Auto-Discount ({activeTier?.discountRate}%)</span>
+                  <span>-₹{Math.round(tierDiscount)}</span>
+                </div>
+              )}
+
               {/* Loyalty points redemption */}
               {customer && customer.loyaltyPoints >= 100 && (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.2)', borderRadius: 9, padding: '8px 12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.2)', borderRadius: 9, padding: '8px 12px', opacity: couponData ? 0.4 : 1, pointerEvents: couponData ? 'none' : 'auto' }}>
                   <div>
                     <div style={{ fontSize: 12, color: '#a78bfa', fontWeight: 700 }}>⭐ {customer.loyaltyPoints} points available</div>
-                    <div style={{ fontSize: 11, color: theme.textFaint }}>Redeem {pointsToRedeem} pts = Rs.{maxRedeemable} off</div>
+                    <div style={{ fontSize: 11, color: theme.textFaint }}>
+                      {couponData ? 'Remove coupon to use points' : `Redeem ${pointsToRedeem} pts = Rs.${maxRedeemable} off`}
+                    </div>
                   </div>
-                  <button onClick={() => setRedeemPoints(r => !r)}
+                  <button onClick={() => {
+                    if (redeemPoints) {
+                      setRedeemPoints(false); // toggling off, no coupon change
+                    } else {
+                      setRedeemPoints(true);
+                      removeCoupon(); // mutual exclusivity: remove coupon when points applied
+                    }
+                  }}
                     style={{ background: redeemPoints ? '#7c3aed' : theme.hover, border: `1px solid ${redeemPoints ? '#7c3aed' : theme.border}`, color: redeemPoints ? 'white' : theme.textMuted, padding: '5px 12px', borderRadius: 7, fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>
                     {redeemPoints ? 'Applied ✓' : 'Redeem'}
                   </button>
@@ -668,6 +826,8 @@ export default function POSPage() {
                   ['Subtotal', fmt(subtotal)],
                   taxAmount > 0 ? ['Tax', fmt(Math.round(taxAmount))] : null,
                   discountAmt > 0 ? ['Discount', `- ${fmt(discountAmt)}`] : null,
+                  couponDiscount > 0 ? [`🎟️ ${couponData?.code}`, `- ${fmt(couponDiscount)}`] : null,
+                  tierDiscount > 0 ? [`⭐ ${activeTier?.name}`, `- ${fmt(tierDiscount)}`] : null,
                   pointsDiscount > 0 ? ['Points Redeem', `- ${fmt(pointsDiscount)}`] : null,
                 ].filter(Boolean).map(([l, v]: any) => (
                   <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>

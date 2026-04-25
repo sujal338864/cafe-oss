@@ -3,12 +3,12 @@ import { Server as HttpServer } from 'http';
 import { createAdapter } from '@socket.io/redis-adapter';
 import Redis from 'ioredis';
 import { redisConnection } from '../jobs/config';
-import { logRedisError } from './redis';
+import { logger } from './logger';
+import { ALLOWED_ORIGINS_ARRAY } from '../common/origins';
 
 let io: Server | null = null;
 
 export const initSocket = (server: HttpServer) => {
-  // Dedicated connection options for Socket.IO that allow buffering until connected
   const socketRedisOptions = { 
     ...redisConnection, 
     lazyConnect: false, 
@@ -18,37 +18,72 @@ export const initSocket = (server: HttpServer) => {
   const pubClient = new Redis(socketRedisOptions);
   const subClient = new Redis(socketRedisOptions);
 
-  // CRITICAL: IOSET/BullMQ/Redis-Adapter MUST have error handlers to prevent process crash
-  pubClient.on('error', (err) => logRedisError('SocketPub', err));
-  subClient.on('error', (err) => logRedisError('SocketSub', err));
+  const handleRedisError = (name: string, err: any) => {
+    if (err?.code === 'ECONNREFUSED') return; // Silence noise if local Redis is down
+    logger.error(`[${name}]`, err);
+  };
+
+  pubClient.on('error', (err) => handleRedisError('SocketPub', err));
+  subClient.on('error', (err) => handleRedisError('SocketSub', err));
 
   io = new Server(server, {
     cors: {
-      origin: '*', // Adjust for production
-      methods: ['GET', 'POST']
+      origin: ALLOWED_ORIGINS_ARRAY,
+      methods: ['GET', 'POST'],
+      credentials: true
     }
   });
 
-  // Only use Redis adapter if connection is established to avoid 'Stream not writable' crashes
+  // --- AUTH MIDDLEWARE (Phase 1 Fix) ---
+  io.use(async (socket, next) => {
+    try {
+      const { verifyToken } = await import('./jwt');
+      const token = socket.handshake.auth?.token || socket.handshake.query?.token as string;
+      const shopId = socket.handshake.query?.shopId as string;
+
+      if (!token) return next(new Error('Missing token'));
+
+      const decoded = verifyToken(token) as any;
+      if (!decoded) return next(new Error('Invalid token'));
+
+      // Verify shop access
+      if (shopId && decoded.role !== 'SUPER_ADMIN' && decoded.shopId !== shopId) {
+        const { prisma } = await import('../common/prisma');
+        const membership = await prisma.membership.findFirst({
+          where: { userId: decoded.id, shopId, isActive: true }
+        });
+        if (!membership) return next(new Error('Unauthorized shop access'));
+      }
+
+      (socket as any).user = decoded;
+      next();
+    } catch (err) {
+      next(new Error('Authentication failed'));
+    }
+  });
+
   try {
     io.adapter(createAdapter(pubClient, subClient));
-    console.log('[Socket] Redis adapter activated.');
   } catch (err) {
-    console.error('[Socket] Redis adapter failed to initialize (using local memory instead).');
+    logger.error('[Socket] Redis adapter failed');
   }
 
   io.on('connection', (socket) => {
-    console.log(`[Socket] Client connected: ${socket.id}`);
+    const user = (socket as any).user;
+    
+    socket.on('join_shop', (targetShopId: string) => {
+      if (user.role === 'SUPER_ADMIN' || user.shopId === targetShopId) {
+        socket.join(`shop:${targetShopId}`);
+      }
+    });
 
-    // Join room based on shopId (e.g., from query or auth token)
     const shopId = socket.handshake.query.shopId as string;
-    if (shopId) {
+    if (shopId && (user.role === 'SUPER_ADMIN' || user.shopId === shopId)) {
       socket.join(`shop:${shopId}`);
-      console.log(`[Socket] Client ${socket.id} joined room for shop: ${shopId}`);
     }
 
     socket.on('disconnect', () => {
-      console.log(`[Socket] Client disconnected: ${socket.id}`);
+      // Clean up
     });
   });
 
@@ -65,6 +100,5 @@ export const getIO = (): Server => {
 export const emitToShop = (shopId: string, event: string, data: any) => {
   if (io) {
     io.to(`shop:${shopId}`).emit(event, data);
-    console.log(`[Socket] Emitted event [${event}] to shop [${shopId}]`);
   }
 };

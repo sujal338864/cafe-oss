@@ -1,16 +1,12 @@
 import { Queue } from 'bullmq';
-import { redisConnection } from '../config';
+import { redisConnection, DEFAULT_JOB_OPTIONS } from '../config';
 
 /**
  * Queue for controlling asynchronous OpenAI insight generation jobs.
  */
 export const aiInsightsQueue = new Queue('ai_insights', {
   connection: redisConnection,
-  defaultJobOptions: {
-    attempts: 2,
-    backoff: { type: 'exponential', delay: 2000 },
-    removeOnComplete: { count: 100 }, // Keep last 100 jobs history
-  }
+  defaultJobOptions: DEFAULT_JOB_OPTIONS
 });
 
 export const addAiInsightsJob = async (shopId: string) => {
