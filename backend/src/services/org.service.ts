@@ -1,4 +1,4 @@
-import { prisma } from '../common/prisma';
+import { prisma, directPrisma } from '../common/prisma';
 import { getCache, setCache, deleteCache } from '../common/cache';
 import { logger } from '../lib/logger';
 import { MenuSyncService } from './menuSync.service';
@@ -111,7 +111,7 @@ export const OrgService = {
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     const [orderStats, customerStats] = await Promise.all([
-      prisma.order.groupBy({
+      directPrisma.order.groupBy({
         by: ['shopId'],
         where: {
           shopId: { in: branches.map((b: any) => b.id) },
@@ -121,7 +121,7 @@ export const OrgService = {
         _sum: { totalAmount: true },
         _count: { id: true }
       }),
-      prisma.customer.groupBy({
+      directPrisma.customer.groupBy({
         by: ['shopId'],
         where: {
           shopId: { in: branches.map((b: any) => b.id) }
@@ -173,7 +173,7 @@ export const OrgService = {
 
     const [branchStats, productStats] = await Promise.all([
       // 1. Top Branches by Revenue
-      prisma.order.groupBy({
+      directPrisma.order.groupBy({
         by: ['shopId'],
         where: { shopId: { in: ids }, status: 'COMPLETED' },
         _sum: { totalAmount: true },
@@ -182,7 +182,7 @@ export const OrgService = {
         take: 10
       }),
       // 2. Top Products Organization-wide
-      prisma.orderItem.groupBy({
+      directPrisma.orderItem.groupBy({
         by: ['name'],
         where: { order: { shopId: { in: ids }, status: 'COMPLETED' } },
         _sum: { quantity: true, total: true },
@@ -223,7 +223,7 @@ export const OrgService = {
       since.setDate(since.getDate() - days);
 
       const [orderStats, productStats] = await Promise.all([
-        prisma.order.groupBy({
+        directPrisma.order.groupBy({
           by: ['shopId'],
           where: {
             shopId: { in: branches.map((b: any) => b.id) },
@@ -236,7 +236,7 @@ export const OrgService = {
         }),
         Promise.all(branches.map(async (b: any) => {
           try {
-            const item = await prisma.orderItem.groupBy({
+            const item = await directPrisma.orderItem.groupBy({
               by: ['name'],
               where: { order: { shopId: b.id, createdAt: { gte: since } } },
               _count: { id: true },

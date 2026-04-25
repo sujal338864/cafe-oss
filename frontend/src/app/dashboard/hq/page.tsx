@@ -11,7 +11,7 @@ export default function HQDashboard() {
   const { user } = useAuth();
   const [orgId, setOrgId] = useState<string | null>(null);
 
-  const { data: myOrgs, isLoading: loadingOrgs } = useQuery({
+  const { data: myOrgs, isLoading: loadingOrgs, error: orgError } = useQuery({
     queryKey: ['my-orgs'],
     queryFn: () => api.get('/api/org/mine').then(r => r.data.organizations),
   });
@@ -43,6 +43,18 @@ export default function HQDashboard() {
   if (loadingOrgs) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', color: theme.textFaint }}>
       Loading your organizations...
+    </div>
+  );
+
+  // Check for 503 specifically (Franchise Mode Disabled on backend)
+  const is503 = (orgError as any)?.response?.status === 503;
+  if (is503) return (
+    <div style={{ maxWidth: 520, margin: '80px auto', padding: 40, textAlign: 'center', ...card }}>
+      <div style={{ fontSize: 48, marginBottom: 20 }}>🔒</div>
+      <h2 style={{ fontSize: 22, fontWeight: 800, color: theme.text, marginBottom: 12 }}>Franchise Mode Locked</h2>
+      <p style={{ color: theme.textFaint, marginBottom: 28, lineHeight: 1.6 }}>
+        Franchise Mode is not enabled on your server instance. To unlock this, please set <strong>ENABLE_FRANCHISE_MODE=true</strong> in your backend environment variables (Render Dashboard).
+      </p>
     </div>
   );
 
