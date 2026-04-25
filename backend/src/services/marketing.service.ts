@@ -22,7 +22,7 @@ export const MarketingService = {
    * Safe fallback for when OpenAI is not configured during dev/test.
    * Provides hardcoded smart suggestions.
    */
-  getFallbackResponse: (type: string, input: string, _language: string = 'English') => {
+  getFallbackResponse: (type: string, _input: string) => {
     logger.warn(`[MARKETING] OpenAI API key missing. Using fallback response for ${type}`);
     switch (type) {
       case 'caption':
