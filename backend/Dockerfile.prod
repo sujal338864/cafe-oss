@@ -8,12 +8,13 @@ COPY prisma ./prisma/
 # Install dependencies including dev dependencies for tsc
 RUN npm ci
 
+COPY . .
 # Generate DB client
 RUN npx prisma generate
-
-COPY . .
 # Build the TypeScript output
 RUN npm run build
+# Ensure non-TS generated assets are moved to dist for production runtime
+RUN cp -r src/generated dist/generated
 
 # Stage 2: Production Image
 FROM node:20-alpine AS production
